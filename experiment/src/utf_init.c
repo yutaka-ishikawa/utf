@@ -211,10 +211,10 @@ utf_combuf_init()
 }
 
 void
-utf_init(int argc, char **argv)
+utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
 {
     int		opt;
-    int	np, ppn, rank;
+    int	np, tppn, rnk;
 
     if (myinitialized) {
 	return;
@@ -241,7 +241,10 @@ utf_init(int argc, char **argv)
     }
 
     /* vcq handle are created  */
-    utf_get_peers(NULL, &np, &ppn, &rank);
+    utf_get_peers(NULL, &np, &tppn, &rnk);
+    if (rank) *rank = rnk;
+    if (nprocs) *nprocs = np;
+    if (ppn) *ppn = tppn;
     utf_tni_select(utf_info.myppn, utf_info.mynrnk, &tniid, 0);
     UTOFU_CALL(1, utofu_create_vcq_with_cmp_id, tniid, 0x7, 0, &vcqh);
     UTOFU_CALL(1, utofu_query_vcq_id, vcqh, &vcqid);

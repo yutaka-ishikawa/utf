@@ -7,7 +7,7 @@
 #include "utf_externs.h"
 #include "utf_timer.h"
 
-int	nprocs, myrank;
+int	nprocs, myrank, nnp;
 pid_t	mypid;
 int	vflag, dflag, mflag, sflag, Mflag, pflag;
 int	iteration;
@@ -49,9 +49,9 @@ test_init(int argc, char **argv)
 	}
     }
     optind = 0; /* reset getopt() library */
-    utf_init(argc, argv);
-    utf_rank(&myrank);
-    utf_nprocs(&nprocs);
+    utf_init(argc, argv, &myrank, &nprocs, &nnp);
+    //utf_rank(&myrank);
+    //utf_nprocs(&nprocs);
 }
 
 void

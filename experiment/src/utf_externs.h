@@ -1,6 +1,6 @@
 #include <utofu.h>
 
-extern void	utf_init(int argc, char **argv);
+extern void	utf_init(int argc, char **argv, int *myrank, int *nprocs, int *ppn);
 extern void	utf_finalize();
 extern int	utf_rank(int *);
 extern int	utf_nprocs(int *);
