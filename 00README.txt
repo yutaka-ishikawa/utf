@@ -11,6 +11,11 @@ UTF - a low-level communication library using uTofu
    #   $ (cd src/basic; make; make install)
 
 (2) Experiment
+   0) export UTF_ARCH environment variable
+      For fugaku,
+        $ export UTF_ARCH=fugaku
+      For x86,
+        $ export UTF_ARCH=x86
    1) A program code for measuring costs of the utofu library is available.
      $ (cd experiment/src; make; make install)
      job scripts are located in the experiment/run directory.
