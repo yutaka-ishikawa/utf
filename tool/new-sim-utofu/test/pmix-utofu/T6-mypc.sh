@@ -1,0 +1,37 @@
+#!/bin/sh
+
+MPICH_HOME=$HOME/riken-mpich/
+MPICH_HOME=${MPICH_HOME:-/opt/local}
+MPIEXEC_CMD=${MPICH_HOME}/bin/mpiexec.hydra
+
+#TOFU_HOME=../..
+TOFU_HOME=../..
+
+###
+
+export LANG=C
+
+#export LD_LIBRARY_PATH=${TOFU_HOME}/x86_64/lib
+export LD_LIBRARY_PATH=${MPICH_HOME}/lib
+export UTOFU_WORLD_ID=100
+export UTOFU_TCP_SERVER_NAME=192.168.222.100
+export UTOFU_TCP_SERVER_PORT=60000
+export UTOFU_TCP_INTERFACE=ens33
+export UTOFU_TCP_PORT=60100
+export JTOFU_MAPINFO_NODE=1x2x1
+
+${MPICH_HOME}/bin/tsim_server \
+env -i \
+${MPIEXEC_CMD} \
+	-genv LD_LIBRARY_PATH       ${LD_LIBRARY_PATH} \
+	-genv UTOFU_WORLD_ID        ${UTOFU_WORLD_ID} \
+	-genv UTOFU_TCP_SERVER_NAME ${UTOFU_TCP_SERVER_NAME} \
+	-genv UTOFU_TCP_SERVER_PORT ${UTOFU_TCP_SERVER_PORT} \
+	-genv UTOFU_TCP_INTERFACE   ${UTOFU_TCP_INTERFACE} \
+	-genv UTOFU_TCP_PORT        ${UTOFU_TCP_PORT} \
+	-genv JTOFU_MAPINFO_NODE    ${JTOFU_MAPINFO_NODE} \
+	-launcher ssh \
+	-iface ${UTOFU_TCP_INTERFACE}  -f hostfile2 \
+	-n 2 ./a6.out
+
+exit 0

@@ -1,0 +1,7 @@
+CC =	/opt/FJSVxos/devkit/aarch64/bin/aarch64-linux-gnu-gcc
+LD =	/opt/FJSVxos/devkit/aarch64/bin/aarch64-linux-gnu-ld
+CFLAGS = -O3 -g -I/opt/FJSVxos/devkit/aarch64/rfs/usr/include/FJSVtcs/ple
+CCINCLUDE = -I/opt/FJSVxos/devkit/aarch64/rfs/usr/include/FJSVtcs/ple
+LDFLAGS = -ltofutop -ltofucom -L/opt/FJSVxos/devkit/aarch64/rfs/usr/lib/FJSVtcs/ple/lib64 -lpmix
+
+INSTALL=install

@@ -1,0 +1,6 @@
+CC =	gcc
+CFLAGS = -O3 -g -Wall $(CCINCLUDE)
+CCINCLUDE = -I$(HOME)/utf/include
+LDFLAGS = -L$(HOME)/utf/lib -ltofutop -ltofucom -lpmix
+
+INSTALL=install
