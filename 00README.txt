@@ -6,9 +6,9 @@ UTF - a low-level communication library using uTofu
      $ (cd new-sim-utofu; make; make install)
 
 (1) Installation
-   # UTF sources will be registered shortly
-   # 1) installation of UTF
-   #   $ (cd src/basic; make; make install)
+   1) installation of UTF
+     $ export UTF_ARCH=fugaku
+     $ (cd src; make; make install)
 
 (2) Experiment
    0) export UTF_ARCH environment variable

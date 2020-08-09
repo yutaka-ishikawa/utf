@@ -36,7 +36,7 @@ https://docs.fugaku.r-ccs.riken.jp/ja/user_guides/lang_2020_03/FujitsuCompiler/P
     1) cp /opt/FJSVxtclanga/tcsds-1.2.25/misc/cpupa/cpu_pa_report.xlsm to your PC.
     2) cp all pa[1-15].csv files to the same folder of cpu_pa_report.xlsm your PC.
     3) Please read the following document for how to use this xlsm file with cvs files:
-	https://docs.fugaku.r-ccs.riken.jp/ja/user_guides/lang_2020_03/FujitsuCompiler/Profiler/CPUPerformanceAnalysisReportCreateReport.html
+	https://docs.fugaku.r-ccs.riken.jp/en/user_guides/lang_2020_03/FujitsuCompiler/Profiler/CPUPerformanceAnalysisReportCreateReport.html
       or
 	https://docs.fugaku.r-ccs.riken.jp/ja/user_guides/lang_2020_03/FujitsuCompiler/Profiler/CPUPerformanceAnalysisReportCreateReport.html
 

@@ -1,0 +1,13 @@
+[1] vcqh(24ad00f) vcqid(10200001f000000)
+[1] utf_mem_init: MEMORY utf_egr_sbuf[0] = 0x40000014a200 utf_egr_sbuf[COM_SBUF_SIZE-1] = 0x40000016a100
+[1] utf_mem_init: MEMORY head(0x400000086cd4) utf_scntr[0] = 0x400000086b00 utf_scntr[SND_CNTRL_MAX-1] = 0x400000095724
+[1] utf_init: utf_info.nprocs(2) np(2) utf_info.myrank(1) rnk(1)
+[1] eager receive buffer addresses:
+ utf_egr_rbuf : 0x400000350300 utf_egr_rbuf.rbuf[0] : 0x400000350400 utf_egr_rbuf.rbuf[1024*126] : 0x400002350400
+[1] utf_fence: begin
+[1] utf_fence: end
+[1] test_init: myrank = 1
+[1] Warning: Still posted requests are being handled. reqid=2
+[1] utf_fence: begin
+[1] utf_fence: end
+[1] Finish

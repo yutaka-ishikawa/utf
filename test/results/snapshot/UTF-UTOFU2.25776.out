@@ -1,0 +1,188 @@
+LD_LIBRARY_PATH= /home/users/ea01/ea0103/work/utf/build/:/opt/FJSVxtclanga/tcsds-1.2.25/lib64
+UTF_MSGMODE(0:eager 1:rendezvous)= 1
+******************************************************
+[0] pingpong: length(0) mlength(16777216)
+[0] pingpong: iteration=1000 
+#length, usec, usec, MB/sec
+[0] 0,   1.550,   1.550,   0.000,   0.000
+[0] 1,   1.560,   1.720,   0.641,   0.641
+[0] 2,   1.640,   1.710,   1.220,   1.220
+[0] 4,   1.550,   1.620,   2.581,   2.581
+[0] 8,   1.530,   1.590,   5.229,   5.229
+[0] 16,   2.040,   2.100,   7.843,   7.843
+[0] 32,   2.040,   2.100,  15.686,  15.686
+[0] 64,   2.050,   2.120,  31.220,  31.220
+[0] 128,   2.070,   2.140,  61.836,  61.836
+[0] 256,   6.720,   6.790,  38.095,  38.095
+[0] 512,   7.140,   7.210,  71.709,  71.709
+[0] 1024,   7.570,   7.640, 135.271, 135.271
+[0] 2048,   7.960,   8.030, 257.286, 257.286
+[0] 4096,   8.630,   8.700, 474.623, 474.623
+[0] 8192,   9.840,   9.910, 832.520, 832.520
+[0] 16384,  12.560,  12.630,1304.459,1304.459
+[0] 32768,  17.620,  17.690,1859.705,1859.705
+[0] 65536,  28.030,  28.110,2338.066,2338.066
+[0] 131072,  48.780,  48.880,2687.003,2687.003
+[0] 262144,  90.130,  90.250,2908.510,2908.510
+[0] 524288, 172.780, 172.930,3034.425,3034.425
+[0] 1048576, 338.320, 338.550,3099.362,3099.362
+[0] 2097152, 671.200, 671.600,3124.482,3124.482
+[0] 4194304,1333.640,1334.370,3145.005,3145.005
+[0] 8388608,2660.570,2661.960,3152.936,3152.936
+[0] 16777216,5313.170,5315.870,3157.666,3157.666
+[1] Finish
+[0] Finish
+***************************
+
+
+**** Environment Variables ***
+LD_LIBRARY_PATH=/home/users/ea01/ea0103/work/utf/build/:/opt/FJSVxtclanga/tcsds-1.2.25/lib64
+HTTP_PROXY=172.23.220.102:8080
+PJM_JOBNAME=UTF-UTOFU2
+PJM_MPI_PROC=2
+MPICH_ARCH=fugaku
+PJM_RSCUNIT=rscunit_ft02
+MODULES_RUN_QUARANTINE=LD_LIBRARY_PATH
+LANG=C
+PJM_O_MAIL=/var/spool/mail/ea0103
+HISTCONTROL=ignoredups
+HOSTNAME=pm3s5b2-04
+PJM_ELAPSED_TIME_MODE=fixed
+PJM_O_LOGNAME=ea0103
+EDITOR=vi
+PATH_modshare=/usr/sbin:1:/usr/bin:1:/usr/local/sbin:1:/opt/FJSVxtclanga/tcsds-1.2.25/bin:1:/usr/share/Modules/bin:1:/usr/local/bin:1
+LOADEDMODULES_modshare=lang/tcsds-1.2.25:1
+PJM_SUBJOBID=25776
+OMPI_CKPTCONFIG=0x00
+TMPDIR_modshare=/home/users/ea01/ea0103:1
+PJM_NODE_ALLOCATION_MODE=torus
+PJM_STDOUT_PATH=/home/users/ea01/ea0103/work/utf/test/results/UTF-UTOFU2.25776.out
+PJM_NODE_QUOTA_LIMIT=18446744073709551615
+UTF_MSGMODE=1
+PJM_O_HOME=/home/users/ea01/ea0103
+S_COLORS=auto
+LD_LIBRARY_PATH_modshare=/opt/FJSVxtclanga/tcsds-1.2.25/lib64:1
+MODULES_CMD=/usr/share/Modules/libexec/modulecmd.tcl
+USER=ea0103
+ENV=/usr/share/Modules/init/profile.sh
+PJM_NODE=2
+PJM_JOBID=25776
+FJSVXTCLANGA=/opt/FJSVxtclanga/tcsds-1.2.25
+PJM_O_SHELL=/bin/bash
+PJM_DPREFIX=#PJM
+PJM_STDERR_PATH=/home/users/ea01/ea0103/work/utf/test/results/UTF-UTOFU2.25776.err
+PJM_NODE_MEM_LIMIT=18446744073709551615
+MPIR_CVAR_OFI_USE_PROVIDER=tofu
+PWD=/home/users/ea01/ea0103/work/utf/test
+HOME=/home/users/ea01/ea0103
+PJM_ELAPSE_LIMIT=20
+PLE_SCRIPT_TYPE=JOB_SCRIPT
+https_proxy=http://172.23.220.102:8080
+PJM_O_WORKDIR=/home/users/ea01/ea0103/work/utf/test
+PJM_MAILOPTION=0x0
+BASH_ENV=/usr/share/Modules/init/bash
+_LMFILES__modshare=/work/system/modulefiles/lang/tcsds-1.2.25:1
+http_proxy=http://172.23.220.102:8080
+PJM_O_LANG=ja_JP.UTF-8
+FJPNCKPT_CONFIG=0x00
+PJM_RSCGRP=dvsys-spack2
+PJM_O_PATH=/home/users/ea01/ea0103/riken-mpich/bin:/home/users/ea01/ea0103/spack/bin:/home/users/ea01/ea0103/riken-mpich/bin:/home/users/ea01/ea0103/spack/bin:/home/users/ea01/ea0103/riken-mpich/bin:/home/users/ea01/ea0103/spack/opt/spack/linux-rhel7-sandybridge/gcc-4.8.5/global-6.5-76qhlfhiqymqpj4opdmu4nqet4ivs6kb/bin:/home/users/ea01/ea0103/spack/opt/spack/linux-rhel7-sandybridge/gcc-4.8.5/libtool-2.4.6-tmorpalhoyvvgwuar4fgjjnvttg2d3yh/bin:/home/users/ea01/ea0103/spack/opt/spack/linux-rhel7-sandybridge/gcc-4.8.5/automake-1.15.1-66mgrbw6cgf7ypw66gpvgw5cb2lvljzm/bin:/home/users/ea01/ea0103/spack/bin:/opt/FJSVxtclanga/tcsds-1.2.25/bin:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/opt/ibutils/bin:/home/users/ea01/ea0103/.local/bin:/home/users/ea01/ea0103/bin
+TMPDIR=/home/users/ea01/ea0103
+LOADEDMODULES=lang/tcsds-1.2.25
+PJM_NET_ROUTE=static
+PJM_O_HOST=ea-login01
+MAIL=/var/spool/mail/ea0103
+PJM_CUSTOM_RESOURCES=jobenv=linux
+SHLVL=2
+PJM_NODE_X=2
+PJM_JOBDIR=/home/users/ea01/ea0103/work/utf/test
+MODULEPATH=/work/system/modulefiles
+PJM_NODE_CPUTIME_LIMIT=18446744073709551615
+LOGNAME=ea0103
+PJM_ENVIRONMENT=BATCH
+MODULEPATH_modshare=/work/system/modulefiles:1
+PJM_SHELL=/bin/bash
+PATH=/home/users/ea01/ea0103/riken-mpich/bin:/opt/FJSVxtclanga/tcsds-1.2.25/bin:/usr/share/Modules/bin:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/home/users/ea01/ea0103/.local/bin:/home/users/ea01/ea0103/bin
+_LMFILES_=/work/system/modulefiles/lang/tcsds-1.2.25
+MODULESHOME=/usr/share/Modules
+HISTSIZE=1000
+ftp_proxy=http://172.23.220.102:8080
+TOFULOG_DIR=./results
+PJM_PROC_BY_NODE=1
+LESSOPEN=||/usr/bin/lesspipe.sh %s
+PJM_MPI_SHAPE_X=2
+BASH_FUNC_module%%=() {  unset _mlre _mlIFS _mlshdbg;
+ if [ "${MODULES_SILENT_SHELL_DEBUG:-0}" = '1' ]; then
+ case "$-" in 
+ *v*x*)
+ set +vx;
+ _mlshdbg='vx'
+ ;;
+ *v*)
+ set +v;
+ _mlshdbg='v'
+ ;;
+ *x*)
+ set +x;
+ _mlshdbg='x'
+ ;;
+ *)
+ _mlshdbg=''
+ ;;
+ esac;
+ fi;
+ if [ -n "${IFS+x}" ]; then
+ _mlIFS=$IFS;
+ fi;
+ IFS=' ';
+ for _mlv in ${MODULES_RUN_QUARANTINE:-};
+ do
+ if [ "${_mlv}" = "${_mlv##*[!A-Za-z0-9_]}" -a "${_mlv}" = "${_mlv#[0-9]}" ]; then
+ if [ -n "`eval 'echo ${'$_mlv'+x}'`" ]; then
+ _mlre="${_mlre:-}${_mlv}_modquar='`eval 'echo ${'$_mlv'}'`' ";
+ fi;
+ _mlrv="MODULES_RUNENV_${_mlv}";
+ _mlre="${_mlre:-}${_mlv}='`eval 'echo ${'$_mlrv':-}'`' ";
+ fi;
+ done;
+ if [ -n "${_mlre:-}" ]; then
+ eval `eval ${_mlre}/usr/bin/tclsh /usr/share/Modules/libexec/modulecmd.tcl bash '"$@"'`;
+ else
+ eval `/usr/bin/tclsh /usr/share/Modules/libexec/modulecmd.tcl bash "$@"`;
+ fi;
+ _mlstatus=$?;
+ if [ -n "${_mlIFS+x}" ]; then
+ IFS=$_mlIFS;
+ else
+ unset IFS;
+ fi;
+ if [ -n "${_mlshdbg:-}" ]; then
+ set -$_mlshdbg;
+ fi;
+ unset _mlre _mlv _mlrv _mlIFS _mlshdbg;
+ return $_mlstatus
+}
+BASH_FUNC_switchml%%=() {  typeset swfound=1;
+ if [ "${MODULES_USE_COMPAT_VERSION:-0}" = '1' ]; then
+ typeset swname='main';
+ if [ -e /usr/share/Modules/libexec/modulecmd.tcl ]; then
+ typeset swfound=0;
+ unset MODULES_USE_COMPAT_VERSION;
+ fi;
+ else
+ typeset swname='compatibility';
+ if [ -e /usr/share/Modules/libexec/modulecmd-compat ]; then
+ typeset swfound=0;
+ MODULES_USE_COMPAT_VERSION=1;
+ export MODULES_USE_COMPAT_VERSION;
+ fi;
+ fi;
+ if [ $swfound -eq 0 ]; then
+ echo "Switching to Modules $swname version";
+ source /usr/share/Modules/init/bash;
+ else
+ echo "Cannot switch to Modules $swname version, command not found";
+ return 1;
+ fi
+}
+_=/usr/bin/printenv
