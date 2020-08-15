@@ -3,6 +3,7 @@
 #include "utf_conf.h"
 #include "utf_tofu.h"
 #include "utf_externs.h"
+#include "utf_debug.h"
 #include "utf_errmacros.h"
 #include "utf_sndmgt.h"
 #include "utf_queue.h"
@@ -31,12 +32,6 @@ static char *notice_symbol[] =
 {	"MRQ_LCL_PUT", "MRQ_RMT_PUT", "MRQ_LCL_GET",
 	"MRQ_RMT_GET", "MRQ_LCL_ARMW","MRQ_RMT_ARMW"
 };
-
-#if 0
-static char *rstate_symbol[] =
-{	"R_FREE", "R_NONE", "R_HEAD", "R_BODY",	"R_WAIT_RNDZ",
-	"R_DO_RNDZ", "R_DO_READ", "R_DO_WRITE", "R_DONE" };
-#endif
 
 static char *sstate_symbol[] =
 {	"S_FREE", "S_NONE", "S_REQ_ROOM", "S_HAS_ROOM",
@@ -122,7 +117,6 @@ calc_recvstadd(struct utf_send_cntr *usp, uint64_t ridx)
     return recvstadd;
 }
 
-
 /*
  * sender engine
  *		
@@ -168,8 +162,9 @@ progress:
 	recvstadd = calc_recvstadd(usp, ridx);
 	DEBUG(DLEVEL_PROTOCOL) {
 	    utf_printf("%s: Going to send rvcqid(%lx) recvidx(%ld) recvstadd(%lx) "
-		     "type(%d) sidx(%d) ridx(%d) pkt->marker(0x%x)\n",
-		       __func__, rvcqid, usp->recvidx, recvstadd, minfo->cntrtype, usp->mypos, ridx, pkt->hdr.marker);
+		     "type(%d) sidx(%d) ridx(%d) MSGHDR(%s)\n",
+		       __func__, rvcqid, usp->recvidx, recvstadd, minfo->cntrtype, usp->mypos, ridx,
+		       pkt2string(pkt, NULL, 0));
 	}
 	if (recvstadd == 0) {
 	    /* state is S_WAIT_BUFREADY */
@@ -283,6 +278,7 @@ progress:
 	int	idx;
 	struct utf_msgreq	*req = minfo->mreq;
 	// utf_printf("%s: DONE_EGER: req(%p)->state(%d) usp(%p)->state(%d) micur(%d) mient(%d) minfo(%p)\n", __func__, req, req->state, usp, usp->state, usp->micur, usp->mient, minfo);
+	if (req->notify) req->notify(req);
 	if (req->state == REQ_PRG_RECLAIM) {
 	    utf_msgreq_free(req); /* req->state is reset to REQ_NONE */
 	} else {
@@ -506,4 +502,30 @@ utf_mrqprogress()
 	break;
     }
     return rc;
+}
+
+int
+utf_dbg_progress(int mode)
+{
+    int	rc;
+    if (mode) {
+	utf_printf("%s: progress\n", __func__);
+    }
+    rc = utf_progress();
+    return rc;
+}
+
+
+void
+utf_recvcntr_show(FILE *fp)
+{
+    extern struct erecv_buf	*erbuf;
+    uint64_t		cntr = utf_egr_rbuf.head.cntr;
+    int	i;
+    utf_printf("# of PEERS: %d\n", RCV_CNTRL_INIT - cntr);
+    for (i = COM_PEERS - 1; i > cntr; --i) {
+	fprintf(fp, "\t0x%lx", utf_rcntr[i].svcqid);
+	if (((i + 1) % 8) == 0) fprintf(fp, "\n");
+    }
+    fprintf(fp, "\n"); fflush(fp);
 }

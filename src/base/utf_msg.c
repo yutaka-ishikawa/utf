@@ -2,6 +2,7 @@
 #include "utf_conf.h"
 #include "utf.h"
 #include "utf_externs.h"
+#include "utf_debug.h"
 #include "utf_errmacros.h"
 #include "utf_sndmgt.h"
 #include "utf_queue.h"
@@ -14,7 +15,7 @@ extern void	utf_msgreq_free(struct utf_msgreq *req);
 extern int	utf_send_start(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo);
 
 extern int	utf_tcq_count;
-extern int	utf_msgmode;
+extern int	utf_mode_msg;
 
 extern uint8_t		utf_rank2scntridx[PROC_MAX]; /* dest. rank to sender control index (sidx) */
 extern utfslist_t		utf_egr_sbuf_freelst;
@@ -54,7 +55,7 @@ utf_scntr_alloc(int dst, struct utf_send_cntr **uspp)
 	/* No head */
 	utfslist_entry_t *slst = utfslist_remove(&utf_scntr_freelst);
 	if (slst == NULL) {
-	    rc = UTF_ERR_NOMORE_REQBUF;
+	    rc = UTF_ERR_NOMORE_SNDCNTR;
 	    goto err;
 	}
 	scp = container_of(slst, struct utf_send_cntr, slst);
@@ -87,7 +88,7 @@ minfo_setup(struct utf_send_msginfo *minfo, int rank, uint64_t tag, uint64_t siz
     minfo->mreq = req;
     sbufp->pkt.hdr.src  = rank;
     sbufp->pkt.hdr.tag  = tag;
-    sbufp->pkt.hdr.hall = 0;
+    sbufp->pkt.hdr.hall = 0;	/* marker field is now 0 */
     sbufp->pkt.hdr.size = size;
     if (size <= MSG_EAGER_PIGBACK_SZ) {
 	minfo->cntrtype = SNDCNTR_BUFFERED_EAGER_PIGBACK;
@@ -99,7 +100,7 @@ minfo_setup(struct utf_send_msginfo *minfo, int rank, uint64_t tag, uint64_t siz
 	memcpy(sbufp->pkt.pyld.msgdata, usrbuf, size);
 	sbufp->pkt.hdr.pyldsz = size;
 	req->type = REQ_SND_BUFFERED_EAGER;
-    } else if (utf_msgmode != MSG_RENDEZOUS) {
+    } else if (utf_mode_msg != MSG_RENDEZOUS) {
 	minfo->cntrtype = SNDCNTR_INPLACE_EAGER;
 	minfo->usrbuf = usrbuf;
 	memcpy(sbufp->pkt.pyld.msgdata, usrbuf, MSG_PYLDSZ);
@@ -124,7 +125,7 @@ minfo_setup(struct utf_send_msginfo *minfo, int rank, uint64_t tag, uint64_t siz
 void
 utf_setmsgmode(int mode)
 {
-    utf_msgmode = mode;
+    utf_mode_msg = mode;
 }
 
 int
@@ -192,7 +193,7 @@ utf_recv(void *buf, size_t size, int src, int tag,  UTF_reqid *ridx)
     int	rc = 0;
 
     utf_tmr_begin(TMR_UTF_RECV_POST);
-    if ((idx = utf_uexplst_match(src, tag, 1)) != -1) {
+    if ((idx = utf_uexplst_match(src, tag, 0)) != -1) {
 	int	cpsz;
 	req = utf_idx2msgreq(idx);
 	if (req->rndz) {  /* rendezvous message */
@@ -218,12 +219,13 @@ utf_recv(void *buf, size_t size, int src, int tag,  UTF_reqid *ridx)
 	    rc = UTF_ERR_NOMORE_REQBUF;
 	    goto err;
 	}
-	req->hdr.src = src; req->hdr.size = size; req->hdr.tag = tag;
+	req->hdr.src = src; req->hdr.tag = tag;
+	/* req->hdr.size = size; req->hdr.size will be set at the message arrival */
 	req->buf = buf;
 	req->expsize = size;
 	req->ustatus = REQ_NONE; req->state = REQ_PRG_NORMAL;
 	req->type = REQ_RECV_EXPECTED;	req->rsize = 0;
-	utf_msglst_insert(&utf_explst, req);
+	utf_msglst_append(&utf_explst, req);
 	ridx->id = 0;
 	ridx->reqid1 = utf_msgreq2idx(req);
 	rc  = UTF_SUCCESS;
@@ -345,12 +347,13 @@ utf_req_wipe()
 	    break;
 	default:
 	    id = utf_msgreq2idx(&utf_msgrq[i]);
-	    utf_printf("Warning: Still posted requests are being handled. reqid=%d\n",
-		       id);
+	    utf_printf("Warning: Still posted requests are being handled. reqid=%d state(%d\n",
+		       id, utf_msgrq[i].state);
 	}
 	reqid.id = 0;
 	reqid.reqid1 = id;
 	rc = utf_waitcmpl(reqid);
+	utf_printf("\tDone\n");
     }
 }
 

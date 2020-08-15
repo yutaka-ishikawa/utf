@@ -23,6 +23,9 @@ struct tofu_vname {
     utofu_path_id_t		pathid;    /* default path id */
     utofu_vcq_id_t		vcqid;
 };
+#pragma pack()
+#define TNIQ2TNI(a)	((a)>>4)
+#define TNIQ2CQ(a)	((a)&0x0f)
 
 struct utf_info {
     pmix_proc_t		pmix_proc[1];
@@ -30,6 +33,7 @@ struct utf_info {
     pmix_info_t		*pmix_info;
     jtofu_job_id_t	jobid;
     int			myrank;
+    int			mypid;
     int			nprocs;
     int			myppn;
     int			mynrnk;
@@ -38,6 +42,17 @@ struct utf_info {
     utofu_tni_id_t	tniid;
     uint64_t		*myfiaddr;
     struct tofu_vname	*vname;
+    struct tni_info	*tinfo;
+    struct cqsel_table	*cqseltab;
+    size_t		nnodes;
+    union jtofu_phys_coords	*phys_node;	/* needs for PMIx_Resolve_peers */
+    size_t              max_mtu;
+    size_t              max_piggyback_size;
+    size_t              max_edata_size;
+    size_t		ntni;
+    utofu_tni_id_t	tniids[TOFU_NIC_SIZE];
+    utofu_vcq_hdl_t	vcqhs[TOFU_NIC_SIZE];
+    utofu_vcq_id_t	vcqids[TOFU_NIC_SIZE];
 };
 
 extern struct utf_info utf_info;
@@ -71,6 +86,8 @@ utf_tni_select(int ppn, int nrnk, utofu_tni_id_t *tni, utofu_cq_id_t *cq)
     }
 }
 
+#define FMT_PHYS_COORDS	"%02d:%02d:%02d:%02d:%02d:%02d"
+
 static inline char *
 pcoords2string(union jtofu_phys_coords jcoords, char *buf, size_t len)
 {
@@ -79,8 +96,43 @@ pcoords2string(union jtofu_phys_coords jcoords, char *buf, size_t len)
 	buf = pbuf;
 	len = 50;
     }
-    snprintf(buf, len, "%02d:%02d:%02d:%02d:%02d:%02d",
-	       jcoords.s.x, jcoords.s.y, jcoords.s.z,
-	       jcoords.s.a, jcoords.s.b, jcoords.s.c);
+    snprintf(buf, len, FMT_PHYS_COORDS,
+	     jcoords.s.x, jcoords.s.y, jcoords.s.z,
+	     jcoords.s.a, jcoords.s.b, jcoords.s.c);
+    return buf;
+}
+
+static inline char *
+lcoords2string(union jtofu_log_coords coords, char *buf, size_t len)
+{
+    static char	pbuf[50];
+    if (buf == NULL) {
+	buf = pbuf;
+	len = 50;
+    }
+    snprintf(buf, len, "%02d:%02d:%02d", coords.s.x, coords.s.y, coords.s.z);
+    return buf;
+}
+
+static inline char *
+vcqh2string(utofu_vcq_hdl_t vcqh, char *buf, size_t len)
+{
+    static char	pbuf[50];
+    int uc;
+    utofu_vcq_id_t vcqi = -1UL;
+    uint8_t	xyz[8];
+    uint16_t	tni[1], tcq[1], cid[1];
+
+    if (buf == NULL) {
+	buf = pbuf;
+	len = 50;
+    }
+    buf[0] = 0;
+    if ((uc = utofu_query_vcq_id(vcqh, &vcqi)) != UTOFU_SUCCESS) goto bad;
+    if ((uc = utofu_query_vcq_info(vcqi, xyz, tni, tcq, cid)) != UTOFU_SUCCESS) goto bad;
+    snprintf(buf, len, "vcqh(%lx) vcqi(%lx) xyzabc(%02d:%02d:%02d:%02d:%02d:%02d) tni(%d) cq(%d)",
+	     vcqh, vcqi, xyz[0], xyz[1], xyz[2], xyz[3], xyz[4], xyz[5],
+	     tni[0], cid[0]);
+bad:
     return buf;
 }

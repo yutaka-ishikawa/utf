@@ -2,23 +2,30 @@
 #UTF_ARCH=fugaku
 include dep/mkdef.$(UTF_ARCH)
 
+INSTDIR  := $(HOME)/riken-mpich
+INSTALL  := install
+
 CFLAGS += -I./include/ -shared -fPIC
 CFLAGS += $(INCLUDES)
-INCLUDES += -I./include
-##CFLAGS += -DUTF_DEBUG
 SRCDIR   := ./base/
+INCDIR   := ./include
 BUILDDIR := ../build/
+INCLUDES += -I$(INCDIR)
+CFLAGS += -DUTF_DEBUG
 TARGET   := $(BUILDDIR)/libutf.so
-INSTDIR  := ../bin
 
 PROGS = utf.so
 SRCS     := $(wildcard $(SRCDIR)/*.c)
 OBJS     := $(addprefix $(BUILDDIR)/, $(SRCS:.c=.o))
 DEPS	 := $(addprefix $(BUILDDIR)/, $(SRCS:.c=.d))
 
-.PHONY: all clean
+.PHONY: all install clean
 all: $(TARGET)
-
+install:
+	[ -d $(INSTDIR)/lib ] || mkdir $(INSTDIR)/lib
+	[ -d $(INSTDIR)/include ] || mkdir $(INSTDIR)/include
+	$(INSTALL) $(BUILDDIR)/libutf.so $(INSTDIR)/lib
+	$(INSTALL) $(INCDIR)/utf.h $(INSTDIR)/include
 
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)

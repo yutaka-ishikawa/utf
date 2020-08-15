@@ -2,6 +2,7 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <limits.h>
+#include "utf_conf.h"
 #include "utf_tofu.h"
 #include "utf_debug.h"
 

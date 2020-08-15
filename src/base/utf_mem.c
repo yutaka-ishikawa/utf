@@ -13,8 +13,11 @@
 
 int utf_tcq_count, utf_mrq_count;
 int utf_dflag;
+int utf_rflag;
 int utf_initialized;
-int utf_msgmode;
+int utf_mode_msg;
+int utf_mode_trans;
+int utf_mode_mrail;
 
 /*
  *	utf_egrmgt:       1863 kiB (sizeof(utf_egrmgt) * PROC_MAX = 3 * 635904)
@@ -35,15 +38,25 @@ struct utf_send_cntr MALGN(256)	utf_scntr[SND_CNTRL_MAX]; /* sender control */
 struct utf_recv_cntr MALGN(256)	utf_rcntr[RCV_CNTRL_MAX]; /* receiver control */
 struct utf_msgreq MALGN(256)	utf_msgrq[REQ_SIZE];
 struct utf_msglst MALGN(256)	utf_msglst[REQ_SIZE];
+struct utf_rma_cq MALGN(256)	utf_rmacq_pool[COM_RMACQ_SIZE];
+
 
 int	utf_tcq_count;
 utfslist_t	utf_explst;	/* expected message list */
 utfslist_t	utf_uexplst;	/* unexpected message list */
+utfslist_t	tfi_tag_explst;	/* fi: expected tagged message list */
+utfslist_t	tfi_tag_uexplst;/* fi: unexpected tagged message list */
+utfslist_t	tfi_msg_explst;	/* fi: expected message list */
+utfslist_t	tfi_msg_uexplst;/* fi: unexpected message list */
+
 utfslist_t	utf_egr_sbuf_freelst;	/* free list of utf_egr_sbuf */
 utfslist_t	utf_scntr_freelst;	/* free list of utf_scntr */
 utfslist_t	utf_msgreq_freelst;	/* free list of utf_msgrq */
 utfslist_t	utf_msglst_freelst;
 utfslist_t	utf_rget_proglst;
+utfslist_t	utf_rmacq_waitlst;
+utfslist_t	utf_rmacq_freelst;
+
 /* stadd */
 utofu_stadd_t	utf_egrmgt_stadd;	/* stadd of utf_egrmgt */
 utofu_stadd_t	utf_egr_rbuf_stadd;	/* stadd of utf_egr_rbuf: packet buffer */
@@ -89,8 +102,8 @@ utf_mem_init()
     memset(utf_egrmgt, 0, sizeof(utf_egrmgt));
     UTOFU_CALL(1, utofu_reg_mem_with_stag, utf_info.vcqh, (void*) utf_egrmgt,
 	       sizeof(utf_egrmgt), STAG_EGRMGT, 0, &utf_egrmgt_stadd);
-    /**/
-    memset(&utf_egr_rbuf, 0, sizeof(utf_egr_rbuf));
+    /* Initializing -1 because marker is zero */
+    memset(&utf_egr_rbuf, -1, sizeof(utf_egr_rbuf));
     UTOFU_CALL(1, utofu_reg_mem_with_stag, utf_info.vcqh, (void*) &utf_egr_rbuf,
 	       sizeof(utf_egr_rbuf), STAG_RBUF, 0, &utf_egr_rbuf_stadd);
     utf_egr_rbuf.head.cntr = RCV_CNTRL_INIT;
@@ -99,10 +112,10 @@ utf_mem_init()
     utf_egr_rbuf.head.chntail.recvidx = 0;
 
     /**/
+    memset(&utf_egr_sbuf, 0, sizeof(utf_egr_sbuf));
     utfslist_init(&utf_egr_sbuf_freelst, NULL);
     for (i = 0; i < COM_SBUF_SIZE; i++) {
 	utfslist_append(&utf_egr_sbuf_freelst, &utf_egr_sbuf[i].slst);
-	utf_egr_sbuf[i].pkt.marker = MSG_MARKER;
     }
     utf_printf("%s: MEMORY utf_egr_sbuf[0] = %p utf_egr_sbuf[COM_SBUF_SIZE-1] = %p\n",
 	       __func__, &utf_egr_sbuf[0], &utf_egr_sbuf[COM_SBUF_SIZE-1]);
@@ -145,6 +158,12 @@ utf_mem_init()
 
     utfslist_init(&utf_rget_proglst, NULL);
     utf_tcq_count = 0;
+
+    utfslist_init(&utf_rmacq_waitlst, NULL);
+    utfslist_init(&utf_rmacq_freelst, NULL);
+    for (i = 0; i < COM_RMACQ_SIZE; i++) {
+	utfslist_append(&utf_rmacq_freelst, &utf_rmacq_pool[i].slst);
+    }
 }
 
 void *
@@ -191,15 +210,37 @@ utf_scntr_free(int idx)
     }
 }
 
+struct utf_rma_cq *
+utf_rmacq_alloc()
+{
+    utfslist_entry_t *slst = utfslist_remove(&utf_rmacq_freelst);
+    struct utf_rma_cq *cq;
+    if (slst == NULL) {
+	utf_printf("%s: no more RMA CQ entry\n", __func__);
+	abort();
+    }
+    cq = container_of(slst, struct utf_rma_cq, slst);
+    return cq;
+}
+
+void
+utf_rmacq_free(struct utf_rma_cq *cq)
+{
+    utfslist_insert(&utf_rmacq_freelst, &cq->slst);
+}
+
 
 void
 utf_mem_show()
 {
     utf_printf("eager receive buffer addresses:\n"
-	       " utf_egr_rbuf : 0x%lx"
-	       " utf_egr_rbuf.rbuf[0] : 0x%lx"
+	       " utf_egr_rbuf : 0x%lx (stadd: 0x%lx)"
+	       " utf_egr_rbuf.rbuf[0] : 0x%lx (stadd: 0x%lx)"
+	       " utf_egr_rbuf.rbuf[%d*126] : 0x%lx (stadd: 0x%lx)"
 	       " utf_egr_rbuf.rbuf[%d*%d] : 0x%lx\n",
-	       &utf_egr_rbuf,
-	       &utf_egr_rbuf.rbuf,
-	       COM_RBUF_SIZE, RCV_CNTRL_INIT, &utf_egr_rbuf.rbuf[COM_RBUF_SIZE*RCV_CNTRL_MAX]);
+	       &utf_egr_rbuf, utf_egr_rbuf_stadd,
+	       &utf_egr_rbuf.rbuf, utf_egr_rbuf_stadd,
+	       COM_RBUF_SIZE, &utf_egr_rbuf.rbuf[COM_RBUF_SIZE*126],
+	       utf_egr_rbuf_stadd + (uint64_t)&((struct utf_egr_rbuf*)0)->rbuf[COM_RBUF_SIZE*126],
+	       COM_RBUF_SIZE, RCV_CNTRL_MAX, &utf_egr_rbuf.rbuf[COM_RBUF_SIZE*RCV_CNTRL_MAX]);
 }

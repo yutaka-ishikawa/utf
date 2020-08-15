@@ -1,0 +1,4 @@
+MPICC = mpicc
+INSTALL=install
+CFLAGS = -O3 -g -I../../src/include/
+LDFLAGS = -lutf

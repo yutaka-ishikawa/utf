@@ -7,7 +7,7 @@
 #include <string.h>
 
 #ifdef UTF_DEBUG
-#define DEBUG(mask) if (dflag&(mask))
+#define DEBUG(mask) if (utf_dflag&(mask))
 #else
 #define DEBUG(mask) if (0)
 #endif
@@ -17,7 +17,15 @@
 #define DLEVEL_PROTO_EAGER	0x8
 #define DLEVEL_PROTO_RENDEZOUS	0x10
 #define DLEVEL_ALL		0xffff
+#define DLEVEL_PROTO_RMA	0x20	/* 32 */
+#define DLEVEL_PROTO_VBG	0x40	/* 64 */
+#define DLEVEL_ADHOC		0x80	/* 128 */
+#define DLEVEL_CHAIN		0x100
+#define DLEVEL_CHAIN2		0x200
+#define DLEVEL_ALL		0xffff
 
+#define SHMEM_KEY_VAL_FMT	"/tmp/MPICH-shm"
+#define TOFU_NIC_SIZE	6	/* number of NIC */
 #define PROC_MAX	663552	/* 24*23*24*12 * 4(ppn) */
 #define SND_CNTRL_MAX	128	/* shorter than 2^7 (sidx) */
 #define RCV_CNTRL_MAX	128	/* shorter than 2^7 (sidx) */
@@ -28,6 +36,7 @@
 #define COM_SCNTR_MINF_SZ	4
 #define COM_SBUF_SIZE	(COM_SCNTR_MINF_SZ*COM_PEERS)
 #define IS_COMRBUF_FULL(p) ((p)->recvidx == COM_RBUF_SIZE)
+#define COM_RMACQ_SIZE	128
 
 //#define MSG_EAGERONLY	0
 //#define MSG_RENDEZOUS	1
@@ -45,9 +54,9 @@
 //#define MSG_PKTSZ	(256*2)	/* must be cache align (256B) and shorter than MTU */
 #define MSG_PKTSZ	(256)	/* must be cache align (256B) and shorter than MTU */
 #define MSG_NTNI	2	/* see struct utf_vcqid_stadd in utf_queue.h */
+#define MSG_MARKER	0x0 	/* marker is now zero */
 //#define MSG_MARKER	0x9 	/* 4 bit */
-#define MSG_MARKER	(0x4B414E00L)	/* 4B */
-#define MSG_PYLDSZ	(MSG_PKTSZ - sizeof(struct utf_msghdr) - sizeof(uint32_t))
+//#define MSG_MARKER	(0x4B414E00L)	/* 4B */
 #define MSG_RCNTRSZ	sizeof(struct utf_vcqid_stadd)
 #define MSG_EAGER_SIZE	MSG_PYLDSZ
 #define UTOFU_PIGBACKSZ	32 /* See below */
