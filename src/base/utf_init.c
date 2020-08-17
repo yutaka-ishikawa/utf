@@ -138,9 +138,10 @@ utf_finalize(int wipe)
 	utf_req_wipe();
 	utf_fence();
     }
+    utf_fence();
     utf_mem_finalize();
-    jtofu_finalize();
     utf_procmap_finalize();
+    jtofu_finalize();
     fflush(NULL);
 }
 

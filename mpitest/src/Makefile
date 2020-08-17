@@ -3,19 +3,22 @@
 include mkdef.$(UTF_ARCH)
 
 INSTDIR = ../bin
-PROGS = hello
-SRCS = hello.c testlib.c
+MPIPROGS = hello coll
+MPISRCS = hello.c coll.c
+MPIOBJS = $(MPISRCS:.c=.o)
+SRCS = testlib.c
 OBJS = $(SRCS:.c=.o)
 
-$(PROGS): $(OBJS)
-	$(MPICC) -o $@ $^ $(LDFLAGS)
+all: $(MPIPROGS)
+$(MPIPROGS): $(MPIOBJS) testlib.o
+	$(MPICC) -o $@ $@.o testlib.o $(LDFLAGS)
 .c.o:
 	$(MPICC) -c -g  -Wall $(CFLAGS) $<
 install:
 	[ -d $(INSTDIR) ] || mkdir $(INSTDIR)
-	$(INSTALL) $(PROGS) $(INSTDIR)/
+	$(INSTALL) $(MPIPROGS) $(INSTDIR)/
 clean:
-	rm -f $(PROGS) *.o *~
+	rm -f $(MPIPROGS) *.o *~
 depend:
 	makedepend -I$(CCINCLUDE) $(CFLAGS) $(SRCS)
 

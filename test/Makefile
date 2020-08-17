@@ -3,7 +3,7 @@
 include ../src/dep/mkdef.$(UTF_ARCH)
 CFLAGS += -I../src/include/
 CFLAGS += $(INCLUDES)
-LDFLAGS = -L../build/ -lutf
+LDFLAGS = -L../build/ -lutf -L/home/users/ea01/ea0103/riken-mpich/lib -lpmix
 
 .PHONY: all clean
 

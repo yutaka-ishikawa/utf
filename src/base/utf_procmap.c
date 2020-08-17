@@ -467,8 +467,10 @@ utf_procmap_finalize()
     utf_free(utf_info.phys_node); utf_info.phys_node = NULL;
     for (i = 0; i < utf_info.ntni; i++) {
 	if (utf_info.vcqhs[i]) {
-	    utf_printf("%s: vcqhs[%d]: 0x%lx\n", __func__, i, utf_info.vcqhs[i]);
-	    UTOFU_CALL(1, utofu_free_vcq, utf_info.vcqhs[i]);
+	    int rc;
+	    utf_printf("%s: vcqhs[%d]: 0x%lx\t", __func__, i, utf_info.vcqhs[i]);
+	    rc = utofu_free_vcq(utf_info.vcqhs[i]);
+	    utf_printf("%s(%d)\n", rc == UTOFU_SUCCESS ? "SUCCESS" : "ERROR", rc);
 	    utf_info.vcqhs[i] = 0;
 	}
     }

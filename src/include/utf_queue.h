@@ -138,12 +138,12 @@ struct utf_egr_rbuf {
  * req->status
  */
 enum utq_reqstatus {
-    REQ_NONE	= 0,
-    REQ_PRG_NORMAL,
-    REQ_PRG_RECLAIM,
-    REQ_DONE,
-    REQ_OVERRUN,
-    REQ_WAIT_RNDZ		/* waiting rendzvous */
+    REQ_NONE		= 0,
+    REQ_PRG_NORMAL	= 1,
+    REQ_PRG_RECLAIM	= 2,
+    REQ_DONE		= 3,
+    REQ_OVERRUN		= 4,
+    REQ_WAIT_RNDZ	= 5		/* waiting rendzvous */
 };
 
 /*

@@ -63,7 +63,7 @@ test_init(int argc, char **argv)
     VERBOSE("Done MPI_Init\n");
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-    VERBOSE("Proc Size = %d\n", nprocs);
+    VERBOSE("Proc Size = %d myrank = %d\n", nprocs, myrank);
 }
 
 void

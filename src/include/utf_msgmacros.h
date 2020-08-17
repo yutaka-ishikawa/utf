@@ -63,6 +63,7 @@ static inline void
 utf_msgreq_free(struct utf_msgreq *req)
 {
     req->state = REQ_NONE;
+    req->ustatus = REQ_NONE;
     req->notify = NULL;
     utfslist_insert(&utf_msgreq_freelst, &req->slst);
 }
@@ -371,8 +372,8 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
     struct utf_msgreq	*req;
 
     DEBUG(DLEVEL_PROTOCOL) {
-	utf_printf("%s: urp(%p)->state(%s) MSG(%s)\n",
-		   __func__, urp, rstate_symbol[urp->state], pkt2string(pkt, NULL, 0));
+	utf_printf("%s: urp(%p:ridx(%d)recvidx(%d))->state(%s) MSG(%s)\n",
+		   __func__, urp, urp->mypos, urp->recvidx, rstate_symbol[urp->state], pkt2string(pkt, NULL, 0));
     }
     switch (urp->state) {
     case R_NONE: /* Begin receiving message */
@@ -402,6 +403,7 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 		req->rcntr = urp;
 	    } else {/* eager */
 		req->buf = utf_malloc(PKT_MSGSZ(pkt));
+		req->expsize = PKT_MSGSZ(pkt); /* during receiving */
 		if (eager_copy_and_check(urp, req, pkt) == R_DONE) goto done;
 	    }
 	}
@@ -444,10 +446,20 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
     done:
 	if (req->type == REQ_RECV_UNEXPECTED) {
 	    /* Regiger it to unexpected queue */
-	    DEBUG(DLEVEL_PROTOCOL) {
-		utf_printf("%s: register it to unexpected queue\n", __func__);
+	    if (pkt->hdr.flgs == 0) {
+		utf_msglst_append(&utf_uexplst, req);
+		DEBUG(DLEVEL_PROTOCOL) {
+		    utf_printf("%s: register it to unexpected UTF queue\n", __func__);
+		}
+	    } else {
+		utfslist_t *uexplst
+		    = pkt->hdr.flgs&MSGHDR_FLGS_FI_TAGGED ? &tfi_tag_uexplst : &tfi_msg_uexplst;
+		utf_msglst_append(uexplst, req);
+		DEBUG(DLEVEL_PROTOCOL) {
+		    utf_printf("%s: register it to unexpected FI %s queue\n", __func__,
+			       pkt->hdr.flgs&MSGHDR_FLGS_FI_TAGGED ? "TAGGED" : "MSG");
+		}
 	    }
-	    utf_msglst_append(&utf_uexplst, req);
 	} else {
 	    DEBUG(DLEVEL_PROTOCOL) {
 		utf_printf("%s: Expected message arrived (idx=%d)\n", __func__,

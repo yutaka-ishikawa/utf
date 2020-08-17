@@ -71,6 +71,7 @@ utf_mem_reg(utofu_vcq_hdl_t vcqh, void *buf, size_t size)
 
     utf_tmr_begin(TMR_UTF_MEMREG);
     UTOFU_CALL(1, utofu_reg_mem, vcqh, buf, size, 0, &stadd);
+    utf_printf("%s: size(%ld/0x%lx) vcqh(%lx) buf(%p) stadd(%lx)\n", __func__, size, size, vcqh, buf, stadd);
     DEBUG(DLEVEL_PROTO_RMA|DLEVEL_ADHOC) {
 	utf_printf("%s: size(%ld/0x%lx) vcqh(%lx) buf(%p) stadd(%lx)\n", __func__, size, size, vcqh, buf, stadd);
     }
@@ -83,6 +84,7 @@ utf_mem_dereg(utofu_vcq_id_t vcqh, utofu_stadd_t stadd)
 {
     utf_tmr_begin(TMR_UTF_MEMDEREG);
     UTOFU_CALL(1, utofu_dereg_mem, vcqh, stadd, 0);
+    utf_printf("%s: vcqh(%lx) stadd(%lx)\n", __func__, vcqh, stadd);
     DEBUG(DLEVEL_PROTO_RMA|DLEVEL_ADHOC) {
 	utf_printf("%s: vcqh(%lx) stadd(%lx)\n", __func__, vcqh, stadd);
     }
@@ -145,6 +147,7 @@ utf_mem_init()
 	utf_rcntr[i].mypos = i;
     }
     /**/
+    memset(utf_msgrq, 0, sizeof(utf_msgrq));
     utfslist_init(&utf_msgreq_freelst, NULL);
     for (i = 0; i < REQ_SIZE; i++) {
 	utfslist_append(&utf_msgreq_freelst, &utf_msgrq[i].slst);
@@ -187,10 +190,10 @@ utf_free(void *ptr)
 void
 utf_mem_finalize()
 {
-    UTOFU_CALL(1, utofu_dereg_mem, utf_info.vcqh, utf_sndctr_stadd, 0);
-    UTOFU_CALL(1, utofu_dereg_mem, utf_info.vcqh, utf_egr_sbuf_stadd, 0);
-    UTOFU_CALL(1, utofu_dereg_mem, utf_info.vcqh, utf_egr_rbuf_stadd, 0);
     UTOFU_CALL(1, utofu_dereg_mem, utf_info.vcqh, utf_egrmgt_stadd, 0);
+    UTOFU_CALL(1, utofu_dereg_mem, utf_info.vcqh, utf_egr_rbuf_stadd, 0);
+    UTOFU_CALL(1, utofu_dereg_mem, utf_info.vcqh, utf_egr_sbuf_stadd, 0);
+    UTOFU_CALL(1, utofu_dereg_mem, utf_info.vcqh, utf_sndctr_stadd, 0);
 }
 
 void
@@ -243,4 +246,10 @@ utf_mem_show()
 	       COM_RBUF_SIZE, &utf_egr_rbuf.rbuf[COM_RBUF_SIZE*126],
 	       utf_egr_rbuf_stadd + (uint64_t)&((struct utf_egr_rbuf*)0)->rbuf[COM_RBUF_SIZE*126],
 	       COM_RBUF_SIZE, RCV_CNTRL_MAX, &utf_egr_rbuf.rbuf[COM_RBUF_SIZE*RCV_CNTRL_MAX]);
+}
+
+void
+utf_debugdebug(struct utf_msgreq *req)
+{
+    req->ustatus = REQ_OVERRUN;
 }
