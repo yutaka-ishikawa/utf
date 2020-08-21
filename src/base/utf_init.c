@@ -19,6 +19,7 @@ uint32_t	tmr_count[TMR_EVT_MAX];
 uint64_t	tmr_tm[TMR_EVT_MAX][TMR_COUNT_MAX];
 uint64_t	tmr_hz;
 int		tmr_sflag;
+int		utf_nokeep;
 
 static char *
 sym_tmr[] = { "UTF_SEND_POST", "UTF_RECV_POST", "UTF_SENDENGINE",
@@ -119,8 +120,10 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
     i = utf_getenvint("UTF_MSGMODE");
     utf_setmsgmode(i);
     utf_tmr_init();
-    utf_printf("%s: utf_info.nprocs(%d) np(%d) utf_info.myrank(%d) rnk(%d)\n",
-	       __func__, utf_info.nprocs, np, utf_info.myrank, rnk);
+    i = utf_getenvint("UTF_NOKEEP");
+    utf_nokeep = i;
+    utf_printf("%s: utf_info.nprocs(%d) np(%d) utf_info.myrank(%d) rnk(%d) NO_KEEP(%d)\n",
+	       __func__, utf_info.nprocs, np, utf_info.myrank, rnk, utf_nokeep);
     utf_mem_show();
     /**/
     utf_fence();

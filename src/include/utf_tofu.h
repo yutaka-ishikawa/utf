@@ -53,6 +53,7 @@ struct utf_info {
     utofu_tni_id_t	tniids[TOFU_NIC_SIZE];
     utofu_vcq_hdl_t	vcqhs[TOFU_NIC_SIZE];
     utofu_vcq_id_t	vcqids[TOFU_NIC_SIZE];
+    uint64_t		counter;
 };
 
 extern struct utf_info utf_info;

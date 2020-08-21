@@ -2,7 +2,7 @@
 #UTF_ARCH=fugaku
 include dep/mkdef.$(UTF_ARCH)
 
-INSTDIR  := $(HOME)/riken-mpich
+INSTDIR  := $(HOME)/mpich-tofu
 INSTALL  := install
 
 CFLAGS += -I./include/ -shared -fPIC

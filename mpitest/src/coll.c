@@ -27,15 +27,15 @@ main(int argc, char** argv)
     sz = length*nprocs*tsz;
     sendbuf = malloc(sz);
     recvbuf = malloc(sz);
-    for (i = 0; i < length; i++) sendbuf[i] = myrank + i + 1;
+    for (i = 0; i < length*nprocs; i++) sendbuf[i] = myrank + i + 1;
 
     MYPRINT {
 	printf("sendbuf=%p recvbuf=%p\n"
 	       "MPI_INT SIZE: %d\n"
-	       "length(%ld) nprocs(%d)\n",
-	       sendbuf, recvbuf, tsz, length, nprocs); fflush(stdout);
+	       "length(%ld) byte(%ld) nprocs(%d)\n",
+	       sendbuf, recvbuf, tsz, length, sz, nprocs); fflush(stdout);
     }
-
+#if 0
     MYPRINT { VERBOSE("After MPI_Init with %d\n", nprocs); }
     MPI_Barrier(MPI_COMM_WORLD);
     MYPRINT { VERBOSE("After MPI_Barrier with %d\n", nprocs); }
@@ -48,8 +48,11 @@ main(int argc, char** argv)
 
     MPI_Gather(sendbuf, length, MPI_INT, recvbuf, length, MPI_INT, 0, MPI_COMM_WORLD);
     MYPRINT { VERBOSE("After MPI_Gather with %d\n", nprocs); }
+#endif
 
+    VERBOSE("Start of Alltoall %d\n", nprocs);
     MPI_Alltoall(sendbuf, length, MPI_INT, recvbuf, length, MPI_INT, MPI_COMM_WORLD);
+    VERBOSE("End of Alltoall %d\n", nprocs);
 
     MPI_Finalize();
     MYPRINT { printf("RESULT coll: PASS\n"); fflush(stdout); }

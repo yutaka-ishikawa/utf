@@ -212,7 +212,10 @@ utf_recv(void *buf, size_t size, int src, int tag,  UTF_reqid *ridx)
 	    ridx->reqid1 = utf_msgreq2idx(req);
 	    rc = UTF_MSG_AVL;
 	} else {
-	    /* waiting for request done */
+	    /* request type is changed and waiting for request done */
+	    utf_printf("%s: Does this case work ?\n", __func__);
+	    req->type = REQ_RECV_EXPECTED;
+	    ridx->reqid1 = utf_msgreq2idx(req);
 	}
     } else {
 	if ((req = utf_msgreq_alloc()) == NULL) {

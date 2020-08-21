@@ -63,6 +63,10 @@ utofu_stadd_t	utf_egr_rbuf_stadd;	/* stadd of utf_egr_rbuf: packet buffer */
 utofu_stadd_t	utf_egr_sbuf_stadd;	/* stadd of utf_egr_sbuf: packet buffer */
 utofu_stadd_t	utf_sndctr_stadd;	/* stadd of utf_scntr */
 utofu_stadd_t	utf_sndctr_stadd_end;	/* stadd of utf_scntr */
+utofu_stadd_t	utf_rcntr_stadd;	/* stadd of utf_rcntr */
+
+/**/
+uint8_t	utf_zero256[256];
 
 utofu_stadd_t
 utf_mem_reg(utofu_vcq_hdl_t vcqh, void *buf, size_t size)
@@ -167,6 +171,10 @@ utf_mem_init()
     for (i = 0; i < COM_RMACQ_SIZE; i++) {
 	utfslist_append(&utf_rmacq_freelst, &utf_rmacq_pool[i].slst);
     }
+
+    memset(utf_zero256, 0, sizeof(utf_zero256));
+    UTOFU_CALL(1, utofu_reg_mem_with_stag, utf_info.vcqh, (void*) utf_rcntr,
+	       sizeof(utf_rcntr), STAG_RCVCTR, 0, &utf_rcntr_stadd);
 }
 
 void *
@@ -246,10 +254,39 @@ utf_mem_show()
 	       COM_RBUF_SIZE, &utf_egr_rbuf.rbuf[COM_RBUF_SIZE*126],
 	       utf_egr_rbuf_stadd + (uint64_t)&((struct utf_egr_rbuf*)0)->rbuf[COM_RBUF_SIZE*126],
 	       COM_RBUF_SIZE, RCV_CNTRL_MAX, &utf_egr_rbuf.rbuf[COM_RBUF_SIZE*RCV_CNTRL_MAX]);
+    {
+	int	i;
+	utf_printf("receiver control utf_rcntr: utf_rcntr_stadd(0x%lx)\n", utf_rcntr_stadd);
+	for (i = 0; i < 4; i++) {
+	    utf_printf("[%d]:0x%lx, ", 126 - i, &utf_rcntr[126 - i]);
+	}
+	utf_printf("\n");
+    }
 }
+
+
+void
+utf_egrrbuf_show()
+{
+    int	i;
+    utf_printf("PEERS(egr_rbuf):");
+    for (i = 0; i < COM_PEERS; i++) {
+	struct utf_packet	*pkt = &utf_egr_rbuf.rbuf[COM_RBUF_SIZE*i];
+	if ((i % 8) == 0) fprintf(stderr, "\n\t");
+	fprintf(stderr, " SRC(%d)", pkt->hdr.src);
+    }
+    fprintf(stderr, "\n");
+}
+
 
 void
 utf_debugdebug(struct utf_msgreq *req)
 {
     req->ustatus = REQ_OVERRUN;
+}
+
+void
+utf_nullfunc()
+{
+    utf_info.counter++;
 }

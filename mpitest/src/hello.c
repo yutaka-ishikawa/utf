@@ -21,6 +21,7 @@ main(int argc, char** argv)
     if (myrank == 0) {
 	printf("RESULT hello: PASS\n"); fflush(stdout);
     }
-
+    printf("Exiting (%d)\n", myrank);
+    exit(0);
     return 0;
 }

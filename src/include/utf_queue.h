@@ -85,6 +85,7 @@ struct utf_packet {
 #define PKT_HDR(pkt) ((pkt)->hdr)
 #define PKT_MSGSRC(pkt) ((pkt)->hdr.src)
 #define PKT_MSGTAG(pkt) ((pkt)->hdr.tag)
+#define PKT_MSGFLG(pkt) ((pkt)->hdr.flgs)
 #define PKT_MSGSZ(pkt) ((pkt)->hdr.size)
 #define PKT_DATA(pkt) ((pkt)->pyld.msgdata)
 #define PKT_PYLDSZ(pkt) ((pkt)->hdr.pyldsz)
@@ -202,17 +203,18 @@ struct utf_msglst {
     uint32_t		reqidx;	/* 28 B: index of utf_msgreq */
     /* for Fabric */
     uint64_t	fi_ignore;	/* ignore */
-    uint64_t	fi_flgs;
-    void	*fi_context;
+//    uint64_t	fi_flgs;
+//    void	*fi_context;
 };
 
 struct utf_recv_cntr {
-    uint8_t	state;
-    uint8_t	mypos;
     uint32_t	recvidx;
     struct utf_msgreq	*req;
     utofu_vcq_id_t	svcqid;
     uint64_t		flags;
+    uint8_t	state;
+    uint8_t	mypos;
+    uint32_t	tmp;
     utfslist_entry_t	rget_slst;/* rendezous: list of rget progress */
 };
 
@@ -446,8 +448,9 @@ tfi_utf_uexplst_match(utfslist_t *uexplst, uint64_t src, uint64_t tag, uint64_t 
     utfslist_entry_t	*cur, *prev;
     uint32_t		idx;
 
-    //utf_printf("tfi_utf_uexplst_match: uexplst(%p) src(%ld) tag(%lx) ignore(%lx) peek(%d)\n",
-    //uexplst, src, tag, ignore, peek);
+    DEBUG(DLEVEL_PROTOCOL) {
+	utf_printf("tfi_utf_uexplst_match: explst(%p) src(%d) tag(0x%lx) ignore(0x%lx)\n", uexplst, src, tag, ignore);
+    }
     if (utfslist_isnull(uexplst)) {
 	//utf_printf("\t: list is null\n");
 	return -1;
@@ -462,6 +465,9 @@ tfi_utf_uexplst_match(utfslist_t *uexplst, uint64_t src, uint64_t tag, uint64_t 
     } else {
 	utfslist_foreach2(uexplst, cur, prev) {
 	    msl = container_of(cur, struct utf_msglst, slst);
+	    DEBUG(DLEVEL_PROTOCOL) {
+		utf_printf("\t msl(%p) src(%d) tag(%x) rvignr(%lx)\n", msl, msl->hdr.src, msl->hdr.tag, ~ignore);
+	    }
 	    if (src == msl->hdr.src &&
 		(tag & ~ignore) == (msl->hdr.tag & ~ignore)) {
 		goto find;
@@ -488,8 +494,7 @@ tfi_utf_explst_match(utfslist_t *explst, uint32_t src, uint64_t tag,  int peek)
     uint32_t		idx;
 
     DEBUG(DLEVEL_PROTOCOL) {
-	utf_printf("tfi_utf_explst_match: explst(%p) src(%d) tag(%d)\n",
-		 explst, src, tag);
+	utf_printf("tfi_utf_explst_match: explst(%p) src(%d) tag(0x%lx)\n", explst, src, tag);
     }
     if (utfslist_isnull(explst)) {
 	return -1;

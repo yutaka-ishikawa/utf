@@ -47,6 +47,20 @@ extern void utofu_get_last_error(const char*);
     }									\
 } while(0);
 
+#define UTOFU_MSGCALL(abrt, cbdata, vcqh, func, ...) do {		\
+	int rc;								\
+	cbdata = NULL;							\
+    retry:								\
+	rc = func(__VA_ARGS__);						\
+	if (rc == UTOFU_ERR_BUSY) {					\
+	    do {							\
+		rc = utofu_poll_tcq(vcqh, 0, (void*) &cbdata);		\
+	    } while (rc == UTOFU_ERR_BUSY);				\
+	    goto retry;							\
+	}								\
+	UTOFU_ERRCHECK_EXIT_IF(abrt, rc);				\
+} while(0);
+
 #define UTOFU_CALL(abrt, func, ...) do {				\
     char msg[256];							\
     int rc;								\

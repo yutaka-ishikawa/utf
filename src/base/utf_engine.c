@@ -16,6 +16,7 @@ extern struct utf_send_cntr	utf_scntr[SND_CNTRL_MAX];
 extern utofu_stadd_t	utf_sndctr_stadd;	/* stadd of utf_scntr */
 extern utofu_stadd_t	utf_sndctr_stadd_end;	/* stadd of utf_scntr */
 extern utofu_stadd_t	utf_egr_rbuf_stadd;	/* stadd of utf_egr_rbuf: packet buffer */
+extern utofu_stadd_t	utf_rcntr_stadd;	/* stadd of utf_rcntr */
 
 static inline struct utf_send_cntr *
 utf_idx2scntr(uint32_t idx)
@@ -104,11 +105,11 @@ calc_recvstadd(struct utf_send_cntr *usp, uint64_t ridx)
     if (IS_COMRBUF_FULL(usp)) {
 	/* buffer full */
 	DEBUG(DLEVEL_PROTOCOL|DLEVEL_UTOFU) {
-	    utf_printf("%s: BUSYWAIT\n", __func__);
+	    utf_printf("%s: BUSYWAIT usp(%p) DST(%d)\n", __func__, usp, usp->dst);
 	}
+	utf_printf("%s: BUSYWAIT usp(%p) DST(%d) recvidx(%d)\n", __func__, usp, usp->dst, usp->recvidx);
 	usp->ostate = usp->state;
 	usp->state = S_WAIT_BUFREADY;
-//	utf_mrq_count++; /* receiving MRQ event */
     } else {
 	recvstadd  = utf_egr_rbuf_stadd
 	    + (uint64_t)&((struct utf_egr_rbuf*)0)->rbuf[COM_RBUF_SIZE*ridx]
@@ -117,13 +118,17 @@ calc_recvstadd(struct utf_send_cntr *usp, uint64_t ridx)
     return recvstadd;
 }
 
+extern void
+utf_sendengine_prep(utofu_vcq_hdl_t vcqh, struct utf_send_cntr *usp);
+
 /*
  * sender engine
  *		
  */
-static inline void
+static inline struct utf_send_cntr *
 utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64_t rslt, int evt)
 {
+    struct utf_send_cntr *newusp = NULL;
 progress:
     DEBUG(DLEVEL_PROTOCOL) {
 	utf_printf("%s: usp(%p)->state(%s), evt(%d) rcvreset(%d) recvidx(%d)\n",
@@ -173,32 +178,35 @@ progress:
 	switch (minfo->cntrtype) {
 	case SNDCNTR_BUFFERED_EAGER_PIGBACK:  /* just one chache-line */
 	    /* packet data is already filled */
-	    remote_piggysend(utf_info.vcqh, rvcqid, &minfo->sndbuf->pkt,
-			     recvstadd, 32, usp->mypos, flgs, usp);
+	    utf_printf("%s: PIG MSG DST(%d) recvidx(%d) size(%ld)\n", __func__, usp->dst, usp->recvidx, pkt->hdr.size);
+	    newusp = remote_piggysend(utf_info.vcqh, rvcqid, &minfo->sndbuf->pkt,
+				      recvstadd, 32, usp->mypos, flgs, usp);
 	    usp->recvidx++;
 	    usp->usize = PKT_PYLDSZ(pkt);
 	    usp->state = S_DONE_EGR;
 	    break;
 	case SNDCNTR_BUFFERED_EAGER: /* just one packet */
 	    /* packet data is already filled */
-	    remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd,
-		       recvstadd, MSG_PKTSZ, usp->mypos, flgs, usp);
+	    //utf_printf("%s: BUF MSG DST(%d) recvidx(%d) size(%ld)\n", __func__, usp->dst, usp->recvidx, pkt->hdr.size);
+	    newusp = remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd,
+				recvstadd, MSG_PKTSZ, usp->mypos, flgs, usp);
 	    usp->recvidx++;
 	    usp->usize = PKT_PYLDSZ(pkt);
 	    usp->state = S_DONE_EGR;
 	    break;
 	case SNDCNTR_INPLACE_EAGER:
+	    //utf_printf("%s: INPLACE MSG DST(%d) recvidx(%d) size(%ld) recvidx(%d)\n", __func__, usp->dst, usp->recvidx, pkt->hdr.size, usp->recvidx);
 	    usp->usize = PKT_PYLDSZ(pkt);
 	    usp->state = S_DO_EGR;
-	    remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd,
-		       recvstadd, MSG_PKTSZ, usp->mypos, flgs, usp);
+	    newusp = remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd,
+				recvstadd, MSG_PKTSZ, usp->mypos, flgs, usp);
 	    usp->recvidx++;
 	    break;
 	case SNDCNTR_RENDEZOUS:
 	    usp->usize = minfo->msghdr.size; // expected all data
 	    usp->state = S_REQ_RDVR;
-	    remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd,
-		       recvstadd, MSG_PKTSZ, usp->mypos, flgs, usp);
+	    newusp = remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd,
+				recvstadd, MSG_PKTSZ, usp->mypos, flgs, usp);
 	    usp->recvidx++;
 	    usp->rgetwait = 0; usp->rgetdone = 0;
 	    DEBUG(DLEVEL_PROTO_RENDEZOUS) {
@@ -225,6 +233,8 @@ progress:
 
 	ssize = rest > MSG_PYLDSZ ? MSG_PYLDSZ : rest;
 	recvstadd = calc_recvstadd(usp, ridx);
+	//utf_printf("%s: MSG DST(%d) S_DO_EGR, msgsize(%ld) sentsize(%ld) recvidx(%d)\n",
+	//	   __func__, usp->dst, minfo->msghdr.size, usp->usize, usp->recvidx);
 	if (recvstadd == 0) {
 	    break;
 	}
@@ -241,9 +251,15 @@ progress:
 		       __func__, minfo->mreq, minfo->msghdr.size, usp->usize,
 		       rest, usp->usize, ssize, recvstadd, usp->recvidx);
 	}
-	remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd, recvstadd, ssize, usp->mypos, flgs, usp);
+#if 0
+	if (usp->usize ^ 1) {
+	    flgs |= UTOFU_ONESIDED_FLAG_DELAY_START;
+	}
+#endif
+	newusp = remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd, recvstadd, MSG_PKTSZ, usp->mypos, flgs, usp);
 	usp->usize += ssize;
 	usp->recvidx++;
+	//utf_printf("%s: DO_EGER: DST(%d) recvidx(%d) ssize(0x%lx) usize(%ld)\n", __func__, usp->dst, usp->recvidx, ssize, usp->usize);
 	if (minfo->msghdr.size == usp->usize) {
 	    usp->state = S_DONE_EGR;
 	}
@@ -277,7 +293,7 @@ progress:
     {
 	int	idx;
 	struct utf_msgreq	*req = minfo->mreq;
-	// utf_printf("%s: DONE_EGER: req(%p)->state(%d) usp(%p)->state(%d) micur(%d) mient(%d) minfo(%p)\n", __func__, req, req->state, usp, usp->state, usp->micur, usp->mient, minfo);
+	utf_printf("%s: DONE_EGER: DST(%d) recvidx(%d)\n", __func__, usp->dst, usp->recvidx);
 	if (req->notify) req->notify(req);
 	if (req->state == REQ_PRG_RECLAIM) {
 	    utf_msgreq_free(req); /* req->state is reset to REQ_NONE */
@@ -303,6 +319,7 @@ progress:
 		usp->micur = idx;
 		usp->state = S_HAS_ROOM;
 		evt = EVT_CONT;
+		utf_printf("%s: NEXT-REQUEST DST(%d) size(%ld)\n", __func__, usp->dst, minfo->sndbuf->pkt.hdr.size);
 		//utf_printf("%s: NEXT REQUEST usp(%p)->micur(%d) mient(%d) minfo(%p)->cntrtype=%d\n", __func__, usp, usp->micur, usp->mient, minfo, minfo->cntrtype);
 		goto s_has_room;
 	    }
@@ -315,11 +332,24 @@ progress:
 	utf_printf("%s: protocol error in S_WAIT_BUFREADY\n", __func__);
 	break;
     }
+    return newusp;
+}
+
+void
+utf_sendengine_prep(utofu_vcq_hdl_t vcqh, struct utf_send_cntr *usp)
+{
+    do {
+	struct utf_send_msginfo	*minfo = &usp->msginfo[usp->micur];
+	usp = utf_sendengine(usp, minfo, 0, EVT_LCL);
+	--utf_tcq_count;
+    } while (usp != NULL);
+    assert(utf_tcq_count >= 0);
 }
 
 int
 utf_send_start(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo)
 {
+    struct utf_send_cntr *newusp;
     int	dst = usp->dst;
     if (utf_sndmgt_isset_sndok(dst, utf_egrmgt) != 0) {
 	DEBUG(DLEVEL_PROTOCOL) {
@@ -327,8 +357,7 @@ utf_send_start(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo)
 		     __func__, dst, usp->mypos);
 	}
 	usp->state = S_HAS_ROOM;
-	utf_sendengine(usp, minfo, 0, EVT_START);
-	return 0;
+	newusp = utf_sendengine(usp, minfo, 0, EVT_START);
     } else if (utf_sndmgt_isset_examed(dst, utf_egrmgt) == 0) {
 	/*
 	 * checking availability
@@ -339,15 +368,18 @@ utf_send_start(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo)
 		     "\trvcqid(%lx) remote stadd(%lx)\n",
 		     __func__, dst, usp->mypos, usp->rvcqid, utf_egr_rbuf_stadd);
 	}
-	utf_remote_add(utf_info.vcqh, usp->rvcqid,
-		       UTOFU_ONESIDED_FLAG_LOCAL_MRQ_NOTICE,
-		       (uint64_t) -1, utf_egr_rbuf_stadd, usp->mypos, 0);
+	newusp = utf_remote_add(utf_info.vcqh, usp->rvcqid,
+			     UTOFU_ONESIDED_FLAG_LOCAL_MRQ_NOTICE,
+			     (uint64_t) -1, utf_egr_rbuf_stadd, usp->mypos, 0);
 	usp->state = S_REQ_ROOM;
 	utf_sndmgt_set_examed(dst, utf_egrmgt);
 	return 0;
     } else {
 	utf_printf("%s: ERROR!!!!\n", __func__);
 	return -1;
+    }
+    if (newusp) {
+	utf_sendengine_prep(utf_info.vcqh, newusp);
     }
 }
 
@@ -361,9 +393,8 @@ utf_tcqprogress()
     do {
 	rc = utofu_poll_tcq(utf_info.vcqh, 0, (void*) &usp);
 	if (rc != UTOFU_SUCCESS) break;
-	minfo = &usp->msginfo[usp->micur];
-	utf_sendengine(usp, minfo, 0, EVT_LCL);
-	--utf_tcq_count;
+	if (usp == NULL) continue;
+	utf_sendengine_prep(utf_info.vcqh, usp);
     } while (utf_tcq_count);
     if (rc != UTOFU_ERR_NOT_FOUND && rc != UTOFU_SUCCESS) {
 	char msg[1024];
@@ -377,23 +408,67 @@ utf_tcqprogress()
 int
 utf_mrqprogress()
 {
-    int	rc;
+    int	ridx = -1;
+    int	uc = 0;
     struct utofu_mrq_notice mrq_notice;
 
-    rc = utofu_poll_mrq(utf_info.vcqh, 0, &mrq_notice);
-    if (rc == UTOFU_ERR_NOT_FOUND) return rc;
-    if (rc != UTOFU_SUCCESS) {
+    uc = utofu_poll_mrq(utf_info.vcqh, 0, &mrq_notice);
+    if (uc == UTOFU_ERR_NOT_FOUND) return ridx;
+    if (uc != UTOFU_SUCCESS) {
 	char msg[1024];
 	utofu_get_last_error(msg);
-	utf_printf("%s: utofu_poll_mrq ERROR rc(%d) %s\n", __func__, rc, msg);
-	return rc;
+	utf_printf("%s: utofu_poll_mrq ERROR rc(%d) %s\n", __func__, uc, msg);
+	return ridx;
     }
     DEBUG(DLEVEL_UTOFU) {
 	utf_printf("%s: type(%s)\n", __func__,
 		 notice_symbol[mrq_notice.notice_type]);
     }
-    //--utf_mrq_count;
     switch(mrq_notice.notice_type) {
+    case UTOFU_MRQ_TYPE_LCL_PUT: /* 0 */
+    {	/* Sender side: edata is index of sender engine */
+	struct utf_send_cntr *usp;
+	int	sidx = mrq_notice.edata;
+	struct utf_send_msginfo	*minfo;
+
+	DEBUG(DLEVEL_UTOFU|DLEVEL_ADHOC) {
+	    utf_printf("%s: MRQ_TYPE_LCL_PUT: edata(%d) rmt_val(%ld/0x%lx)"
+		       "vcq_id(%lx) sidx(%x)\n",  __func__, mrq_notice.edata,
+		       mrq_notice.rmt_value, mrq_notice.rmt_value,
+		       mrq_notice.vcq_id, sidx);
+	}
+#if 0
+	if (sidx & EDAT_RMA) {
+	    /* RMA operation */
+	    utf_rma_lclcq(mrq_notice, UTF_RMA_WRITE);
+	    break;
+	}
+#endif
+	usp = utf_idx2scntr(sidx);
+	minfo = &usp->msginfo[usp->micur];
+	utf_sendengine(usp, minfo, 0, EVT_LCL);
+	break;
+    }
+    case UTOFU_MRQ_TYPE_RMT_PUT: /* 1 */
+    {
+	//usleep(1000);
+	//getpid();
+#if 0
+	/* rmt_vlue is the last stadd address of put data */
+	ridx = (mrq_notice.rmt_stadd
+		- utf_egr_rbuf_stadd
+		- sizeof(union utf_erv_head))/(sizeof(struct utf_packet)*COM_RBUF_SIZE);
+	{
+	    struct utf_packet	 *msgbase = utf_recvbuf_get(ridx);
+	    struct utf_recv_cntr *urp = &utf_rcntr[ridx];
+	    struct utf_packet	*pkt = msgbase + urp->recvidx;
+	    static int i = 0;
+	    //utf_printf("%s: ridx(%d) urp(%p) SRC(%d) recvidx(%d)\n", 
+	    //__func__, ridx, urp, urp->req == NULL ? -1 : urp->req->hdr.src, urp->recvidx);
+	}
+#endif
+	break;
+    }
     case UTOFU_MRQ_TYPE_LCL_GET: /* 2 */
     {
 	uint8_t	sidx = mrq_notice.edata;
@@ -447,6 +522,8 @@ utf_mrqprogress()
 	    utf_printf("%s: MRQ_LCL_ARM: edata(%d) rmt_val(%ld) usp(%p)\n",
 		     __func__, mrq_notice.edata, mrq_notice.rmt_value, usp);
 	}
+	utf_printf("%s: MRQ_LCL_ARM: edata(%d) rmt_val(%ld) usp(%p)\n",
+		   __func__, mrq_notice.edata, mrq_notice.rmt_value, usp);
 	utf_sendengine(usp, minfo, mrq_notice.rmt_value, EVT_LCL);
 	break;
     }
@@ -465,7 +542,7 @@ utf_mrqprogress()
 	    struct utf_send_msginfo	*minfo;
 	    usp = utf_idx2scntr(sidx);
 	    minfo = &usp->msginfo[usp->micur];
-	    DEBUG(DLEVEL_UTOFU) {
+//	    DEBUG(DLEVEL_UTOFU) {
 		utf_printf("%s: MRQ_RMT_ARMW sidx rmt_value(%lx) sidx(%d) evtype(%d:%s) "
 			   "usp(%p)->micur(%d) state(%d:%s) ostate(%d:%s) recvidx(%d) "
 			   "rcvreset(%d) mient(%d)\n",
@@ -473,16 +550,19 @@ utf_mrqprogress()
 			   usp, usp->micur, usp->state, sstate_symbol[usp->state],
 			   usp->ostate, sstate_symbol[usp->ostate], usp->recvidx,
 			   usp->rcvreset, usp->mient);
-	    }
+//	    }
 	    if (evtype == EVT_RMT_RECVRST) {
 		usp->rcvreset = 0; usp->recvidx = 0;
-		if (usp->state != S_NONE) {
+		if (usp->state == S_WAIT_BUFREADY) {
 		    usp->state = usp->ostate;
+		    utf_printf("\t: change to state[%d:%s] usp(%p)->recvidx = %d usp->usize = %ld and call engine\n", usp->state, sstate_symbol[usp->state], usp, usp->recvidx, usp->usize);
 		    utf_sendengine(usp, minfo, mrq_notice.rmt_value, evtype);
 		}
 	    } else {
+		utf_printf("\t: stay state[%d:%s] and call engine\n", usp->state, sstate_symbol[usp->state]);
 		utf_sendengine(usp, minfo, mrq_notice.rmt_value, evtype);
 	    }
+	    fflush(NULL);
 	} else {
 	    /* receive buffer is accessedd by the sender */
 	    utf_printf("%s: MRQ_RMT_ARMW where ? rmt_value(%lx) rmt_stadd(%lx) evtype(%d)\n",
@@ -494,14 +574,12 @@ utf_mrqprogress()
 	}
 	break;
     }
-    case UTOFU_MRQ_TYPE_LCL_PUT: /* 0 */
-    case UTOFU_MRQ_TYPE_RMT_PUT: /* 1 */
     default:
 	utf_printf("%s: Unused notice type(%d): edata(%d) rmt_value(%ld)\n",
 		 __func__, mrq_notice.notice_type, mrq_notice.edata, mrq_notice.rmt_value);
 	break;
     }
-    return rc;
+    return ridx;
 }
 
 int

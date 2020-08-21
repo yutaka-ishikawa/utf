@@ -13,6 +13,7 @@ extern int     utf_tcq_count, utf_mrq_count;
 
 extern void	utf_tcqprogress();
 extern int	utf_mrqprogress();
+extern void	utf_peers_show();
 //extern void	utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx);
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
@@ -62,6 +63,7 @@ utf_msgreq_alloc()
 static inline void
 utf_msgreq_free(struct utf_msgreq *req)
 {
+    //utf_printf("%s: YI<<<<<\n", __func__);
     req->state = REQ_NONE;
     req->ustatus = REQ_NONE;
     req->notify = NULL;
@@ -116,105 +118,135 @@ utf_rmacq_waitappend(struct utf_rma_cq *rma_cq)
     utfslist_append(&utf_rmacq_waitlst, &rma_cq->slst);
 }
 
-static inline int
+/*
+ * UTOFU_ONESIDED_FLAG_LOCAL_MRQ_NOTICE is controled by caller !!
+ */
+static inline struct utf_send_cntr *
 utf_remote_add(utofu_vcq_hdl_t vcqh,
 	       utofu_vcq_id_t rvcqid, unsigned long flgs,
 	       uint64_t val, utofu_stadd_t rstadd,
 	       uint64_t edata, void *cbdata)
 {
-    flgs |= UTOFU_ONESIDED_FLAG_LOCAL_MRQ_NOTICE
-	 | UTOFU_ONESIDED_FLAG_STRONG_ORDER;
+    struct utf_send_cntr *usp;
+    flgs |= UTOFU_ONESIDED_FLAG_STRONG_ORDER;
     DEBUG(DLEVEL_PROTOCOL) {
 	utf_printf("remote_add: val(0x%lx) rvcqid(0x%lx)\n", val, rvcqid);
     }
-    UTOFU_CALL(1, utofu_armw8,
-	       vcqh, rvcqid,
-	       UTOFU_ARMW_OP_ADD,
-	       val, rstadd, edata, flgs, cbdata);
-//    utf_mrq_count++;
-    return 0;
+    UTOFU_MSGCALL(1, usp, vcqh, utofu_armw8,
+		  vcqh, rvcqid,
+		  UTOFU_ARMW_OP_ADD,
+		  val, rstadd, edata, flgs, cbdata);
+    return usp;
 }
 
-static inline int
+static inline struct utf_send_cntr *
 utf_remote_armw4(utofu_vcq_hdl_t vcqh,
 		 utofu_vcq_id_t rvcqid, unsigned long flgs,
 		 enum utofu_armw_op op, uint64_t val,
 		 utofu_stadd_t rstadd,
 		 uint64_t edata, void *cbdata)
 {
+    struct utf_send_cntr *usp;
     /* local mrq notification is supressed */
     flgs |= UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE
 	| UTOFU_ONESIDED_FLAG_STRONG_ORDER;
     /* | UTOFU_MRQ_TYPE_LCL_ARMW; remote notification */
-    UTOFU_CALL(1, utofu_armw4, vcqh, rvcqid, op,
-	       val, rstadd, edata, flgs, cbdata);
-    return 0;
+    UTOFU_MSGCALL(1, usp, vcqh, utofu_armw4, vcqh, rvcqid, op,
+		  val, rstadd, edata, flgs, cbdata);
+    return usp;
 }
 
-static inline int
+static inline struct utf_send_cntr *
 remote_piggysend(utofu_vcq_hdl_t vcqh,
 		 utofu_vcq_id_t rvcqid, void *data,  utofu_stadd_t rstadd,
 		 size_t len, uint64_t edata, unsigned long flgs, void *cbdata)
 {
+    struct utf_send_cntr *usp;
     flgs |= UTOFU_ONESIDED_FLAG_TCQ_NOTICE
 	 | UTOFU_ONESIDED_FLAG_CACHE_INJECTION
 	 | UTOFU_ONESIDED_FLAG_PADDING
 	 | UTOFU_ONESIDED_FLAG_STRONG_ORDER;
-    UTOFU_CALL(1, utofu_put_piggyback,
-	       vcqh, rvcqid, data, rstadd, len, edata, flgs, cbdata);
+    UTOFU_MSGCALL(1, usp, vcqh, utofu_put_piggyback,
+		  vcqh, rvcqid, data, rstadd, len, edata, flgs, cbdata);
     utf_tcq_count++;
-    return 0;
+    return usp;
 }
 
+static inline struct utf_send_cntr *
+remote_piggysend2(utofu_vcq_hdl_t vcqh,
+		 utofu_vcq_id_t rvcqid, void *data,  utofu_stadd_t rstadd,
+		 size_t len, uint64_t edata, unsigned long flgs, void *cbdata)
+{
+    struct utf_send_cntr *usp;
+    flgs |= UTOFU_ONESIDED_FLAG_STRONG_ORDER
+	 | UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE;
+    UTOFU_MSGCALL(1, usp, vcqh, utofu_put_piggyback,
+		  vcqh, rvcqid, data, rstadd, len, edata, flgs, cbdata);
+    return usp;
+}
+
+//#define USE_PUT_TCQ_NOTICE
 /*
  * TCQ_NOTICE event driven is employed in the current implementation
  */
-static inline int
+static inline struct utf_send_cntr *
 remote_put(utofu_vcq_hdl_t vcqh,
 	   utofu_vcq_id_t rvcqid, utofu_stadd_t lstadd,
 	   utofu_stadd_t rstadd, size_t len, uint64_t edata,
 	   unsigned long flgs, void *cbdata)
 {
+    struct utf_send_cntr *usp;
+#ifdef USE_PUT_TCQ_NOTICE
     flgs |= UTOFU_ONESIDED_FLAG_TCQ_NOTICE
+	 | UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE
 	 | UTOFU_ONESIDED_FLAG_STRONG_ORDER
 	 | UTOFU_ONESIDED_FLAG_CACHE_INJECTION;
-    UTOFU_CALL(1, utofu_put,
-	       vcqh, rvcqid,  lstadd, rstadd, len, edata, flgs, cbdata);
+    UTOFU_MSGCALL(1, usp, vcqh, utofu_put,
+		  vcqh, rvcqid,  lstadd, rstadd, len, edata, flgs, cbdata);
     utf_tcq_count++;
-    return 0;
+#else
+    flgs |= UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE
+	 | UTOFU_ONESIDED_FLAG_LOCAL_MRQ_NOTICE
+	 | UTOFU_ONESIDED_FLAG_STRONG_ORDER
+	 | UTOFU_ONESIDED_FLAG_CACHE_INJECTION;
+    UTOFU_MSGCALL(1, usp, vcqh, utofu_put,
+		  vcqh, rvcqid,  lstadd, rstadd, len, edata, flgs, NULL);
+#endif 
+    return usp;
 }
 
 
-static inline int
+static inline struct utf_send_cntr *
 remote_get(utofu_vcq_hdl_t vcqh,
 	   utofu_vcq_id_t rvcqid, utofu_stadd_t lstadd,
 	   utofu_stadd_t rstadd, size_t len, uint64_t edata,
 	   unsigned long flgs, void *cbdata)
 {
-
+    struct utf_send_cntr *usp;
     flgs |= UTOFU_ONESIDED_FLAG_LOCAL_MRQ_NOTICE
 	 | UTOFU_ONESIDED_FLAG_STRONG_ORDER;
-    UTOFU_CALL(1, utofu_get,
-	       vcqh, rvcqid,  lstadd, rstadd, len, edata, flgs, cbdata);
-//    utf_mrq_count++;
-    return 0;
+    UTOFU_MSGCALL(1, usp, vcqh, utofu_get,
+		  vcqh, rvcqid,  lstadd, rstadd, len, edata, flgs, cbdata);
+    return usp;
 }
 
-static inline int
+static inline struct utf_send_cntr *
 utf_remote_swap(utofu_vcq_hdl_t vcqh,
 		utofu_vcq_id_t rvcqid, unsigned long flgs, uint64_t val,
 		utofu_stadd_t rstadd, uint64_t edata, void *cbdata)
 {
     utf_printf("%s: NOT YET\n", __func__); abort();
+    return NULL;
 }
 
-static inline int
+static inline struct utf_send_cntr *
 utf_remote_cswap(utofu_vcq_hdl_t vcqh,
 		 utofu_vcq_id_t rvcqid, unsigned long flgs,
 		 uint64_t old_val, uint64_t new_val,
 		 utofu_stadd_t rstadd, uint64_t edata, void *cbdata)
 {
     utf_printf("%s: NOT YET\n", __func__); abort();
+    return NULL;
 }
 
 static inline struct utf_packet	*
@@ -292,7 +324,6 @@ eager_copy_and_check(struct utf_recv_cntr *urp,
     }
     req->rsize += cpysz;
     if (req->hdr.size == req->rsize) {
-	req->state = REQ_DONE;
 	urp->state = R_DONE;
     } else {
 	/* More data will arrive */
@@ -350,37 +381,63 @@ rget_continue(struct utf_recv_cntr *urp, struct utf_msgreq *req)
 }
 
 static inline int
-utfgen_explst_match(struct utf_packet *pkt)
+utfgen_explst_match(uint8_t flgs, uint32_t src, uint64_t tag)
 {
     int	idx;
-    if (pkt->hdr.flgs == 0) {
-	idx = utf_explst_match(PKT_MSGSRC(pkt), PKT_MSGTAG(pkt), 0);
+    if (flgs == 0) {
+	idx = utf_explst_match(src, tag, 0);
     } else {
 	utfslist_t *explst
-	    = pkt->hdr.flgs&MSGHDR_FLGS_FI_TAGGED ? &tfi_tag_explst : &tfi_msg_explst;
-	idx = tfi_utf_explst_match(explst, PKT_MSGSRC(pkt), PKT_MSGTAG(pkt), 0);
+	    = flgs&MSGHDR_FLGS_FI_TAGGED ? &tfi_tag_explst : &tfi_msg_explst;
+	idx = tfi_utf_explst_match(explst, src, tag, 0);
     }
     return idx;
+}
+
+static inline void
+utfgen_uexplst_enqueue(uint8_t flgs, struct utf_msgreq *req)
+{
+    if (flgs == 0) {
+	utf_msglst_append(&utf_uexplst, req);
+	DEBUG(DLEVEL_PROTOCOL) {
+	    utf_printf("%s: register it(SRC(%d)) to unexpected UTF queue\n", __func__, req->hdr.src);
+	}
+    } else {
+	utfslist_t *uexplst
+	    = flgs&MSGHDR_FLGS_FI_TAGGED ? &tfi_tag_uexplst : &tfi_msg_uexplst;
+	utf_msglst_append(uexplst, req);
+	DEBUG(DLEVEL_PROTOCOL) {
+	    utf_printf("%s: register it(SRC(%d)) to unexpected FI %s queue\n", __func__,
+		       req->hdr.src, flgs&MSGHDR_FLGS_FI_TAGGED ? "TAGGED" : "MSG");
+	}
+    }
 }
 
 /*
  * receiver engine
  */
-static inline void
+static inline int
 utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 {
     struct utf_msgreq	*req;
 
+    //utf_printf("%s: urp(%p), ridx(%d) recvidx(%d) state(%s)\n",
+    //__func__, urp, urp->mypos, urp->recvidx, rstate_symbol[urp->state]);
     DEBUG(DLEVEL_PROTOCOL) {
-	utf_printf("%s: urp(%p:ridx(%d)recvidx(%d))->state(%s) MSG(%s)\n",
+	utf_printf("%s: urp(%p), ridx(%d) recvidx(%d) state(%s) MSG(%s)\n",
 		   __func__, urp, urp->mypos, urp->recvidx, rstate_symbol[urp->state], pkt2string(pkt, NULL, 0));
     }
     switch (urp->state) {
     case R_NONE: /* Begin receiving message */
     {
 	int	idx;
-	if ((idx = utfgen_explst_match(pkt)) != -1) {
+	utf_printf("%s: NEW MESSAGE SRC(%d) size(%ld)\n", __func__, pkt->hdr.src, (uint64_t)pkt->hdr.size);
+	DEBUG(DLEVEL_PROTOCOL) {
+	    utf_printf("%s: NEW MESSAGE SRC(%d)\n", __func__, pkt->hdr.src);
+	}
+	if ((idx = utfgen_explst_match(PKT_MSGFLG(pkt), PKT_MSGSRC(pkt), PKT_MSGTAG(pkt))) != -1) {
 	    req = utf_idx2msgreq(idx);
+	    utf_printf("\t: SRC EXP IDX(%d)\n", idx);
 	    req->rndz = pkt->hdr.rndz;
 	    if (req->rndz) {
 		memcpy(&req->rgetsender, &pkt->pyld.rndzdata, sizeof(struct utf_vcqid_stadd));
@@ -393,17 +450,21 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 		urp->req = req;
 	    }
 	} else { /* New Unexpected message */
+	    utf_printf("\t: SRC UNEXP IDX\n");
 	    req = utf_msgreq_alloc();
 	    req->hdr = pkt->hdr;
 	    req->rsize = 0; req->ustatus = 0; req->type = REQ_RECV_UNEXPECTED;
 	    req->rndz = pkt->hdr.rndz;
+	    /* registering unexpected queue now */
+	    utfgen_uexplst_enqueue(pkt->hdr.flgs, req);
 	    if (req->rndz) {
 		memcpy(&req->rgetsender, &pkt->pyld.rndzdata, sizeof(struct utf_vcqid_stadd));
-		req->state = R_WAIT_RNDZ;
+		req->state = REQ_WAIT_RNDZ;
 		req->rcntr = urp;
 	    } else {/* eager */
 		req->buf = utf_malloc(PKT_MSGSZ(pkt));
 		req->expsize = PKT_MSGSZ(pkt); /* during receiving */
+		req->state = REQ_NONE;
 		if (eager_copy_and_check(urp, req, pkt) == R_DONE) goto done;
 	    }
 	}
@@ -413,6 +474,10 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 	break;
     case R_BODY:
 	req = urp->req;
+	utf_nullfunc();
+	//getpid();
+	//utf_printf("%s: SRC(%d) rsize(%ld)\n", __func__, req->hdr.src, PKT_PYLDSZ(pkt));
+	//utf_printf("%s: SRC(%d) req->rsize(%ld)\n", __func__, req->hdr.src, PKT_PYLDSZ(pkt));
 	if (eager_copy_and_check(urp, req, pkt) == R_DONE) goto done;
 	/* otherwise, continue to receive message */
 	break;
@@ -441,29 +506,20 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 	    req->bufinfo.stadd[0] = 0;
 	}
 	req->rsize = req->hdr.size;
-	req->state = REQ_DONE;
     }	/* Falls through. */
     done:
+	req->state = REQ_DONE;
+	utf_printf("%s: recv_post NEW MESSAGE COMPLETED: SRC(%d) %s msg is now ready\n", __func__, pkt->hdr.src,
+		   req->type == REQ_RECV_UNEXPECTED ? "Unexpected" : "Expected");
 	if (req->type == REQ_RECV_UNEXPECTED) {
-	    /* Regiger it to unexpected queue */
-	    if (pkt->hdr.flgs == 0) {
-		utf_msglst_append(&utf_uexplst, req);
-		DEBUG(DLEVEL_PROTOCOL) {
-		    utf_printf("%s: register it to unexpected UTF queue\n", __func__);
-		}
-	    } else {
-		utfslist_t *uexplst
-		    = pkt->hdr.flgs&MSGHDR_FLGS_FI_TAGGED ? &tfi_tag_uexplst : &tfi_msg_uexplst;
-		utf_msglst_append(uexplst, req);
-		DEBUG(DLEVEL_PROTOCOL) {
-		    utf_printf("%s: register it to unexpected FI %s queue\n", __func__,
-			       pkt->hdr.flgs&MSGHDR_FLGS_FI_TAGGED ? "TAGGED" : "MSG");
-		}
+	    DEBUG(DLEVEL_PROTOCOL) {
+		utf_printf("%s: recv_post SRC(%d) unexp msg is now ready (idx=%d)\n", __func__, pkt->hdr.src,
+			   utf_msgreq2idx(req));
 	    }
 	} else {
 	    DEBUG(DLEVEL_PROTOCOL) {
-		utf_printf("%s: Expected message arrived (idx=%d)\n", __func__,
-			 utf_msgreq2idx(req));
+		utf_printf("%s: recv_post SRC(%d) Expected message arrived (idx=%d)\n", __func__, pkt->hdr.src,
+			   utf_msgreq2idx(req));
 	    }
 	    if (req->notify) req->notify(req);
 	}
@@ -473,29 +529,43 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
     case R_HEAD:
     case R_DONE:
     default:
-	utf_printf("%s: protocol error(%d:%s)\n", __func__, urp->state, rstate_symbol[urp->state]);
-	break;
+	return -1;
     }
-    exiting:;
+    exiting:
+	return 0;
 }
 
 static inline int
 utf_progress()
 {
     int		j;
-    int		arvd = 0;
+
     if (utf_tcq_count) utf_tcqprogress();
+    utf_mrqprogress();
+
+    if ((int64_t) utf_egr_rbuf.head.cntr < 0) {
+	utf_printf("%s: No more Eager Receiver Buffer in my rank\n", __func__);
+	utf_egrrbuf_show();
+	abort();
+    }
+    /* here is peeking memory */
     for (j = utf_egr_rbuf.head.cntr + 1; j <= RCV_CNTRL_INIT/*RCV_CNTRL_MAX*/ ; j++) {
-	struct utf_recv_cntr	*urp = &utf_rcntr[j];
 	struct utf_packet	*msgbase = utf_recvbuf_get(j);
+	struct utf_recv_cntr	*urp = &utf_rcntr[j];
 	struct utf_packet	*pktp;
 	int	sidx;
+    try_again:
 	pktp = msgbase + urp->recvidx;
 	if (pktp->hdr.marker == MSG_MARKER) {
 	    /* message arrives */
 	    utf_tmr_end(TMR_UTF_RCVPROGRESS);
 	    sidx = pktp->hdr.sidx;
-	    utf_recvengine(urp, pktp, sidx);
+	    if (utf_recvengine(urp, pktp, sidx) < 0) {
+		utf_printf("%s: j(%d) protocol error urp(%p)->state(%d:%s) sidx(%d) pkt(%p) MSG(%s)\n",
+			   __func__, j, urp, urp->state, rstate_symbol[urp->state],
+			   sidx, pktp, pkt2string(pktp, NULL, 0));
+		abort();
+	    }
 	    pktp->hdr.hall = -1UL;
 	    urp->recvidx++;
 	    if (IS_COMRBUF_FULL(urp)) {
@@ -504,13 +574,14 @@ utf_progress()
 		if (urp->svcqid == 0) {
 		    urp->svcqid = utf_info.vname[pktp->hdr.src].vcqid;
 		}
+		utf_printf("%s: YI>>>>> RST to src(%d)\n", __func__, pktp->hdr.src);
 		utf_remote_armw4(utf_info.vcqh, urp->svcqid, urp->flags,
 				 UTOFU_ARMW_OP_OR, SCNTR_OK,
 				 stadd + SCNTR_RST_RECVRESET_OFFST, sidx, 0);
+	    } else {
+		goto try_again;
 	    }
-	    arvd = 1;
 	}
     }
-    if (!arvd) utf_mrqprogress();
     return 0;
 }
