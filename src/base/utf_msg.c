@@ -119,6 +119,7 @@ minfo_setup(struct utf_send_msginfo *minfo, int rank, uint64_t tag, uint64_t siz
 	req->type = REQ_SND_RENDEZOUS;
     }
     minfo->sndbuf = sbufp;
+    req->hdr = minfo->msghdr; /* copy the header */
     req->state = REQ_PRG_NORMAL;
 }
 
