@@ -14,11 +14,13 @@
 #------- Program execution -------#
 
 # For utf.so
-export LD_LIBRARY_PATH=${HOME}/work/utf/build/:$LD_LIBRARY_PATH
+#export LD_LIBRARY_PATH=${HOME}/work/utf/build/:$LD_LIBRARY_PATH
+#export LD_LIBRARY_PATH=${HOME}/riken-mpich/lib/:${HOME}/work/utf/build/:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=${HOME}/work/utf/build/:${HOME}/riken-mpich/lib/:$LD_LIBRARY_PATH
 
 # The stderr redirection is enabled if -D option is specified
 export TOFULOG_DIR=./results
-
+export PMIX_DEBUG=1
 #
 export UTF_MSGMODE=1	# 0: eager 1: rendezvous
 echo "LD_LIBRARY_PATH=" $LD_LIBRARY_PATH
@@ -29,6 +31,7 @@ mpiexec -np 2 ./test_p2p pingpong -i 1000 -L 16777216 -D	#  -D stderr redirectio
 echo "***************************"
 echo
 echo
+ldd ./test_p2p
 echo "**** Environment Variables ***"
 printenv
 exit
