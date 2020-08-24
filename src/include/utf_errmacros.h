@@ -1,12 +1,11 @@
 extern void utofu_get_last_error(const char*);
-extern int mypid;
 
 #define SYSERRCHECK_EXIT(rc, cond, val, msg) do {			\
     if (rc cond val) {							\
 	printf("[%d] error: %s @ %d in %s\n",				\
-	       mypid, msg, __LINE__, __FILE__);				\
+	       utf_info.mypid, msg, __LINE__, __FILE__);		\
 	fprintf(stderr, "[%d] error: %s  @ %d in %s\n",			\
-	        mypid, msg, __LINE__, __FILE__);			\
+	        utf_info.mypid, msg, __LINE__, __FILE__);		\
 	perror("");							\
 	fflush(NULL);							\
     }									\
@@ -15,9 +14,9 @@ extern int mypid;
 #define LIBERRCHECK_EXIT(rc, cond, val, msg) do {			\
     if (rc cond val) {							\
 	printf("[%d] error: %s @ %d in %s\n",				\
-	       mypid, msg, __LINE__, __FILE__);				\
+	       utf_info.mypid, msg, __LINE__, __FILE__);		\
 	fprintf(stderr, "[%d] error: %s  @ %d in %s\n",			\
-	        mypid, msg, __LINE__, __FILE__);			\
+	        utf_info.mypid, msg, __LINE__, __FILE__);		\
 	fflush(NULL);							\
     }									\
 } while(0);
@@ -27,9 +26,9 @@ extern int mypid;
 	char msg[1024];							\
 	utofu_get_last_error(msg);					\
 	printf("[%d] error: %s (code:%d) @ %d in %s\n",			\
-	       mypid, msg, rc, __LINE__, __FILE__);			\
+	       utf_info.mypid, msg, rc, __LINE__, __FILE__);		\
 	fprintf(stderr, "[%d] error: %s (code:%d) @ %d in %s\n",	\
-	        mypid, msg, rc, __LINE__, __FILE__);			\
+	        utf_info.mypid, msg, rc, __LINE__, __FILE__);		\
 	fflush(stdout); fflush(stderr);					\
 	abort();							\
     }									\
@@ -40,12 +39,26 @@ extern int mypid;
 	char msg[1024];							\
 	utofu_get_last_error(msg);					\
 	printf("[%d] error: %s (code:%d) @ %d in %s\n",			\
-	       mypid, msg, rc, __LINE__, __FILE__);			\
+	       utf_info.mypid, msg, rc, __LINE__, __FILE__);		\
 	fprintf(stderr, "[%d] error: %s (code:%d) @ %d in %s\n",	\
-	        mypid, msg, rc, __LINE__, __FILE__);			\
+	        utf_info.mypid, msg, rc, __LINE__, __FILE__);		\
 	fflush(stdout); fflush(stderr);					\
 	if (abrt) abort();						\
     }									\
+} while(0);
+
+#define UTOFU_MSGCALL(abrt, cbdata, vcqh, func, ...) do {		\
+	int rc;								\
+	cbdata = NULL;							\
+    retry:								\
+	rc = func(__VA_ARGS__);						\
+	if (rc == UTOFU_ERR_BUSY) {					\
+	    do {							\
+		rc = utofu_poll_tcq(vcqh, 0, (void*) &cbdata);		\
+	    } while (rc == UTOFU_ERR_BUSY);				\
+	    goto retry;							\
+	}								\
+	UTOFU_ERRCHECK_EXIT_IF(abrt, rc);				\
 } while(0);
 
 #define UTOFU_CALL(abrt, func, ...) do {				\
@@ -69,14 +82,24 @@ extern int mypid;
     return rc;								\
 } while (0);
 
+#define UTOFU_CALL_WITH_GO(lbl, rc, func, ...) do {			\
+    char msg[256];							\
+    DEBUG(DLEVEL_UTOFU) {						\
+	snprintf(msg, 256, "%s: calling %s(%s)\n", __func__, #func, #__VA_ARGS__); \
+	utf_printf("%s", msg);						\
+    }									\
+    rc = func(__VA_ARGS__);						\
+    if (rc != UTOFU_SUCCESS) goto lbl;					\
+} while (0);
+
 #define JTOFU_ERRCHECK_EXIT_IF(abrt, rc) do {				\
     if (rc != JTOFU_SUCCESS) {						\
 	char msg[1024];							\
 	utofu_get_last_error(msg);					\
 	printf("[%d] error: %s (code:%d) @ %d in %s\n",			\
-	       mypid, msg, rc, __LINE__, __FILE__);			\
+	       utf_info.mypid, msg, rc, __LINE__, __FILE__);		\
 	fprintf(stderr, "[%d] error: %s (code:%d) @ %d in %s\n",	\
-	        mypid, msg, rc, __LINE__, __FILE__);			\
+	        utf_info.mypid, msg, rc, __LINE__, __FILE__);		\
 	fflush(stdout); fflush(stderr);					\
 	if (abrt) abort();						\
     }									\

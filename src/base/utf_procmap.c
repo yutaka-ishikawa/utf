@@ -13,6 +13,21 @@
 #include "utf_errmacros.h"
 #include "utf_debug.h"
 #include "utf_tofu.h"
+#include "utf_cqmgr.h"
+
+#define LIB_DLCALL(var, funcall, lbl, evar, str) do { \
+	var = funcall;			\
+	if (var == NULL) {		\
+		evar = str; goto lbl;	\
+	}				\
+} while(0);
+
+#define LIB_DLCALL2(rc, funcall, lbl, evar, str) do {	\
+	rc = funcall;			\
+	if (rc != 0) {			\
+		evar = str; goto lbl;	\
+	}				\
+} while(0);
 
 #define LIB_CALL(rc, funcall, lbl, evar, str) do { \
 	rc = funcall;		      \
@@ -32,8 +47,21 @@ union tofu_coord {
     uint32_t	val;
 };
 
+#define PATH_PMIXLIB	"/usr/lib/FJSVtcs/ple/lib64/libpmix.so"
+
 struct utf_info utf_info;
 utofu_vcq_id_t	*tab_vcqid;
+
+static pmix_status_t	(*myPMIx_Init)(pmix_proc_t *proc, pmix_info_t info[], size_t ninfo);
+static pmix_status_t	(*myPMIx_Get)(const pmix_proc_t *proc, const char key[],
+				      const pmix_info_t info[], size_t ninfo,
+				      pmix_value_t **val);
+static pmix_status_t	(*myPMIx_Put)(pmix_scope_t scope, const char key[],
+				      pmix_value_t *val);
+static pmix_status_t	(*myPMIx_Commit)(void);
+static pmix_status_t	(*myPMIx_Fence)(const pmix_proc_t *procs, size_t nprocs,
+					const pmix_info_t info[], size_t ninfo);
+static pmix_status_t	(*myPMIx_Finalize)(const pmix_info_t info[], size_t ninfo);
 
 static uint32_t
 generate_hash_string(char *cp, int len)
@@ -76,12 +104,12 @@ utf_jtofuinit(int pmixclose)
     LIB_CALL(rc, PMIx_Get(utf_info.pmix_wproc, PMIX_JOB_SIZE, NULL, 0, &pval),
 	     err, errstr, "Cannot get PMIX_JOB_SIZE");
     utf_info.nprocs = pval->data.uint32;
-    fprintf(stderr, "%s: rank(%d) nprocs(%d)\n", __func__, utf_info.myrank, utf_info.nprocs); fflush(stderr);
 
     /* Getting Fujitsu's rank pmap and initializing jtofu library */
     LIB_CALL(rc, PMIx_Get(utf_info.pmix_wproc, FJPMIX_RANKMAP, NULL, 0, &pval),
 	     err, errstr, "Cannot get FJPMIX_RANKMAP");
     utf_info.jobid = generate_hash_string(utf_info.pmix_proc->nspace, PMIX_MAX_NSLEN);
+    fprintf(stderr, "%s: rank(%d) nprocs(%d) pval->data.ptr(%p)\n", __func__, utf_info.myrank, utf_info.nprocs, pval->data.ptr); fflush(stderr);
     jtofu_initialize(utf_info.jobid, utf_info.myrank,  pval->data.ptr);
 
     if (pmixclose) {
@@ -95,7 +123,11 @@ err:
     return -1;
 }
 
-static void
+/*
+ * utf_vname_vcqid:
+ *	setup vcqid in vname
+ */
+void
 utf_vname_vcqid(struct tofu_vname *vnmp)
 {
     utofu_vcq_id_t  vcqid;
@@ -130,30 +162,40 @@ utf_peers_init()
 {
     struct tofu_vname *vnmp;
     union jtofu_phys_coords pcoords;
+    union jtofu_phys_coords *physnode;
     union jtofu_log_coords lcoords;
     size_t	sz;
-    int		rank;
-    int		ppn;	/* process per node */
+    int		rank, node;
+    int		ppn, nnodes;	/* process per node, # of nodes  */
     uint8_t	*pmarker;
 
     utf_jtofuinit(0);
+    if (utf_rflag || getenv("TOFULOG_DIR")) {
+	utf_redirect();
+    }
     ppn = jtofu_query_max_proc_per_node();
-    utf_printf("%s: ppn(%d) jobid(%x)\n", __func__, ppn, utf_info.jobid);
+    utf_printf("%s: ppn(%d) nprocs(%d), jobid(%x)\n", __func__, ppn, utf_info.nprocs, utf_info.jobid);
     /* node info */
     sz = sizeof(struct tofu_vname)*utf_info.nprocs;
     vnmp = utf_info.vname = utf_malloc(sz);
     memset(vnmp, 0, sz);
+    nnodes = utf_info.nnodes = utf_info.nprocs/ppn;
+    sz = sizeof(union jtofu_phys_coords)*nnodes;
+    physnode = utf_info.phys_node = utf_malloc(sz);
     /* vcqid is also copied */
     sz = sizeof(utofu_vcq_id_t)*utf_info.nprocs;
     tab_vcqid =  utf_malloc(sz);
     memset(tab_vcqid, 0, sz);
     /* fi addr */
+    sz = sizeof(uint64_t)*utf_info.nprocs;
     utf_info.myfiaddr = utf_malloc(sz);
     memset(utf_info.myfiaddr, 0, sz);
-    sz = utf_info.nprocs*sizeof(uint8_t);
     /* */
+    sz = utf_info.nprocs*sizeof(uint8_t);
     pmarker = utf_malloc(sz);
     memset(pmarker, UCHAR_MAX, sz);
+    node = 0;
+    utf_printf("%s: RANK LIST\n", __func__);
     for (rank = 0; rank < utf_info.nprocs; rank++) {
 	if(pmarker[rank] == UCHAR_MAX) {
 	    utofu_tni_id_t	tni;
@@ -166,15 +208,20 @@ utf_peers_init()
 		       rank, &pcoords);
 	    JTOFU_CALL(1, jtofu_query_log_coords, utf_info.jobid,
 		       rank, &lcoords);
+	    assert(node < nnodes);
+	    physnode[node++] = pcoords;
 	    /* rank info */
 	    JTOFU_CALL(1, jtofu_query_ranks_from_phys_coords, utf_info.jobid,
 		       &pcoords, ppn, nd_ranks, &nranks);
 	    for (i = 0; i < nranks; i++) {
 		jtofu_rank_t	this_rank;
-		utf_info.mynrnk = i;	/* rank within node */
 		/* tni & cqi */
 		utf_tni_select(ppn, i, &tni, &cq);
 		this_rank = nd_ranks[i];
+		if (this_rank == utf_info.myrank) {
+		    utf_info.mynrnk = i;	/* rank within node */
+		}
+		assert(this_rank < utf_info.nprocs);
 		vnmp[this_rank].tniq[0] = ((tni << 4) & 0xf0) | (cq & 0x0f);
 		vnmp[this_rank].vpid = rank;
 		vnmp[this_rank].cid = CONF_TOFU_CMPID;
@@ -193,8 +240,59 @@ utf_peers_init()
 		   vnmp[rank].vcqid, vnmp[rank].tniq[0]>>4, vnmp[rank].tniq[0]&0x0f,
 		   vnmp[rank].cid);
     }
+    {
+	int	i;
+	utf_printf("NODE LIST:\n");
+	for (i = 0; i < node; i++) {
+	    utf_printf("\t<%d> %s\n", i, pcoords2string(physnode[i], NULL, 0));
+	}
+    }
     utf_free(pmarker);
     utf_info.myppn = ppn;
+    {
+	utofu_tni_id_t	tni_prim;
+        utofu_tni_id_t	*tnis = 0;
+        size_t  ni, ntni = 0;
+	int	uc, vhent;
+
+	/* my primary tni */
+	utf_tni_select(utf_info.myppn, utf_info.mynrnk, &tni_prim, 0);
+	utf_printf("%s: ppn(%d) nrank(%d) tni_prim=%d\n", __func__, utf_info.myppn, utf_info.mynrnk, tni_prim);
+	utf_info.tniid = tni_prim;
+
+	/* other VCQ handles are created */
+	UTOFU_CALL(1, utofu_create_vcq_with_cmp_id, tni_prim, 0x7, 0, &utf_info.vcqh);
+	UTOFU_CALL(1, utofu_query_vcq_id, utf_info.vcqh, &utf_info.vcqid);
+	utf_info.tniids[0] = tni_prim;
+	utf_info.vcqhs[0] = utf_info.vcqh;
+	utf_info.vcqids[0] = utf_info.vcqid;
+        UTOFU_CALL(1, utofu_get_onesided_tnis, &tnis, &ntni);
+	utf_info.ntni = ntni;
+	for (ni = 0, vhent = 1; ni < ntni; ni++) {
+	    utofu_tni_id_t	tni_id = tnis[ni];
+	    if (tni_id == tni_prim) continue;
+	    UTOFU_CALL(1, utofu_create_vcq_with_cmp_id, tni_id, 0x7, 0, &utf_info.vcqhs[vhent]);
+	    UTOFU_CALL(1, utofu_query_vcq_id, utf_info.vcqhs[vhent], &utf_info.vcqids[vhent]);
+	    utf_info.tniids[vhent] = tnis[ni];
+	    vhent++;
+	}
+	if (tnis) free(tnis);
+	utf_printf("%s: MY CQ LIST:\n", __func__);
+	for (ni = 0; ni < ntni; ni++) {
+	    utf_printf("\t: ni(%d) vcqh(%lx) vcqid(%lx) --> %s\n",
+		       utf_info.tniids[ni], utf_info.vcqhs[ni], utf_info.vcqids[ni],
+		       vcqh2string(utf_info.vcqhs[ni], NULL, 0));
+	}
+    }
+    {	/* other attributes */
+        struct utofu_onesided_caps *cap;
+	UTOFU_CALL(1, utofu_query_onesided_caps, utf_info.tniid, &cap);
+	utf_info.max_mtu = cap->max_mtu;
+	utf_info.max_piggyback_size = cap->max_piggyback_size;
+	utf_info.max_edata_size = cap->max_edata_size;
+    }
+    utf_cqselect_init(utf_info.myppn, utf_info.mynrnk, utf_info.ntni, utf_info.tniids,
+		      utf_info.vcqhs);
     utf_printf("%s: returns\n", __func__);
     return 1;
 }
@@ -292,6 +390,57 @@ utf_shm_finalize(void *addr)
     return shmdt(addr);
 }
 
+void *
+utf_cqselect_init(int ppn, int nrnk, int ntni, utofu_tni_id_t *tnis, utofu_vcq_hdl_t *vcqhp)
+{
+    int	i;
+    size_t	psz = sysconf(_SC_PAGESIZE);
+    size_t	sz = sysconf(_SC_PAGESIZE);
+    struct tni_info	*tinfo;
+
+    sz = ((sizeof(struct cqsel_table) + psz - 1)/sz)*sz;
+    utf_printf("pid(%d) %s: nrnk(%d) ntni(%d) sz(%ld) sizeof(struct cqsel_table)=%ld\n", utf_info.mypid, __func__, nrnk, ntni, sz, sizeof(struct cqsel_table));
+
+    utf_info.cqseltab = (struct cqsel_table*) utf_shm_init(sz, SHMEM_KEY_VAL_FMT);
+    if (utf_info.cqseltab == NULL) {
+	utf_printf("%s: cannot allocate shared memory for CQ management\n", __func__);
+	abort();
+    }
+    if (nrnk == 0) {
+	memset(utf_info.cqseltab->snd_len, 0, sizeof(utf_info.cqseltab->snd_len));
+	memset(utf_info.cqseltab->rcv_len, 0, sizeof(utf_info.cqseltab->rcv_len));
+    }
+    tinfo = utf_info.tinfo = &utf_info.cqseltab->node[nrnk];
+    tinfo->ppn = ppn;
+    tinfo->nrnk = nrnk;
+    tinfo->ntni = ntni;
+    for (i = 0; i < ntni; i++) {
+	assert(tnis[i] < 6);
+	tinfo->idx[i] = tnis[i];
+	tinfo->vcqhdl[i] = vcqhp[i];
+	utofu_query_vcq_id(vcqhp[i], &tinfo->vcqid[i]);
+	utf_printf("pid(%d) \t[%d]idx[%d]: vcqh(0x%lx) vcqid(0x%lx)\n", utf_info.mypid, i, tnis[i],
+		   vcqhp[i], tinfo->vcqid[i]);
+    }
+    tinfo->usd[0] = 1;	/* this is used primary including receiving */
+    return (void*) tinfo;
+}
+
+int
+utf_cqselect_finalize()
+{
+    int	rc;
+    utf_cqtab_show();
+    if (utf_info.cqseltab) {
+	rc = utf_shm_finalize(utf_info.cqseltab);
+	if (rc < 0) {
+	    perror("YIXXXXXXX  SHMEM");
+	}
+	utf_info.cqseltab = NULL;
+	utf_info.tinfo = NULL;
+    }
+    return 0;
+}
 
 void
 utf_fence()
@@ -311,6 +460,133 @@ err:
 void
 utf_procmap_finalize()
 {
+    int	i;
+    utf_cqselect_finalize();
+    utf_free(utf_info.myfiaddr); utf_info.myfiaddr = NULL;
+    utf_free(utf_info.vname); utf_info.vname = NULL;
+    utf_free(utf_info.phys_node); utf_info.phys_node = NULL;
+    for (i = 0; i < utf_info.ntni; i++) {
+	if (utf_info.vcqhs[i]) {
+	    int rc;
+	    utf_printf("%s: vcqhs[%d]: 0x%lx\t", __func__, i, utf_info.vcqhs[i]);
+	    rc = utofu_free_vcq(utf_info.vcqhs[i]);
+	    utf_printf("%s(%d)\n", rc == UTOFU_SUCCESS ? "SUCCESS" : "ERROR", rc);
+	    utf_info.vcqhs[i] = 0;
+	}
+    }
     PMIx_Finalize(NULL, 0);
 }
 
+void
+utf_vname_show(FILE *fp)
+{
+    struct tofu_vname	*vnp = utf_info.vname;
+    int	i;
+
+    for (i = 0; i < utf_info.nprocs; i++) {
+	fprintf(fp, "\t[%d] xyzabc(%s) xyz(%s) vcqid(0x%lx) cid(%d) tni(%d) cq(%d)\n",
+		i, pcoords2string(vnp[i].xyzabc, NULL, 0),
+		lcoords2string(vnp[i].xyz, NULL, 0),
+		vnp[i].vcqid, vnp[i].cid, TNIQ2TNI(vnp[i].tniq[0]), TNIQ2CQ(vnp[i].tniq[0]));
+    }
+}
+
+void
+utf_tni_show()
+{
+    int	i;
+    utf_printf("TNI info\n");
+    for (i = 0; i < TOFU_NIC_SIZE; i++) {
+	utf_printf("\tTNI[%d]: put len(0x%lx) get len(0x%lx)\n",
+		   i, utf_info.cqseltab->snd_len[i], utf_info.cqseltab->rcv_len[i]);
+    }
+}
+
+void
+utf_cqtab_show()
+{
+    int i;
+    struct tni_info	*tinfo = &utf_info.cqseltab->node[utf_info.mynrnk];
+    if (utf_info.mynrnk == 0) {
+	utf_tni_show();
+    }
+    utf_printf("CQ table tinfo(%p) entries(%d) nrank(%d)\n", tinfo, tinfo->ntni, utf_info.mynrnk);
+    for (i = 0; i < tinfo->ntni; i++) {
+	utf_printf("\t[%d]idx[%d]: vcqh(0x%lx) vhcid(0x%lx) busy(%d)\n",
+		   i, tinfo->idx[i], tinfo->vcqhdl[i], tinfo->vcqid[i], tinfo->usd[i]);
+    }
+    utf_printf("TNI left message\n");
+    for (i = 0; i < tinfo->ntni; i++) {
+	utf_printf("\t[%d]: send rest(%ld) recv rest(%ld)\n",
+		   i, utf_info.cqseltab->snd_len[i], utf_info.cqseltab->rcv_len[i]);
+    }
+}
+
+/* Fujitsu compiler claim the following statement, but it is OK */
+#define NODE_NAME       "host-%s,"
+#define NODE_NAME_FMT	("host-" FMT_PHYS_COORDS)
+#define NODE_NM_LEN     (6 + 3*6 - 1)	/* excluding termination */
+
+pmix_status_t
+PMIx_Resolve_nodes(const char *nspace, char **nodelist)
+{
+    int	np, tppn, rnk, i;
+    size_t	sz;
+    char	*lst, *ptr;
+
+    utf_get_peers(NULL, &np, &tppn, &rnk);
+    utf_printf("%s: jid=%d nprocs=%d\n", __func__, atoi(nspace), np);
+    sz = NODE_NM_LEN*utf_info.nnodes + 2; /* two more */
+    lst = malloc(sz);
+    if (lst == NULL) {
+        utf_printf("%s: Cannot allocate memory size(%d)\n", __func__, sz);
+        return -1;
+    }
+    memset(lst, 0, sz);
+    ptr = lst;
+    for (i = 0; i < utf_info.nnodes; i++) {
+	/* Fujitsu compiler claim the following statement, but it is OK */
+        snprintf(ptr, NODE_NM_LEN+1, NODE_NAME, pcoords2string(utf_info.phys_node[i], NULL, 0));
+        ptr += NODE_NM_LEN;
+    }
+    *(ptr - 1) = 0;
+    utf_printf("\tlist=%s\n", lst);
+    *nodelist = lst;
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t
+PMIx_Resolve_peers(const char *nodename, const char *nspace,
+		   pmix_proc_t **procs, size_t *nprocs)
+{
+    pmix_status_t xc = PMIX_SUCCESS;
+    int         srank;
+    int         i;
+    pmix_proc_t *pr;
+    size_t	nranks;
+    int		ppn;
+    union jtofu_phys_coords	pcoords;
+    jtofu_rank_t	nd_ranks[48];
+
+    /*
+     * In case of 1 process per 1 node, srank is rank of node.
+     */
+    utf_printf("%s: nodename=%s nspace=%s\n", __func__, nodename, nspace); fflush(stderr);
+    sscanf(nodename, NODE_NAME_FMT, 
+	   &pcoords.s.x, &pcoords.s.y, &pcoords.s.z,
+	   &pcoords.s.a, &pcoords.s.b, &pcoords.s.c);
+    utf_printf("\t:\t%s\n\t", pcoords2string(pcoords, NULL, 0));
+    JTOFU_CALL(1, jtofu_query_ranks_from_phys_coords, utf_info.jobid,
+	       &pcoords, utf_info.myppn, nd_ranks, &nranks);
+    PMIX_PROC_CREATE(pr, nranks); /* pmix_proc_t has two members: nspace and rank */
+    for (i = 0; i < nranks; i++) {
+	memset(&pr[i], 0, sizeof(pmix_proc_t));
+	strncpy(pr[i].nspace, nspace, PMIX_MAX_NSLEN);
+	pr[i].rank = nd_ranks[i];
+	fprintf(stderr, " rank(%d)", nd_ranks[i]);
+    }
+    fprintf(stderr, "\n"); fflush(stderr);
+    *procs = pr;
+    *nprocs = nranks;
+    return xc;
+}

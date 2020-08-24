@@ -1,11 +1,11 @@
+#include <mpi.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <getopt.h>
 #include <stdlib.h>
 #include <stdarg.h>
-#include <utf.h>
-#include <utf_debug.h>
 #include <utf_timer.h>
+#include "testlib.h"
 
 extern int	myprintf(const char *fmt, ...);
 
@@ -15,9 +15,6 @@ int	vflag, dflag, mflag, sflag, Mflag, pflag, wflag;
 int	iteration;
 size_t	length, mlength;
 
-#include <pmix.h>
-static  pmix_proc_t		pmix_proc[1];
-
 void
 test_init(int argc, char **argv)
 {
@@ -25,12 +22,12 @@ test_init(int argc, char **argv)
 
     mypid = getpid();
 
-    while ((opt = getopt(argc, argv, "d:vi:l:m:s:L:M:pwD")) != -1) {
+    while ((opt = getopt(argc, argv, "d:vi:l:m:s:L:M:pw")) != -1) {
 	switch (opt) {
 	case 'd': /* debug */
 	    dflag = atoi(optarg);
 	    myprintf("dflag(0x%x)\n", dflag);
-	    utf_dflag = dflag;
+	    dflag = dflag;
 	    break;
 	case 'v': /* verbose */
 	    vflag = 1;
@@ -58,16 +55,15 @@ test_init(int argc, char **argv)
 	case 'w':
 	    wflag = 1;
 	    break;
-	case 'D':
-	    /* handled by utf */
-	    break;
 	}
     }
     optind = 0; /* reset getopt() library */
-    //PMIx_Init(pmix_proc, NULL, 0);
-    //PMIx_Finalize(NULL, 0);
-    utf_init(argc, argv, &myrank, &nprocs, &nnp);
-    utf_printf("%s: myrank = %d\n", __func__, myrank);
+    VERBOSE("Calling MPI_Init\n");
+    MPI_Init(&argc, &argv);
+    VERBOSE("Done MPI_Init\n");
+    MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+    VERBOSE("Proc Size = %d myrank = %d\n", nprocs, myrank);
 }
 
 void
@@ -83,12 +79,11 @@ static struct utf_timer	yi_timer[YI_TMR_EVT_MAX];
 static double	yi_tmax[YI_TMR_EVT_MAX];
 static double	yi_tmin[YI_TMR_EVT_MAX];
 static uint64_t	yi_cnt[YI_TMR_EVT_MAX];
-static char	yi_fname[128];
+static char	yi_fname[1024];
 
 void
 mytmrfinalize(char *pname)
 {
-    char	fnbuf[1024];
     char    *cp1 = getenv("TOFULOG_DIR");
     char    *cp2 = getenv("PJM_JOBID");
     FILE	*fp;
@@ -99,19 +94,17 @@ mytmrfinalize(char *pname)
 	fprintf(stderr, "F-MPICH has not been compiled with -DUTF_TIMER\n");
 	return;
     }
-    fnbuf[0] = 0;
-    //show_compile_options(NULL, fnbuf, 1024);
     if (cp1) {
 	if (cp2) {
-	    snprintf(yi_fname, 128, "%s/%s-timing%s-%s-%d.txt", cp1, pname, fnbuf, cp2, myrank);
+	    snprintf(yi_fname, 128, "%s/%s-timing-%s-%d.txt", cp1, pname, cp2, myrank);
 	} else {
-	    snprintf(yi_fname, 128, "%s/%s-timing%s-%d.txt", cp1, pname, fnbuf, myrank);
+	    snprintf(yi_fname, 128, "%s/%s-timing-%d.txt", cp1, pname, myrank);
 	}
     } else {
 	if (cp2) {
-	    snprintf(yi_fname, 128, "%s-timing%s-%s-%d.txt", pname, fnbuf, cp2, myrank);
+	    snprintf(yi_fname, 128, "%s-timing-%s-%d.txt", pname, cp2, myrank);
 	} else {
-	    snprintf(yi_fname, 128, "%s-timing%s-%d.txt", pname, fnbuf, myrank);
+	    snprintf(yi_fname, 128, "%s-timing-%d.txt", pname, myrank);
 	}
     }
     if ((fp = fopen(yi_fname, "w")) == NULL) {

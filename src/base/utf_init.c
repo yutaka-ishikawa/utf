@@ -19,6 +19,7 @@ uint32_t	tmr_count[TMR_EVT_MAX];
 uint64_t	tmr_tm[TMR_EVT_MAX][TMR_COUNT_MAX];
 uint64_t	tmr_hz;
 int		tmr_sflag;
+int		utf_nokeep;
 
 static char *
 sym_tmr[] = { "UTF_SEND_POST", "UTF_RECV_POST", "UTF_SENDENGINE",
@@ -89,47 +90,40 @@ void
 utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
 {
     int	opt;
-    int	redirect = 0;
     int	np, tppn, rnk, i;
 
     if (utf_initialized) {
 	return;
     }
     utf_initialized = 1;
-    mypid = getpid();
-    while ((opt = getopt(argc, argv, "Dd:vs:r:i:l:m")) != -1) {
-	switch (opt) {
-	case 'D':
-	    redirect = 1;
-	    break;
-	case 'd': /* debug */
-	    utf_dflag = atoi(optarg);
-	    utf_printf("dflag(0x%x)\n", utf_dflag);
-	    break;
+    utf_info.mypid = getpid();
+    opterr = 0;
+    if (argc > 0 && argv != NULL) {
+	while ((opt = getopt(argc, argv, "D")) != -1) {
+	    switch (opt) {
+	    case 'D':
+		utf_rflag = 1;
+		break;
+	    }
 	}
+	optind = 0; /* reset */
     }
-    optind = 0; /* reset */
-    DEBUG(DLEVEL_PMIX) {
-	utf_printf("Calling PMIx_Init\n");
+    /* debug flag */
+    utf_dflag = utf_getenvint("UTF_DEBUG");
+    if (utf_dflag > 0) {
+	utf_printf("%s: utf_dflag=%d\n", __func__, utf_dflag);
     }
-
-    /* vcq handle are created  */
+    /* utf_info is setup  */
+    /* stderr redirect will be on inside the utf_get_peers */
     utf_get_peers(NULL, &np, &tppn, &rnk);
-    if (redirect) {
-	utf_redirect();
-    }
-
-    utf_tni_select(utf_info.myppn, utf_info.mynrnk, &utf_info.tniid, 0);
-    UTOFU_CALL(1, utofu_create_vcq_with_cmp_id, utf_info.tniid, 0x7, 0, &utf_info.vcqh);
-    UTOFU_CALL(1, utofu_query_vcq_id, utf_info.vcqh, &utf_info.vcqid);
-    utf_printf("vcqh(%lx) vcqid(%lx)\n", utf_info.vcqh, utf_info.vcqid);
-
     utf_mem_init();
     i = utf_getenvint("UTF_MSGMODE");
     utf_setmsgmode(i);
     utf_tmr_init();
-    utf_printf("%s: utf_info.nprocs(%d) np(%d) utf_info.myrank(%d) rnk(%d)\n",
-	       __func__, utf_info.nprocs, np, utf_info.myrank, rnk);
+    i = utf_getenvint("UTF_NOKEEP");
+    utf_nokeep = i;
+    utf_printf("%s: utf_info.nprocs(%d) np(%d) utf_info.myrank(%d) rnk(%d) NO_KEEP(%d)\n",
+	       __func__, utf_info.nprocs, np, utf_info.myrank, rnk, utf_nokeep);
     utf_mem_show();
     /**/
     utf_fence();
@@ -140,15 +134,17 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
 
 
 void
-utf_finalize()
+utf_finalize(int wipe)
 {
-    utf_req_wipe();
+    utf_printf("%s: wipe(%d)\n", __func__, wipe);
+    if (wipe) {
+	utf_req_wipe();
+	utf_fence();
+    }
     utf_fence();
     utf_mem_finalize();
-    utf_free(utf_info.vname);
-    UTOFU_CALL(0, utofu_free_vcq, utf_info.vcqh);
-    jtofu_finalize();
     utf_procmap_finalize();
+    jtofu_finalize();
     fflush(NULL);
 }
 

@@ -187,7 +187,7 @@ main(int argc, char **argv)
     }
     /* timer report */
     mytmrfinalize(progname);
-    utf_finalize();
+    utf_finalize(1);
     myprintf("Finish\n");
     return 0;
 }
