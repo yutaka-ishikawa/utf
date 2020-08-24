@@ -288,3 +288,19 @@ utf_nullfunc()
 {
     utf_info.counter++;
 }
+
+
+char *
+utf_pkt_getinfo(struct utf_packet *pkt, int *mrkr, int *sidx)
+{
+
+    static char	pbuf[256];
+#if 0
+    snprintf(pbuf, 256, "src(%d) tag(0x%lx) size(%ld) pyldsz(%d) rndz(%d) flgs(0x%x) mrker(%d) sidx(%d)",
+	     pkt->hdr.src, pkt->hdr.tag, (uint64_t) pkt->hdr.size,
+	     pkt->hdr.pyldsz, pkt->hdr.rndz, pkt->hdr.flgs, pkt->hdr.marker, pkt->hdr.sidx);
+#endif
+    *mrkr = pkt->hdr.marker;
+    *sidx = pkt->hdr.sidx;
+    return pbuf;
+}

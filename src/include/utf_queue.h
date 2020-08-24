@@ -91,6 +91,8 @@ struct utf_packet {
 #define PKT_PYLDSZ(pkt) ((pkt)->hdr.pyldsz)
 #define PKT_RADDR(pkt)  ((pkt)->pyld.rndzdata)
 
+#define PKT_FI_DATA(pkt) ((pkt)->pyld.fi_msg.msgdata)
+
 struct utf_egr_sbuf {
     union {
 	utfslist_entry_t	slst;
@@ -216,6 +218,9 @@ struct utf_recv_cntr {
     uint8_t	mypos;
     uint32_t	tmp;
     utfslist_entry_t	rget_slst;/* rendezous: list of rget progress */
+    /* for debugging */
+    uint32_t	dbg_idx;
+    uint8_t	dbg_rsize[COM_RBUF_SIZE];
 };
 
 /*****************************************************
@@ -230,9 +235,10 @@ enum {
     S_DO_EGR_WAITCMPL	= 5,
     S_DONE_EGR		= 6,
     S_REQ_RDVR		= 7,
-    S_RDVDONE		= 8,
-    S_DONE		= 9,
-    S_WAIT_BUFREADY	= 10
+    S_DO_RDVR		= 8,
+    S_RDVDONE		= 9,
+    S_DONE		= 10,
+    S_WAIT_BUFREADY	= 11
 };
 
 enum {
@@ -307,6 +313,9 @@ struct utf_send_cntr {	/* 500 Byte */
     struct utf_send_msginfo msginfo[COM_SCNTR_MINF_SZ];	/*  84 = +408 the first entry */
     utfslist_entry_t	slst;		/* 492 = + 8 Byte for free list */
 					/* 500  */
+    /* for debugging */
+    uint32_t	dbg_idx;
+    uint8_t	dbg_ssize[COM_RBUF_SIZE];
 };
 #pragma pack()
 

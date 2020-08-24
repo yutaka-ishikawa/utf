@@ -12,12 +12,14 @@
 #PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-spack2,jobenv=linux"
 #PJM -L proc-core=unlimited
 #------- Program execution -------#
-export LD_LIBRARY_PATH=${HOME}/work/utf/build/:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=../build/:$LD_LIBRARY_PATH
 #
 # The stderr redirection is enabled if -D option is specified
 export TOFULOG_DIR=./results
 
 echo "LD_LIBRARY_PATH=" $LD_LIBRARY_PATH
+mpiexec -np 2 ./test_p2p pingpong -i 10 -D	#  -D stderr redirection
+exit
 echo "******************************************************"
 mpiexec -np 2 ./test_p2p pingpong -i 10000 -D	#  -D stderr redirection
 echo "***************************"
@@ -28,6 +30,7 @@ echo
 mpiexec -np 2 ./test_p2p pingping -i 10000 -D -w
 echo "EXITING"
 echo
+ldd ./test_p2p
 echo
 echo "**** Environment Variables ***"
 printenv

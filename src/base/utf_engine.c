@@ -191,7 +191,7 @@ progress:
 	    usp->usize = PKT_PYLDSZ(pkt);
 	    usp->state = S_DONE_EGR;
 	    break;
-	case SNDCNTR_INPLACE_EAGER:
+	case SNDCNTR_INPLACE_EAGER:  /* packet data is already filled */
 	    usp->usize = PKT_PYLDSZ(pkt);
 	    usp->state = S_DO_EGR;
 	    newusp = remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd,
@@ -227,7 +227,6 @@ progress:
 	utofu_stadd_t	recvstadd;
 	size_t		ssize;
 
-	ssize = rest > MSG_PYLDSZ ? MSG_PYLDSZ : rest;
 	recvstadd = calc_recvstadd(usp, ridx);
 	//utf_printf("%s: MSG DST(%d) S_DO_EGR, msgsize(%ld) sentsize(%ld) recvidx(%d)\n",
 	//	   __func__, usp->dst, minfo->msghdr.size, usp->usize, usp->recvidx);
@@ -238,7 +237,13 @@ progress:
 	 * copy to eager send buffer. minfo->sndbuf is minfo->sndstadd
 	 * in stearing address.
 	 */
-	memcpy(pkt->pyld.msgdata, minfo->usrbuf + usp->usize, ssize);
+	if (PKT_MSGFLG(pkt)&MSGHDR_FLGS_FI) {
+	    ssize = rest > MSG_FI_PYLDSZ ? MSG_FI_PYLDSZ : rest;
+	    memcpy(pkt->pyld.fi_msg.msgdata, minfo->usrbuf + usp->usize, ssize);
+	} else {
+	    ssize = rest > MSG_PYLDSZ ? MSG_PYLDSZ : rest;
+	    memcpy(pkt->pyld.msgdata, minfo->usrbuf + usp->usize, ssize);
+	}
 	pkt->hdr.pyldsz = ssize;
 	DEBUG(DLEVEL_PROTO_EAGER) {
 	    utf_printf("%s: S_DO_EGR, mreq(%p) msgsize(%ld) sentsize(%ld) "
@@ -247,25 +252,36 @@ progress:
 		       __func__, minfo->mreq, minfo->msghdr.size, usp->usize,
 		       rest, usp->usize, ssize, recvstadd, usp->recvidx);
 	}
-#if 0
-	if (usp->usize ^ 1) {
-	    flgs |= UTOFU_ONESIDED_FLAG_DELAY_START;
-	}
-#endif
 	newusp = remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd, recvstadd, MSG_PKTSZ, usp->mypos, flgs, usp);
 	usp->usize += ssize;
 	usp->recvidx++;
 	//utf_printf("%s: DO_EGER: DST(%d) recvidx(%d) ssize(0x%lx) usize(%ld)\n", __func__, usp->dst, usp->recvidx, ssize, usp->usize);
+#if 0
+	usp->dbg_ssize[usp->dbg_idx] = ssize;
+	usp->dbg_idx = (usp->dbg_idx + 1) % COM_RBUF_SIZE;
+#endif
 	if (minfo->msghdr.size == usp->usize) {
+#if 0
+	    int i;
+	    utf_printf("%s: going to DO_EGER: DST(%d) pkt->hdr.pyldsz(%d) last MSG(%s)\n", __func__,
+		       usp->dst, pkt->hdr.pyldsz, pkt2string(pkt, NULL, 0));
+	    utf_printf("%s: sent size history\n", __func__);
+	    for (i = 0; i < usp->dbg_idx; i++) {
+		fprintf(stderr, " %d(%d)", usp->dbg_ssize[i], i);
+	    }
+#endif
 	    usp->state = S_DONE_EGR;
 	}
 	break;
     }
-    case S_REQ_RDVR:
+    case S_REQ_RDVR: /* Request has been received by the receiver */
+	usp->state = S_DO_RDVR;
+	break;
+    case S_DO_RDVR:
     {
 	size_t	rest = minfo->msghdr.size - usp->usize;
 	DEBUG(DLEVEL_PROTO_RENDEZOUS) {
-	    utf_printf("%s: S_REQ_RDVR evt(%s)\n", __func__, str_evnt[evt]);
+	    utf_printf("%s: S_REQ_RDVR evt(%s) rest(%d)\n", __func__, str_evnt[evt], rest);
 	}
 	if (rest == 0) {
 	    usp->state = S_RDVDONE;
@@ -289,7 +305,7 @@ progress:
     {
 	int	idx;
 	struct utf_msgreq	*req = minfo->mreq;
-	//utf_printf("%s: DONE_EGER: DST(%d) recvidx(%d)\n", __func__, usp->dst, usp->recvidx);
+	DEBUG(DLEVEL_PROTOCOL) utf_printf("%s: DONE_EGER: DST(%d) usize(%d) recvidx(%d)\n", __func__, usp->dst, usp->usize, usp->recvidx);
 	if (req->notify) req->notify(req);
 	if (req->state == REQ_PRG_RECLAIM) {
 	    utf_msgreq_free(req); /* req->state is reset to REQ_NONE */
@@ -326,6 +342,7 @@ progress:
 	break;
     case S_WAIT_BUFREADY:
 	utf_printf("%s: protocol error in S_WAIT_BUFREADY\n", __func__);
+	abort();
 	break;
     }
     return newusp;
@@ -409,6 +426,13 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 {
     struct utf_msgreq	*req;
 
+#if 0
+    if (sidx < 0) {
+	sidx = pkt->hdr.sidx;
+	utf_printf("%s: CORRECT sidx(%d)\n", __func__, sidx);
+	abort();
+    }
+#endif
     DEBUG(DLEVEL_PROTOCOL) {
 	utf_printf("%s: urp(%p), ridx(%d) recvidx(%d) state(%s) MSG(%s)\n",
 		   __func__, urp, urp->mypos, urp->recvidx, rstate_symbol[urp->state], pkt2string(pkt, NULL, 0));
@@ -445,24 +469,37 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 		memcpy(&req->rgetsender, &pkt->pyld.rndzdata, sizeof(struct utf_vcqid_stadd));
 		req->state = REQ_WAIT_RNDZ;
 		req->rcntr = urp;
+		urp->req = req;
+		urp->state = R_WAIT_RNDZ; /* state is chagned when rget_do is called */
+		// utf_printf("%s: SRC(%d) URP(%p) req(%p)\n", __func__, pkt->hdr.src, urp, req);
 	    } else {/* eager */
 		req->buf = utf_malloc(PKT_MSGSZ(pkt));
 		req->expsize = PKT_MSGSZ(pkt); /* during receiving */
 		req->state = REQ_NONE;
 		if (eager_copy_and_check(urp, req, pkt) == R_DONE) goto done;
+		urp->req = req;
 	    }
 	}
-	urp->req = req;
 	goto exiting;
     }
 	break;
     case R_BODY:
 	req = urp->req;
-	//utf_nullfunc();
+	utf_nullfunc();
 	//getpid();
-	//utf_printf("%s: SRC(%d) rsize(%ld)\n", __func__, req->hdr.src, PKT_PYLDSZ(pkt));
 	//utf_printf("%s: SRC(%d) req->rsize(%ld)\n", __func__, req->hdr.src, PKT_PYLDSZ(pkt));
+	//utf_printf("%s: SRC(%d) expsize(%d) rsize(%ld)\n", __func__, req->hdr.src, req->expsize, req->rsize);
 	if (eager_copy_and_check(urp, req, pkt) == R_DONE) goto done;
+	if (req->ustatus == REQ_OVERRUN) {
+	    int i;
+	    utf_printf("%s: OVERRUN SRC(%d) expsize(%d) rsize(%d) recvidx(%d) MSG(%s)\n", __func__,
+		       req->hdr.src,  req->expsize, req->rsize, urp->recvidx, pkt2string(pkt, NULL, 0));
+	    utf_printf("%s: received size history\n", __func__);
+	    for (i = 0; i < urp->dbg_idx; i++) {
+		fprintf(stderr, " %d(%d)", urp->dbg_rsize[i], i);
+	    }
+	    abort();
+	}
 	/* otherwise, continue to receive message */
 	break;
     case R_DO_RNDZ: /* R_DO_RNDZ --> R_DONE */
@@ -495,23 +532,27 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 	req->state = REQ_DONE;
 	if (req->type == REQ_RECV_UNEXPECTED) {
 	    DEBUG(DLEVEL_PROTOCOL) {
-		utf_printf("%s: recv_post SRC(%d) unexp msg is now ready (idx=%d)\n", __func__, pkt->hdr.src,
+		utf_printf("%s: recv_post SRC(%d) UEXP DONE(idx=%d)\n", __func__, req->hdr.src,
 			   utf_msgreq2idx(req));
 	    }
 	} else {
 	    DEBUG(DLEVEL_PROTOCOL) {
-		utf_printf("%s: recv_post SRC(%d) Expected message arrived (idx=%d)\n", __func__, pkt->hdr.src,
+		utf_printf("%s: recv_post SRC(%d) EXP DONE(idx=%d)\n", __func__, req->hdr.src,
 			   utf_msgreq2idx(req));
 	    }
 	    if (req->notify) req->notify(req);
 	}
 	/* reset the state */
 	urp->state = R_NONE;
+	urp->req = NULL;
 	//utf_nullfunc();
 	break;
     case R_HEAD:
     case R_DONE:
     default:
+	utf_printf("%s: PROTOCOL ERROR SRC(%d), urp(%p), ridx(%d) recvidx(%d) state(%s) MSG(%s)\n",
+		   __func__, pkt->hdr.src, urp, urp->mypos, urp->recvidx, rstate_symbol[urp->state],
+		   pkt != NULL ? pkt2string(pkt, NULL, 0) : "NOPKT");
 	return -1;
     }
     exiting:
@@ -531,6 +572,11 @@ utf_mrqprogress()
 	char msg[1024];
 	utofu_get_last_error(msg);
 	utf_printf("%s: utofu_poll_mrq ERROR rc(%d) %s\n", __func__, uc, msg);
+	utf_printf("%s: type(%s) vcq_id(0x%lx) edata(0x%x) rmt_value(0x%lx) lcl_stadd(0x%lx) rmt_stadd(0x%lx)\n",
+		   __func__, notice_symbol[mrq_notice.notice_type],
+		   mrq_notice.vcq_id, mrq_notice.edata, mrq_notice.rmt_value,
+		   mrq_notice.lcl_stadd, mrq_notice.rmt_stadd);
+	abort();
 	return ridx;
     }
     DEBUG(DLEVEL_UTOFU) {
@@ -668,8 +714,8 @@ utf_mrqprogress()
 		    usp->state = usp->ostate;
 		    utf_sendengine(usp, minfo, mrq_notice.rmt_value, evtype);
 		}
-	    } else {
-		// utf_printf("\t: stay state[%d:%s]\n", usp->state);
+	    } else { /* other type */
+		utf_sendengine(usp, minfo, mrq_notice.rmt_value, evtype);
 	    }
 	    fflush(NULL);
 	} else {

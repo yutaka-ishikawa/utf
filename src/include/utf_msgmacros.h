@@ -15,6 +15,7 @@ extern void	utf_tcqprogress();
 extern int	utf_mrqprogress();
 extern void	utf_peers_show();
 extern int	utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx);
+extern char	*utf_pkt_getinfo(struct utf_packet *pktp, int *mrkr, int *sidx);
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
 static char *rstate_symbol[] =
@@ -312,14 +313,16 @@ eager_copy_and_check(struct utf_recv_cntr *urp,
 	} else if ((req->rsize + cpysz) > req->expsize) { /* overrun */
 	    size_t	rest = req->expsize - req->rsize;
 	    req->ustatus = REQ_OVERRUN;
-	    utf_copy_to_iov(req->fi_msg, req->fi_iov_count, req->rsize,
-			    PKT_DATA(pkt), rest);
+	    if (rest > 0) {
+		utf_copy_to_iov(req->fi_msg, req->fi_iov_count, req->rsize,
+				PKT_FI_DATA(pkt), rest);
+	    }
 	}  else {
 	    if (req->buf) { /* enough buffer area has been allocated */
-		memcpy(&req->buf[req->rsize], PKT_DATA(pkt), cpysz);
+		memcpy(&req->buf[req->rsize], PKT_FI_DATA(pkt), cpysz);
 	    } else {
 		utf_copy_to_iov(req->fi_msg, req->fi_iov_count, req->rsize,
-				PKT_DATA(pkt), cpysz);
+				PKT_FI_DATA(pkt), cpysz);
 	    }
 	}
     }
@@ -423,6 +426,8 @@ utfgen_uexplst_enqueue(uint8_t flgs, struct utf_msgreq *req)
     }
 }
 
+extern int	utf_progress();
+#if 0
 static inline int
 utf_progress()
 {
@@ -440,18 +445,27 @@ utf_progress()
     for (j = utf_egr_rbuf.head.cntr + 1; j <= RCV_CNTRL_INIT/*RCV_CNTRL_MAX*/ ; j++) {
 	struct utf_packet	*msgbase = utf_recvbuf_get(j);
 	struct utf_recv_cntr	*urp = &utf_rcntr[j];
-	struct utf_packet	*pktp;
-	int	sidx;
+	volatile struct utf_packet	*pktp;
+	int	marker, sidx;
     try_again:
 	pktp = msgbase + urp->recvidx;
 	if (pktp->hdr.marker == MSG_MARKER) {
 	    /* message arrives */
 	    utf_tmr_end(TMR_UTF_RCVPROGRESS);
 	    sidx = pktp->hdr.sidx;
-	    if (utf_recvengine(urp, pktp, sidx) < 0) {
+	    if ((sidx & 0xff) == 0xff) {
+		utf_printf("%s: j(%d) PROTOCOL ERROR urp(%p)->state(%d:%s) sidx(%d) pkt(%p) MSG(%s)\n",
+			   __func__, j, urp, urp->state, rstate_symbol[urp->state],
+			   sidx, pktp, pkt2string((struct utf_packet*) pktp, NULL, 0));
+		utf_printf("%s: sidx(%d)\n", __func__, pktp->hdr.sidx);
+	    }
+	    /* for debugging */
+	    urp->dbg_rsize[urp->dbg_idx] = PKT_PYLDSZ(pktp);
+	    urp->dbg_idx = (urp->dbg_idx + 1) % COM_RBUF_SIZE;
+	    if (utf_recvengine(urp, (struct utf_packet*) pktp, sidx) < 0) {
 		utf_printf("%s: j(%d) protocol error urp(%p)->state(%d:%s) sidx(%d) pkt(%p) MSG(%s)\n",
 			   __func__, j, urp, urp->state, rstate_symbol[urp->state],
-			   sidx, pktp, pkt2string(pktp, NULL, 0));
+			   sidx, pktp, pkt2string((struct utf_packet*) pktp, NULL, 0));
 		abort();
 	    }
 	    pktp->hdr.hall = -1UL;
@@ -475,3 +489,4 @@ utf_progress()
 
     return 0;
 }
+#endif

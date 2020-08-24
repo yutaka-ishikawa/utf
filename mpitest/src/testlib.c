@@ -4,6 +4,7 @@
 #include <getopt.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <string.h>
 #include <utf_timer.h>
 #include "testlib.h"
 
@@ -11,9 +12,23 @@ extern int	myprintf(const char *fmt, ...);
 
 int	nnp, nprocs, myrank;
 pid_t	mypid;
-int	vflag, dflag, mflag, sflag, Mflag, pflag, wflag;
+int	vflag, dflag, mflag, sflag, Mflag, pflag, wflag, tflag;
 int	iteration;
 size_t	length, mlength;
+
+int
+opt_getint(char *cp)
+{
+    int	val = 0;
+    if (cp) {
+	if (!strncmp(cp, "0x", 2)) {
+	    sscanf(cp, "%x", &val);
+	} else {
+	    val = atoi(cp);
+	}
+    }
+    return val;
+}
 
 void
 test_init(int argc, char **argv)
@@ -22,7 +37,7 @@ test_init(int argc, char **argv)
 
     mypid = getpid();
 
-    while ((opt = getopt(argc, argv, "d:vi:l:m:s:L:M:pw")) != -1) {
+    while ((opt = getopt(argc, argv, "d:vi:l:m:st:L:M:pw")) != -1) {
 	switch (opt) {
 	case 'd': /* debug */
 	    dflag = atoi(optarg);
@@ -49,6 +64,10 @@ test_init(int argc, char **argv)
 	    break;
 	case 's':
 	    sflag = 1;
+	    break;
+	case 't':
+	    sflag = opt_getint(optarg);
+	    break;
 	case 'p':
 	    pflag = 1;
 	    break;

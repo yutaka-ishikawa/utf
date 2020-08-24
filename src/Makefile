@@ -5,7 +5,7 @@ include dep/mkdef.$(UTF_ARCH)
 INSTDIR  := $(HOME)/mpich-tofu
 INSTALL  := install
 
-CFLAGS += -I./include/ -shared -fPIC
+CFLAGS += -I../include/ -shared -fPIC
 CFLAGS += $(INCLUDES)
 SRCDIR   := ./base/
 INCDIR   := ./include
@@ -19,7 +19,7 @@ SRCS     := $(wildcard $(SRCDIR)/*.c)
 OBJS     := $(addprefix $(BUILDDIR)/, $(SRCS:.c=.o))
 DEPS	 := $(addprefix $(BUILDDIR)/, $(SRCS:.c=.d))
 
-.PHONY: all install clean
+.PHONY: all install clean depend
 all: $(TARGET)
 install:
 	[ -d $(INSTDIR)/lib ] || mkdir $(INSTDIR)/lib
@@ -32,6 +32,8 @@ $(TARGET): $(OBJS)
 $(BUILDDIR)/%.o: %.c
 	@mkdir -p $(BUILDDIR)/$(SRCDIR)
 	$(CC) $(CFLAGS) -c  $< -o $@
+../build/base/utf_progress.o: src/utf_progress.c
+	$(CC) -I../include -shared -fPIC -g -O2 -c  $< -o $@
 
 clean:
 	rm -f $(BUILDDIR)/$(SRCDIR)/*.o $(TARGET)

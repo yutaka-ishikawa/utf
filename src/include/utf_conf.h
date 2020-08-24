@@ -50,6 +50,7 @@
 #define TOFU_NTNI	6
 #define TOFU_ALIGN	256
 #define TOFU_RMA_MAXSZ	(8*1024*1024)	/* 8 MiB (8388608 B) */
+
 #define MSG_MTU		1920	/* Tofu MTU */
 //#define MSG_PKTSZ	(256*2)	/* must be cache align (256B) and shorter than MTU */
 #define MSG_PKTSZ	(256)	/* must be cache align (256B) and shorter than MTU */
@@ -58,11 +59,15 @@
 //#define MSG_MARKER	0x9 	/* 4 bit */
 //#define MSG_MARKER	(0x4B414E00L)	/* 4B */
 #define MSG_RCNTRSZ	sizeof(struct utf_vcqid_stadd)
-#define MSG_EAGER_SIZE	MSG_PYLDSZ
+#define MSG_EAGER_SIZE	MSG_PYLDSZ	/* 236 B (256 - 20) */
 #define UTOFU_PIGBACKSZ	32 /* See below */
-#define MSG_EAGER_PIGBACK_SZ	(UTOFU_PIGBACKSZ - sizeof(struct utf_msghdr))
+#define MSG_EAGER_PIGBACK_SZ	(UTOFU_PIGBACKSZ - sizeof(struct utf_msghdr))	/* 12 B */
 #define MSG_EGR		0
 #define MSG_RENDEZOUS	1
+
+//#define MSG_FI_PYLDSZ		(MSG_PYLDSZ - sizeof(uint64_t))	/* 228 B */ defined in utf_queue.h
+#define MSG_FI_EAGER_PIGBACK_SZ	(MSG_EAGER_PIGBACK_SZ - sizeof(uint64_t))	/* 4 B */
+#define MSG_FI_EAGER_SIZE	(MSG_EAGER_SIZE - sizeof(uint64_t))		/* 228 B */
 
 /* stadd */
 #define STAG_EGRMGT	10	/* utf_egrmgt */
