@@ -8,6 +8,7 @@
 #include "utf_sndmgt.h"
 #include "utf_queue.h"
 #include "utf_timer.h"
+#define UTF_RSTATESYM_NEEDED
 #include "utf_msgmacros.h"
 
 extern int utf_tcq_count;
@@ -128,7 +129,6 @@ static inline struct utf_send_cntr *
 utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64_t rslt, int evt)
 {
     struct utf_send_cntr *newusp = NULL;
-progress:
     DEBUG(DLEVEL_PROTOCOL) {
 	utf_printf("%s: usp(%p)->state(%s), evt(%d) rcvreset(%d) recvidx(%d)\n",
 		 __func__, usp, sstate_symbol[usp->state],
@@ -205,6 +205,11 @@ progress:
 				recvstadd, MSG_PKTSZ, usp->mypos, flgs, usp);
 	    usp->recvidx++;
 	    usp->rgetwait = 0; usp->rgetdone = 0;
+	    if (usp->dst == 128) {
+		struct utf_packet	*pkt = &minfo->sndbuf->pkt;
+		utf_printf("%s: usp->mient(%d) usp->micur(%d) pkt->pyld.fi_msg.rndzdata.stadd = 0x%lx\n",
+			   __func__, usp->mient, usp->micur, pkt->pyld.fi_msg.rndzdata.stadd[0]);
+	    }
 	    DEBUG(DLEVEL_PROTO_RENDEZOUS) {
 		utf_printf("%s: rendezous send size(%ld) minfo->sndstadd(%lx) "
 			   "src(%d) tag(%d) rndz(%d)\n", __func__,
@@ -301,7 +306,6 @@ progress:
 	}
 	/* fall into ... */
     case S_DONE_EGR:
-    done_egr:
     {
 	int	idx;
 	struct utf_msgreq	*req = minfo->mreq;
@@ -394,6 +398,7 @@ utf_send_start(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo)
     if (newusp) {
 	utf_sendengine_prep(utf_info.vcqh, newusp);
     }
+    return 0;
 }
 
 
@@ -401,7 +406,6 @@ void
 utf_tcqprogress()
 {
     struct utf_send_cntr	 *usp;
-    struct utf_send_msginfo	*minfo;
     int	rc;
 
     do {
@@ -435,7 +439,8 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 #endif
     DEBUG(DLEVEL_PROTOCOL) {
 	utf_printf("%s: urp(%p), ridx(%d) recvidx(%d) state(%s) MSG(%s)\n",
-		   __func__, urp, urp->mypos, urp->recvidx, rstate_symbol[urp->state], pkt2string(pkt, NULL, 0));
+		   __func__, urp, urp->mypos, urp->recvidx, rstate_symbol[urp->state],
+		   pkt != NULL ? pkt2string(pkt, NULL, 0) : "NULL");
     }
     switch (urp->state) {
     case R_NONE: /* Begin receiving message */
@@ -447,14 +452,22 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 	if ((idx = utfgen_explst_match(PKT_MSGFLG(pkt), PKT_MSGSRC(pkt), PKT_MSGTAG(pkt))) != -1) {
 	    req = utf_idx2msgreq(idx);
 	    req->rndz = pkt->hdr.rndz;
+	    if (pkt->hdr.size != req->usrreqsz) {
+		utf_printf("%s; YI###### SENDER SIZE(%ld) RECEIVER SIZE(%ld)\n", __func__, pkt->hdr.size, req->rcvexpsz);
+	    }
 	    if (req->rndz) {
-		memcpy(&req->rgetsender, &pkt->pyld.rndzdata, sizeof(struct utf_vcqid_stadd));
+		if (PKT_MSGFLG(pkt) == 0) { /* utf message */
+		    memcpy(&req->rgetsender, &pkt->pyld.rndzdata, sizeof(struct utf_vcqid_stadd));
+		} else { /* fi msg */
+		    memcpy(&req->rgetsender, &pkt->pyld.fi_msg.rndzdata, sizeof(struct utf_vcqid_stadd));
+		}
 		req->hdr = pkt->hdr;
 		req->rcntr = urp;
 		urp->req = req;
 		rget_start(urp, req); /* state is changed to R_DO_RNDZ */
-	    } else { /* eager */
+	    } else { /* expected eager */
 		req->hdr = pkt->hdr; /* size is needed */
+		/* req->rcvexpsz is set by the user */
 		if (eager_copy_and_check(urp, req, pkt) == R_DONE) goto done;
 		urp->req = req;
 	    }
@@ -466,7 +479,12 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 	    /* registering unexpected queue now */
 	    utfgen_uexplst_enqueue(pkt->hdr.flgs, req);
 	    if (req->rndz) {
-		memcpy(&req->rgetsender, &pkt->pyld.rndzdata, sizeof(struct utf_vcqid_stadd));
+		if (PKT_MSGFLG(pkt) == 0) { /* utf message */
+		    memcpy(&req->rgetsender, &pkt->pyld.rndzdata, sizeof(struct utf_vcqid_stadd));
+		} else { /* fi msg */
+		    memcpy(&req->rgetsender, &pkt->pyld.fi_msg.rndzdata, sizeof(struct utf_vcqid_stadd));
+		}
+		/* req->rcvexpsz will be set at the remote get operation time */
 		req->state = REQ_WAIT_RNDZ;
 		req->rcntr = urp;
 		urp->req = req;
@@ -474,7 +492,8 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 		// utf_printf("%s: SRC(%d) URP(%p) req(%p)\n", __func__, pkt->hdr.src, urp, req);
 	    } else {/* eager */
 		req->buf = utf_malloc(PKT_MSGSZ(pkt));
-		req->expsize = PKT_MSGSZ(pkt); /* during receiving */
+		req->rcvexpsz = PKT_MSGSZ(pkt); /* need to receive all message */
+		/* we have to receive all messages from sender at this time */
 		req->state = REQ_NONE;
 		if (eager_copy_and_check(urp, req, pkt) == R_DONE) goto done;
 		urp->req = req;
@@ -491,14 +510,8 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 	//utf_printf("%s: SRC(%d) expsize(%d) rsize(%ld)\n", __func__, req->hdr.src, req->expsize, req->rsize);
 	if (eager_copy_and_check(urp, req, pkt) == R_DONE) goto done;
 	if (req->ustatus == REQ_OVERRUN) {
-	    int i;
-	    utf_printf("%s: OVERRUN SRC(%d) expsize(%d) rsize(%d) recvidx(%d) MSG(%s)\n", __func__,
-		       req->hdr.src,  req->expsize, req->rsize, urp->recvidx, pkt2string(pkt, NULL, 0));
-	    utf_printf("%s: received size history\n", __func__);
-	    for (i = 0; i < urp->dbg_idx; i++) {
-		fprintf(stderr, " %d(%d)", urp->dbg_rsize[i], i);
-	    }
-	    abort();
+	    utf_printf("%s: OVERRUN SRC(%d) rcvexpsize(%d) rsize(%d) recvidx(%d) MSG(%s)\n", __func__,
+		       req->hdr.src,  req->rcvexpsz, req->rsize, urp->recvidx, pkt2string(pkt, NULL, 0));
 	}
 	/* otherwise, continue to receive message */
 	break;
@@ -508,9 +521,9 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 	req = urp->req;
 	DEBUG(DLEVEL_PROTO_RENDEZOUS) {
 	    utf_printf("%s: R_DO_RNDZ done urp(%p) req(%p)->vcqid(%lx) rsize(%ld) expsize(%ld)\n",
-		       __func__, urp, req, req->rgetsender.vcqid[0], req->rsize, req->expsize);
+		       __func__, urp, req, req->rgetsender.vcqid[0], req->rsize, req->rcvexpsz);
 	}
-	if (req->rsize != req->expsize) {
+	if (req->rsize != req->rcvexpsz) {
 	    /* continue to issue */
 	    rget_continue(urp, req);
 	    break;
@@ -526,7 +539,6 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 	    utf_mem_dereg(utf_info.vcqh, req->bufinfo.stadd[0]);
 	    req->bufinfo.stadd[0] = 0;
 	}
-	req->rsize = req->hdr.size;
     }	/* Falls through. */
     done:
 	req->state = REQ_DONE;
@@ -576,6 +588,20 @@ utf_mrqprogress()
 		   __func__, notice_symbol[mrq_notice.notice_type],
 		   mrq_notice.vcq_id, mrq_notice.edata, mrq_notice.rmt_value,
 		   mrq_notice.lcl_stadd, mrq_notice.rmt_stadd);
+	if (mrq_notice.notice_type == UTOFU_MRQ_TYPE_LCL_GET) {
+	    struct utf_recv_cntr	*urp;
+	    struct utf_msgreq	*req;
+	    urp = find_rget_recvcntr(mrq_notice.vcq_id);
+	    req = urp->req;
+	    utf_printf("%s: state(%d:%s) sidx(%d) src(%d) flgs(0x%x) "
+		       "size(%ld) rvcqid(0x%lx) lcl_stadd(0x%lx) rmt_stadd(0x%lx) "
+		       "buf(%p) iov_count(%d) iov_base(%p)\n",
+		       __func__, urp->state, rstate_symbol[urp->state],
+		       req->hdr.src, req->hdr.sidx, req->hdr.flgs,
+		       req->rcvexpsz, req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
+		       req->rgetsender.stadd[0], req->buf, req->fi_iov_count,
+		       req->fi_iov_count == 1 ? req->fi_msg[0].iov_base : NULL);
+	}
 	abort();
 	return ridx;
     }
@@ -630,7 +656,7 @@ utf_mrqprogress()
     }
     case UTOFU_MRQ_TYPE_LCL_GET: /* 2 */
     {
-	uint8_t	sidx = mrq_notice.edata;
+	// uint8_t	sidx = mrq_notice.edata;
 	struct utf_recv_cntr	*urp;
 	struct utf_msgreq	*req;
 
@@ -674,7 +700,7 @@ utf_mrqprogress()
 	uint32_t	sidx = mrq_notice.edata;
 	struct utf_send_cntr *usp;
 	struct utf_send_msginfo	*minfo;
-	int	evtype;
+	//int	evtype;
 	usp = utf_idx2scntr(sidx);
 	minfo = &usp->msginfo[usp->micur];
 	DEBUG(DLEVEL_UTOFU) {
@@ -686,7 +712,7 @@ utf_mrqprogress()
     }
     case UTOFU_MRQ_TYPE_RMT_ARMW:/* 5 */
     {
-	int	evtype;
+	int	evtype = -1;
 	/* Receiver side:
 	 * rmt_value is the stadd address changed by the sender
 	 * edata represents the sender's index of sender engine 
@@ -752,7 +778,7 @@ utf_dbg_progress(int mode)
 void
 utf_recvcntr_show(FILE *fp)
 {
-    extern struct erecv_buf	*erbuf;
+    //extern struct erecv_buf	*erbuf;
     uint64_t		cntr = utf_egr_rbuf.head.cntr;
     int	i;
     utf_printf("# of PEERS: %d\n", RCV_CNTRL_INIT - cntr);

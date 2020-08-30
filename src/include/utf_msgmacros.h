@@ -18,9 +18,12 @@ extern int	utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int
 extern char	*utf_pkt_getinfo(struct utf_packet *pktp, int *mrkr, int *sidx);
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
+
+#ifdef UTF_RSTATESYM_NEEDED
 static char *rstate_symbol[] =
 {	"R_FREE", "R_NONE", "R_HEAD", "R_BODY",	"R_WAIT_RNDZ",
 	"R_DO_RNDZ", "R_DO_READ", "R_DO_WRITE", "R_DONE" };
+#endif /* UTF_RSTATESYM_NEEDED */
 
 static inline char*
 pkt2string(struct utf_packet *pkt, char *buf, size_t len)
@@ -310,8 +313,8 @@ eager_copy_and_check(struct utf_recv_cntr *urp,
     } else { /* Fabric */
 	if (req->ustatus == REQ_OVERRUN) {
 	    /* no copy */
-	} else if ((req->rsize + cpysz) > req->expsize) { /* overrun */
-	    size_t	rest = req->expsize - req->rsize;
+	} else if ((req->rsize + cpysz) > req->rcvexpsz) { /* overrun */
+	    size_t	rest = req->rcvexpsz - req->rsize;
 	    req->ustatus = REQ_OVERRUN;
 	    if (rest > 0) {
 		utf_copy_to_iov(req->fi_msg, req->fi_iov_count, req->rsize,
@@ -328,6 +331,7 @@ eager_copy_and_check(struct utf_recv_cntr *urp,
     }
     req->rsize += cpysz;
     if (req->hdr.size == req->rsize) {
+	/* Must receive data from the sender */
 	urp->state = R_DONE;
     } else {
 	/* More data will arrive */
@@ -342,13 +346,19 @@ rget_start(struct utf_recv_cntr *urp, struct utf_msgreq *req)
     int	sidx = req->hdr.sidx;
 
     /* req->hdr.size is defined by the sender
-     * req->expsize is defined by the receiver */
+     * req->usrreqsz is defined by the receiver */
+    if (req->usrreqsz < req->hdr.size) {
+	req->rcvexpsz = req->usrreqsz;
+	req->ustatus = REQ_OVERRUN;
+    } else {
+	req->rcvexpsz = req->hdr.size;
+    }
     urp->state = R_DO_RNDZ;
     if (req->buf) {
-	req->bufinfo.stadd[0] = utf_mem_reg(utf_info.vcqh, req->buf, req->expsize);
+	req->bufinfo.stadd[0] = utf_mem_reg(utf_info.vcqh, req->buf, req->rcvexpsz);
     } else { /* Fabric request */
 	if (req->fi_iov_count == 1) {
-	    req->bufinfo.stadd[0] = utf_mem_reg(utf_info.vcqh, req->fi_msg[0].iov_base, req->expsize);
+	    req->bufinfo.stadd[0] = utf_mem_reg(utf_info.vcqh, req->fi_msg[0].iov_base, req->rcvexpsz);
 	} else {
 	    utf_printf("%s: cannot handle message vector\n", __func__);
 	    abort();
@@ -359,12 +369,12 @@ rget_start(struct utf_recv_cntr *urp, struct utf_msgreq *req)
 	utf_printf("%s: Receiving Rendezous reqsize(0x%lx) "
 		   "rvcqid(0x%lx) lcl_stadd(0x%lx) rmt_stadd(0x%lx) "
 		   "sidx(%d) mypos(%d)\n",
-		   __func__, req->expsize,
+		   __func__, req->rcvexpsz,
 		   req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
 		   req->rgetsender.stadd[0], sidx, urp->mypos);
     }
     req->rsize =
-	(req->expsize > TOFU_RMA_MAXSZ) ? TOFU_RMA_MAXSZ : req->expsize;
+	(req->rcvexpsz > TOFU_RMA_MAXSZ) ? TOFU_RMA_MAXSZ : req->rcvexpsz;
     remote_get(utf_info.vcqh, req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
 	       req->rgetsender.stadd[0], req->rsize, sidx, 0, 0);
 }
@@ -382,11 +392,11 @@ rget_continue(struct utf_recv_cntr *urp, struct utf_msgreq *req)
 	utf_printf("%s: Continueing Rendezous reqsize(0x%lx) "
 		   "rvcqid(0x%lx) lcl_stadd(0x%lx) rmt_stadd(0x%lx) "
 		   "sidx(%d) mypos(%d)\n",
-		   __func__, req->expsize,
+		   __func__, req->rcvexpsz,
 		   req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
 		   req->rgetsender.stadd[0], sidx, urp->mypos);
     }
-    restsz = req->expsize - req->rsize;
+    restsz = req->rcvexpsz - req->rsize;
     transsz = (restsz > TOFU_RMA_MAXSZ) ? TOFU_RMA_MAXSZ : restsz;
     remote_get(utf_info.vcqh, req->rgetsender.vcqid[0], req->bufinfo.stadd[0] + req->rsize,
 	       req->rgetsender.stadd[0] + req->rsize, transsz, sidx, 0, 0);

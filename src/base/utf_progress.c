@@ -8,6 +8,7 @@
 #include "utf_sndmgt.h"
 #include "utf_queue.h"
 #include "utf_timer.h"
+#define UTF_RSTATESYM_NEEDED
 #include "utf_msgmacros.h"
 
 int
@@ -28,7 +29,7 @@ utf_progress()
 	struct utf_packet	*msgbase = utf_recvbuf_get(j);
 	struct utf_recv_cntr	*urp = &utf_rcntr[j];
 	volatile struct utf_packet	*pktp;
-	int	marker, sidx;
+	int	sidx;
     try_again:
 	pktp = msgbase + urp->recvidx;
 	if (pktp->hdr.marker == MSG_MARKER) {

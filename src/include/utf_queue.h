@@ -66,7 +66,10 @@ struct utf_vcqid_stadd {		/* 40B (8+8*2+8*2) */
 #pragma pack(1)
 struct fi_1stpacket {
     uint64_t	data;
-    uint8_t	msgdata[MSG_FI_PYLDSZ];
+    union {
+	uint8_t	msgdata[MSG_FI_PYLDSZ];
+	struct utf_vcqid_stadd	rndzdata;
+    };
 };
 #pragma pack()
 
@@ -75,8 +78,10 @@ struct fi_1stpacket {
 struct utf_packet {
     struct utf_msghdr	hdr;
     union {
-	uint8_t		msgdata[MSG_PYLDSZ];
-	struct utf_vcqid_stadd	rndzdata;
+	union {
+	    uint8_t		msgdata[MSG_PYLDSZ];
+	    struct utf_vcqid_stadd	rndzdata;
+	};
 	struct fi_1stpacket	fi_msg;
     } pyld;
 };
@@ -92,6 +97,7 @@ struct utf_packet {
 #define PKT_RADDR(pkt)  ((pkt)->pyld.rndzdata)
 
 #define PKT_FI_DATA(pkt) ((pkt)->pyld.fi_msg.msgdata)
+#define PKT_FI_RADDR(pkt)  ((pkt)->pyld.fi_msg.rndzdata)
 
 struct utf_egr_sbuf {
     union {
@@ -173,8 +179,26 @@ enum rstate {
     R_DONE		= 8
 };
 
+/*                 +--------------+----------------------+----------+-----------------+
+ *		   | usrreqsz     |  hdr.size            | rcvexpsz |rsize(progress)  |
+ *                 +--------------+----------------------+----------+-----------------+
+ * eager expected  | defined      |set at matching.      | defined  | During transfer,|
+ *                 |              |receiving this size   |          | rsize is a real |
+ *                 +--------------+----------------------+----------+ data trans size.|
+ * eager unexpected| undef and set|set at msg arrival.   | tempolary| Comparing it    |
+ *                 | at matching  |receiving this size   | set      | with hdr.size.  |
+ *                 |              |                      |          | copy size is    |
+ *                 |              |                      |          | rcvexpsz.       |
+ *                 +--------------+----------------------+----------+-----------------+
+ * rendz expected  | defined      |set at matching.      |          | During transfer,|
+ *                 |              |No-use during transfer| Use for  | rsize is a real |
+ *                 +--------------+--------------+-------+ rmt-get  | data trans size.|
+ * rendz unexpected| undef and set|set at msg arrival.   | opertion | Comparing it    |
+ *                 | at matching  |No-use during transfer|          | with rcvexpsz   |
+ *                 +--------------+----------------------+----------+-----------------+
+ */
 struct utf_msgreq {
-    struct utf_msghdr hdr;	/* 28: message header */
+    struct utf_msghdr hdr;	/* 28: message header, size field is sender's one */
     uint8_t	*buf;		/* 32: buffer address */
     uint64_t	rsize:35,	/* 40: received size */
 		state: 8,	/* 40: utf-level  status */
@@ -183,7 +207,8 @@ struct utf_msgreq {
 		type:3,		/* 40: EXPECTED or UNEXPECTED or SENDREQ */
 		ptype:4,	/* 40: PKT_EAGER | PKT_RENDZ | PKT_WRITE | PKT_READ */
 		fistate:5;	/* 40: fabric-level status */
-    size_t	expsize;	/* 48: expected size in expected queue */
+    size_t	rcvexpsz;	/* 48: expected receive size used in rendezvous */
+    size_t	usrreqsz;	/* 48: user request size */
     utfslist_entry_t slst;	/* 56: list */
     void	(*notify)(struct utf_msgreq*);	/* 64: notifier */
     struct utf_recv_cntr *rcntr;	/* 72: point to utf_recv_cntr */

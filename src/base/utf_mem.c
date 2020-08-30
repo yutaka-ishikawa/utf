@@ -207,8 +207,6 @@ utf_scntr_free(int idx)
 {
     struct utf_send_cntr *head;
     uint16_t	headpos;
-    utfslist_entry_t	*cur, *prev;
-    int	found = 0;
     headpos = utf_rank2scntridx[idx];
     if (headpos != (uint16_t) -1) {
 	head = &utf_scntr[headpos];
@@ -303,4 +301,14 @@ utf_pkt_getinfo(struct utf_packet *pkt, int *mrkr, int *sidx)
     *mrkr = pkt->hdr.marker;
     *sidx = pkt->hdr.sidx;
     return pbuf;
+}
+
+void
+utf_egrbuf_show()
+{
+    utf_printf("EAGER RECEIVE BUFFER INFO\n");
+    utf_printf("\tCNTR = %d\n"
+	       "\t&utf_egr_buf[0] = %p\n"
+	       "\t&utf_rcntr[0] = %p\n",
+	       utf_egr_rbuf.head.cntr, &utf_egr_rbuf.rbuf[0], &utf_rcntr[0]);
 }

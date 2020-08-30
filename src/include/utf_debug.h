@@ -10,6 +10,7 @@ extern void	utf_redirect();
 extern void	utf_utf_vname_show(FILE*);
 extern void	utf_egrrbuf_show();
 extern void	utf_nullfunc();
+extern void	utf_egrbuf_show();
 
 extern int	utf_dflag, utf_rflag;
 extern int	utf_nokeep;

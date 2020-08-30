@@ -47,21 +47,8 @@ union tofu_coord {
     uint32_t	val;
 };
 
-#define PATH_PMIXLIB	"/usr/lib/FJSVtcs/ple/lib64/libpmix.so"
-
 struct utf_info utf_info;
 utofu_vcq_id_t	*tab_vcqid;
-
-static pmix_status_t	(*myPMIx_Init)(pmix_proc_t *proc, pmix_info_t info[], size_t ninfo);
-static pmix_status_t	(*myPMIx_Get)(const pmix_proc_t *proc, const char key[],
-				      const pmix_info_t info[], size_t ninfo,
-				      pmix_value_t **val);
-static pmix_status_t	(*myPMIx_Put)(pmix_scope_t scope, const char key[],
-				      pmix_value_t *val);
-static pmix_status_t	(*myPMIx_Commit)(void);
-static pmix_status_t	(*myPMIx_Fence)(const pmix_proc_t *procs, size_t nprocs,
-					const pmix_info_t info[], size_t ninfo);
-static pmix_status_t	(*myPMIx_Finalize)(const pmix_info_t info[], size_t ninfo);
 
 static uint32_t
 generate_hash_string(char *cp, int len)
@@ -253,7 +240,7 @@ utf_peers_init()
 	utofu_tni_id_t	tni_prim;
         utofu_tni_id_t	*tnis = 0;
         size_t  ni, ntni = 0;
-	int	uc, vhent;
+	int	vhent;
 
 	/* my primary tni */
 	utf_tni_select(utf_info.myppn, utf_info.mynrnk, &tni_prim, 0);
@@ -333,12 +320,13 @@ utf_get_peers(uint64_t **fi_addr, int *npp, int *ppnp, int *rnkp)
     return utf_info.vname;
 }
 
-#define PMIX_TOFU_SHMEM	"TOFU_SHM"
+#define PMIX_TOFU_SHMEM	"UTF_TOFU_SHM"
+#define PMIX_USR_SHMEM	"UTF_USR_SHM"
 
-void	*
-utf_shm_init(size_t sz, char *mykey)
+static void	*
+utf_shm_init_internal(size_t sz, char *mykey)
 {
-    int	rc;
+    int	rc = 0;
     char	*errstr;
     int	lead_rank = (utf_info.myrank/utf_info.myppn)*utf_info.myppn;
     key_t	key;
@@ -361,8 +349,6 @@ utf_shm_init(size_t sz, char *mykey)
     } else {
 	pmix_proc_t		pmix_tproc[1];
 	pmix_value_t	*pv;
-	char	*errstr;
-	int	rc;
 	
 	memcpy(pmix_tproc, utf_info.pmix_proc, sizeof(pmix_proc_t));
 	pmix_tproc->rank = lead_rank; // PMIX_RANK_LOCAL_NODE does not work
@@ -385,9 +371,39 @@ err:
 }
 
 int
-utf_shm_finalize(void *addr)
+utf_shm_init(size_t sz, void **area)
+{
+    static int	shm_usd = 0;
+
+    if (shm_usd) {
+	*area = NULL;
+	return -1;
+    }
+    shm_usd = 1;
+    *area = utf_info.shm = utf_shm_init_internal(sz, PMIX_USR_SHMEM);
+    if (utf_info.shm == NULL) {
+	return -2;
+    }
+    return 0;
+}
+
+static int
+utf_shm_finalize_internal(void *addr)
 {
     return shmdt(addr);
+}
+
+int
+utf_shm_finalize()
+{
+    int	rc = 0;
+    if (utf_info.shm) {
+	rc = shmdt(utf_info.shm);
+    }
+    if (rc == 0) {
+	utf_info.shm = NULL;
+    }
+    return rc;
 }
 
 void *
@@ -401,7 +417,7 @@ utf_cqselect_init(int ppn, int nrnk, int ntni, utofu_tni_id_t *tnis, utofu_vcq_h
     sz = ((sizeof(struct cqsel_table) + psz - 1)/sz)*sz;
     utf_printf("pid(%d) %s: nrnk(%d) ntni(%d) sz(%ld) sizeof(struct cqsel_table)=%ld\n", utf_info.mypid, __func__, nrnk, ntni, sz, sizeof(struct cqsel_table));
 
-    utf_info.cqseltab = (struct cqsel_table*) utf_shm_init(sz, SHMEM_KEY_VAL_FMT);
+    utf_info.cqseltab = (struct cqsel_table*) utf_shm_init_internal(sz, SHMEM_KEY_VAL_FMT);
     if (utf_info.cqseltab == NULL) {
 	utf_printf("%s: cannot allocate shared memory for CQ management\n", __func__);
 	abort();
@@ -432,7 +448,7 @@ utf_cqselect_finalize()
     int	rc;
     utf_cqtab_show();
     if (utf_info.cqseltab) {
-	rc = utf_shm_finalize(utf_info.cqseltab);
+	rc = utf_shm_finalize_internal(utf_info.cqseltab);
 	if (rc < 0) {
 	    perror("YIXXXXXXX  SHMEM");
 	}
@@ -525,7 +541,7 @@ utf_cqtab_show()
 /* Fujitsu compiler claim the following statement, but it is OK */
 #define NODE_NAME       "host-%s,"
 #define NODE_NAME_FMT	("host-" FMT_PHYS_COORDS)
-#define NODE_NM_LEN     (6 + 3*6 - 1)	/* excluding termination */
+#define NODE_NM_LEN     (6 + 3*6 - 1)	/* 23: excluding termination */
 
 pmix_status_t
 PMIx_Resolve_nodes(const char *nspace, char **nodelist)
@@ -545,8 +561,10 @@ PMIx_Resolve_nodes(const char *nspace, char **nodelist)
     memset(lst, 0, sz);
     ptr = lst;
     for (i = 0; i < utf_info.nnodes; i++) {
-	/* Fujitsu compiler claim the following statement, but it is OK */
-        snprintf(ptr, NODE_NM_LEN+1, NODE_NAME, pcoords2string(utf_info.phys_node[i], NULL, 0));
+	int len;
+	/* Compiler claim the following statement, but it is OK */
+        len = snprintf(ptr, NODE_NM_LEN+1, NODE_NAME, pcoords2string(utf_info.phys_node[i], NULL, 0));
+	assert(len <= NODE_NM_LEN + 1);
         ptr += NODE_NM_LEN;
     }
     *(ptr - 1) = 0;
@@ -560,11 +578,9 @@ PMIx_Resolve_peers(const char *nodename, const char *nspace,
 		   pmix_proc_t **procs, size_t *nprocs)
 {
     pmix_status_t xc = PMIX_SUCCESS;
-    int         srank;
-    int         i;
+    int         i, x, y, z, a, b, c;
     pmix_proc_t *pr;
     size_t	nranks;
-    int		ppn;
     union jtofu_phys_coords	pcoords;
     jtofu_rank_t	nd_ranks[48];
 
@@ -572,9 +588,9 @@ PMIx_Resolve_peers(const char *nodename, const char *nspace,
      * In case of 1 process per 1 node, srank is rank of node.
      */
     utf_printf("%s: nodename=%s nspace=%s\n", __func__, nodename, nspace); fflush(stderr);
-    sscanf(nodename, NODE_NAME_FMT, 
-	   &pcoords.s.x, &pcoords.s.y, &pcoords.s.z,
-	   &pcoords.s.a, &pcoords.s.b, &pcoords.s.c);
+    sscanf(nodename, NODE_NAME_FMT, &x, &y, &z, &a, &b, &c);
+    pcoords.s.x = x; pcoords.s.y = y; pcoords.s.z = z;
+    pcoords.s.a = a; pcoords.s.b = b; pcoords.s.c = c;
     utf_printf("\t:\t%s\n\t", pcoords2string(pcoords, NULL, 0));
     JTOFU_CALL(1, jtofu_query_ranks_from_phys_coords, utf_info.jobid,
 	       &pcoords, utf_info.myppn, nd_ranks, &nranks);

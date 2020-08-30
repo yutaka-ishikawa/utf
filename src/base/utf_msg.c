@@ -134,7 +134,6 @@ utf_send(void *buf, size_t size, int dst, uint64_t tag, UTF_reqid *ridx)
 {
     int	rc = 0;
     struct utf_send_cntr *usp;
-    struct utf_egr_sbuf	*sbufp;
     struct utf_msgreq	*req;
     struct utf_send_msginfo *minfo;
     struct utf_egr_sbuf	*sbuf;
@@ -200,7 +199,7 @@ utf_recv(void *buf, size_t size, int src, int tag,  UTF_reqid *ridx)
 	if (req->rndz) {  /* rendezvous message */
 	    struct utf_recv_cntr *urp = req->rcntr;
 	    req->buf = buf;
-	    req->expsize = size;
+	    req->rcvexpsz = size;
 	    rget_start(urp, req);
 	} else if (req->state == REQ_DONE) {
 	    cpsz = size < req->hdr.size ? size : req->hdr.size;
@@ -226,7 +225,7 @@ utf_recv(void *buf, size_t size, int src, int tag,  UTF_reqid *ridx)
 	req->hdr.src = src; req->hdr.tag = tag;
 	/* req->hdr.size = size; req->hdr.size will be set at the message arrival */
 	req->buf = buf;
-	req->expsize = size;
+	req->rcvexpsz = size;
 	req->ustatus = REQ_NONE; req->state = REQ_PRG_NORMAL;
 	req->type = REQ_RECV_EXPECTED;	req->rsize = 0;
 	utf_msglst_append(&utf_explst, req);
@@ -270,7 +269,6 @@ int
 utf_wait(UTF_reqid reqid)
 {
     volatile struct utf_msgreq	*req;
-    int	ttp;
 
     utf_tmr_begin(TMR_UTF_WAIT);
     if (reqid.reqid1 < 0) return -1;
@@ -305,7 +303,6 @@ int
 utf_waitcmpl(UTF_reqid reqid)
 {
     volatile struct utf_msgreq	*req;
-    int	ttp;
 
     utf_tmr_begin(TMR_UTF_WAIT);
     if (reqid.reqid1 < 0) return -1;
@@ -336,10 +333,9 @@ skip:
 void
 utf_req_wipe()
 {
-    struct utf_msgreq	*req;
     UTF_reqid	reqid;
     int	id;
-    int	i, rc;
+    int	i;
 
     for (i = 0; i < REQ_SIZE; i++) {
 	switch (utf_msgrq[i].state) {
@@ -356,7 +352,7 @@ utf_req_wipe()
 	}
 	reqid.id = 0;
 	reqid.reqid1 = id;
-	rc = utf_waitcmpl(reqid);
+	utf_waitcmpl(reqid);
 	utf_printf("\tDone\n");
     }
 }

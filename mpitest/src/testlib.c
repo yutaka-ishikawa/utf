@@ -12,7 +12,7 @@ extern int	myprintf(const char *fmt, ...);
 
 int	nnp, nprocs, myrank;
 pid_t	mypid;
-int	vflag, dflag, mflag, sflag, Mflag, pflag, wflag, tflag;
+int	vflag, Vflag, dflag, mflag, sflag, Mflag, pflag, wflag, tflag;
 int	iteration;
 size_t	length, mlength;
 
@@ -37,7 +37,7 @@ test_init(int argc, char **argv)
 
     mypid = getpid();
 
-    while ((opt = getopt(argc, argv, "d:vi:l:m:st:L:M:pw")) != -1) {
+    while ((opt = getopt(argc, argv, "d:vVi:l:m:s:t:L:M:pw")) != -1) {
 	switch (opt) {
 	case 'd': /* debug */
 	    dflag = atoi(optarg);
@@ -46,6 +46,9 @@ test_init(int argc, char **argv)
 	    break;
 	case 'v': /* verbose */
 	    vflag = 1;
+	    break;
+	case 'V': /* verbose */
+	    Vflag = 1;
 	    break;
 	case 'i': /* iteration */
 	    iteration = atoi(optarg);
@@ -63,7 +66,7 @@ test_init(int argc, char **argv)
 	    Mflag = atoi(optarg);
 	    break;
 	case 's':
-	    sflag = 1;
+	    sflag = opt_getint(optarg);
 	    break;
 	case 't':
 	    sflag = opt_getint(optarg);
