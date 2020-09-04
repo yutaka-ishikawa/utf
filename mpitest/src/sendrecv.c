@@ -43,8 +43,14 @@ myrecv(int nth, unsigned char *buf, int size, int peer, int nonblk, int rdelay)
 
     VERBOSE("%dth MPI_Recv size(%ld) from rank %d with delay %d msec\n",
 	    nth, size*sizeof(int), peer, rdelay > 0 ? 100 : 0);
-    if (rdelay) {
-	usleep(100);
+    if (rdelay && peer == 0) {
+	extern void	utf_progress();
+	int	i;
+	int	dl = 1000; /* 1 msec */
+	for (i = 0; i < 5; i++) {
+	    usleep(dl);
+	    utf_progress();
+	}
     }
     // fi_tofu_cntrl(0, rdelay == 1 ? 0 : 1);
     if (nonblk) {
@@ -63,6 +69,28 @@ myrecv(int nth, unsigned char *buf, int size, int peer, int nonblk, int rdelay)
 	VERBOSE("%dth buf[0] = %x buf[%d-1] = %x\n",
 		nth, buf[0], size, buf[size-1]);
     }
+}
+
+void
+init_buf(int *ip, int iter, int off, int len)
+{
+    int	i;
+    for (i = 0; i < len; i++) {
+	ip[i] = iter + i + off;
+    }
+}
+
+int
+check_buf(int *ip, int iter, int off, int len)
+{
+    int	i, errs = 0;
+    for (i = 0; i < len; i++) {
+	if (ip[i] != iter + i + off) {
+	    printf("[%d] ip[%d] must be %d, but %d\n", myrank, i, iter + i + off, ip[i]);
+	    errs++;
+	}
+    }
+    return errs;
 }
 
 void
@@ -104,32 +132,25 @@ test(int length, int iteration, int dflag, int sender, int receiver)
 	VERBOSE("send(%p) then recv(%p) in rank %d, peer(%d)\n",
 		sp, rp, myrank, receiver);
 	for (i = 0; i < iteration; i++) {
-	    memset(sp, 0x80, s_ping*sizeof(int));
+	    init_buf((int*) sp, 0x80, i, s_ping);
 	    memset(rp, 0, s_ping);
+	    /**/
 	    mysend(i, sp, s_ping, receiver);
 	    if (dflag & 16) continue;
 	    myrecv(i, rp, s_pong, receiver, nonblk, rdelay);
-	    //printf("next\n"); fflush(stdout);
-	    if (rp[0] != 0x08) {
-		printf("expected value 0x08 but 0x%0x\n", rp[0]); fflush(stdout);
-		errs++;
-	    }
-	    if (rp[s_pong*sizeof(int) - 1] != 0x08) {
-		printf("expected value 0x08 but 0x%0x\n", rp[s_pong*sizeof(int) - 1]); fflush(stdout);
-		errs++;
-	    }
+	    errs = check_buf((int*) rp, 0x08, i, s_ping);
 	}
     } else if (myrank == receiver) {
 	VERBOSE("recv(%p) then send(%p) in rank %d, peer(%d)\n",
 		rp, sp, myrank, sender);
 	for (i = 0; i < iteration; i++) {
-	    memset(sp, 0x08, s_ping*sizeof(int));
+	    init_buf((int*) sp, 0x08, i, s_ping);
 	    memset(rp, 0, s_ping);
+	    /**/
 	    myrecv(i, rp, s_ping, sender, nonblk, rdelay);
 	    if (dflag & 16) continue;
 	    mysend(i, sp, s_pong, sender);
-	    if (rp[0] != 0x80) errs++;
-	    if (rp[s_pong*sizeof(int) - 1] != 0x80) errs++;
+	    errs = check_buf((int*) rp, 0x80, i, s_ping);
 	}
     } else {
 	VERBOSE("Not participate in rank(%d)\n",  myrank);

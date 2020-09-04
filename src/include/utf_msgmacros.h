@@ -8,6 +8,8 @@ extern utofu_stadd_t		utf_sndctr_stadd;	/* stadd of utf_scntr */
 extern struct utf_egr_rbuf	utf_egr_rbuf;		/* eager receive buffer */
 extern struct utf_recv_cntr	utf_rcntr[RCV_CNTRL_MAX]; /* receiver control */
 extern utfslist_t	utf_rget_proglst;
+extern utfslist_t	utf_rndz_proglst;
+extern utfslist_t	utf_rndz_freelst;
 extern utfslist_t	utf_rmacq_waitlst;
 extern int     utf_tcq_count, utf_mrq_count;
 
@@ -114,6 +116,32 @@ utf_msglst_append(struct utfslist *head, struct utf_msgreq *req)
     mlst->reqidx = utf_msgreq2idx(req);
     utfslist_append(head, &mlst->slst);
     return mlst;
+}
+
+static inline struct utf_send_msginfo *
+utf_rndzprog_alloc()
+{
+    utfslist_entry_t		*slst = utfslist_remove(&utf_rndz_freelst);
+    struct utf_send_msginfo *cpyinfo;
+    assert(slst != NULL);
+    cpyinfo = container_of(slst, struct utf_send_msginfo, slst);
+    return cpyinfo;
+}
+
+static inline struct utf_send_msginfo *
+find_rndzprog(int pos)
+{
+    utfslist_entry_t	*cur, *prev;
+    struct utf_send_msginfo	*minfo = NULL;
+    utfslist_foreach2(&utf_rndz_proglst, cur, prev) {
+	minfo = container_of(cur, struct utf_send_msginfo, slst);
+	if (minfo->mypos == pos) goto find;
+    }
+    /* not found */
+    return NULL;
+find:
+    utfslist_remove2(&utf_rndz_proglst, cur, prev);
+    return minfo;
 }
 
 static inline void
@@ -311,11 +339,11 @@ eager_copy_and_check(struct utf_recv_cntr *urp,
     if (pkt->hdr.flgs == 0) { /* utf message */
 	memcpy(&req->buf[req->rsize], PKT_DATA(pkt), cpysz);
     } else { /* Fabric */
-	if (req->ustatus == REQ_OVERRUN) {
+	if (req->overrun) {
 	    /* no copy */
 	} else if ((req->rsize + cpysz) > req->rcvexpsz) { /* overrun */
 	    size_t	rest = req->rcvexpsz - req->rsize;
-	    req->ustatus = REQ_OVERRUN;
+	    req->overrun = 1;
 	    if (rest > 0) {
 		utf_copy_to_iov(req->fi_msg, req->fi_iov_count, req->rsize,
 				PKT_FI_DATA(pkt), rest);
@@ -341,7 +369,7 @@ eager_copy_and_check(struct utf_recv_cntr *urp,
 }
 
 static inline void
-rget_start(struct utf_recv_cntr *urp, struct utf_msgreq *req)
+rget_start(struct utf_msgreq *req)
 {
     int	sidx = req->hdr.sidx;
 
@@ -349,11 +377,10 @@ rget_start(struct utf_recv_cntr *urp, struct utf_msgreq *req)
      * req->usrreqsz is defined by the receiver */
     if (req->usrreqsz < req->hdr.size) {
 	req->rcvexpsz = req->usrreqsz;
-	req->ustatus = REQ_OVERRUN;
+	req->overrun = 1;
     } else {
 	req->rcvexpsz = req->hdr.size;
     }
-    urp->state = R_DO_RNDZ;
     if (req->buf) {
 	req->bufinfo.stadd[0] = utf_mem_reg(utf_info.vcqh, req->buf, req->rcvexpsz);
     } else { /* Fabric request */
@@ -364,43 +391,44 @@ rget_start(struct utf_recv_cntr *urp, struct utf_msgreq *req)
 	    abort();
 	}
     }
-    utfslist_append(&utf_rget_proglst, &urp->rget_slst);
     DEBUG(DLEVEL_PROTO_RENDEZOUS) {
 	utf_printf("%s: Receiving Rendezous reqsize(0x%lx) "
 		   "rvcqid(0x%lx) lcl_stadd(0x%lx) rmt_stadd(0x%lx) "
-		   "sidx(%d) mypos(%d)\n",
+		   "sidx(%d)\n",
 		   __func__, req->rcvexpsz,
 		   req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
-		   req->rgetsender.stadd[0], sidx, urp->mypos);
+		   req->rgetsender.stadd[0]);
     }
     req->rsize =
 	(req->rcvexpsz > TOFU_RMA_MAXSZ) ? TOFU_RMA_MAXSZ : req->rcvexpsz;
     remote_get(utf_info.vcqh, req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
 	       req->rgetsender.stadd[0], req->rsize, sidx, 0, 0);
+    req->state = REQ_DO_RNDZ;
+    utfslist_append(&utf_rget_proglst, &req->rget_slst);
 }
 
 static inline void
-rget_continue(struct utf_recv_cntr *urp, struct utf_msgreq *req)
+rget_continue(struct utf_msgreq *req)
 {
     int	sidx = req->hdr.sidx;
     size_t	restsz, transsz;
 
     /* req->hdr.size is defined by the sender
      * req->expsize is defined by the receiver */
-    utfslist_append(&utf_rget_proglst, &urp->rget_slst);
     DEBUG(DLEVEL_PROTO_RENDEZOUS) {
 	utf_printf("%s: Continueing Rendezous reqsize(0x%lx) "
 		   "rvcqid(0x%lx) lcl_stadd(0x%lx) rmt_stadd(0x%lx) "
-		   "sidx(%d) mypos(%d)\n",
+		   "sidx(%d)\n",
 		   __func__, req->rcvexpsz,
 		   req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
-		   req->rgetsender.stadd[0], sidx, urp->mypos);
+		   req->rgetsender.stadd[0], sidx);
     }
     restsz = req->rcvexpsz - req->rsize;
     transsz = (restsz > TOFU_RMA_MAXSZ) ? TOFU_RMA_MAXSZ : restsz;
     remote_get(utf_info.vcqh, req->rgetsender.vcqid[0], req->bufinfo.stadd[0] + req->rsize,
 	       req->rgetsender.stadd[0] + req->rsize, transsz, sidx, 0, 0);
     req->rsize += transsz;
+    utfslist_append(&utf_rget_proglst, &req->rget_slst);
 }
 
 static inline int

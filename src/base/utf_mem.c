@@ -39,6 +39,7 @@ struct utf_recv_cntr MALGN(256)	utf_rcntr[RCV_CNTRL_MAX]; /* receiver control */
 struct utf_msgreq MALGN(256)	utf_msgrq[REQ_SIZE];
 struct utf_msglst MALGN(256)	utf_msglst[REQ_SIZE];
 struct utf_rma_cq MALGN(256)	utf_rmacq_pool[COM_RMACQ_SIZE];
+struct utf_send_msginfo MALGN(256) utf_rndz_pool[REQ_SIZE];	/* used for rendezvous at sender */
 
 
 int	utf_tcq_count;
@@ -53,7 +54,9 @@ utfslist_t	utf_egr_sbuf_freelst;	/* free list of utf_egr_sbuf */
 utfslist_t	utf_scntr_freelst;	/* free list of utf_scntr */
 utfslist_t	utf_msgreq_freelst;	/* free list of utf_msgrq */
 utfslist_t	utf_msglst_freelst;
+utfslist_t	utf_rndz_freelst;
 utfslist_t	utf_rget_proglst;
+utfslist_t	utf_rndz_proglst;
 utfslist_t	utf_rmacq_waitlst;
 utfslist_t	utf_rmacq_freelst;
 
@@ -64,6 +67,8 @@ utofu_stadd_t	utf_egr_sbuf_stadd;	/* stadd of utf_egr_sbuf: packet buffer */
 utofu_stadd_t	utf_sndctr_stadd;	/* stadd of utf_scntr */
 utofu_stadd_t	utf_sndctr_stadd_end;	/* stadd of utf_scntr */
 utofu_stadd_t	utf_rcntr_stadd;	/* stadd of utf_rcntr */
+utofu_stadd_t	utf_rndz_stadd;		/* stadd of utf_rndz_freelst */
+utofu_stadd_t	utf_rndz_stadd_end;	/* stadd of utf_rndz_freelst */
 
 /**/
 uint8_t	utf_zero256[256];
@@ -161,7 +166,19 @@ utf_mem_init()
 	utf_msglst[i].reqidx = 0;
     }
 
+    /* rendezvous */
+    memset(utf_rndz_pool, 0, sizeof(utf_rndz_pool));
+    UTOFU_CALL(1, utofu_reg_mem_with_stag, utf_info.vcqh, (void*) utf_rndz_pool,
+	       sizeof(utf_rndz_pool), STAG_RNDV, 0, &utf_rndz_stadd);
+    utf_rndz_stadd_end = utf_rndz_stadd + sizeof(utf_rndz_pool);
     utfslist_init(&utf_rget_proglst, NULL);
+    utfslist_init(&utf_rndz_proglst, NULL);
+    utfslist_init(&utf_rndz_freelst, NULL);
+    for (i = 0; i < REQ_SIZE; i++) {                                             
+        utfslist_append(&utf_rndz_freelst, &utf_rndz_pool[i].slst);
+	utf_rndz_pool[i].mypos = i;
+	utf_printf("%s: utf_rndz_pool[%d]=%p mypos(%d)\n", __func__, i, &utf_rndz_pool[i], utf_rndz_pool[i].mypos);
+    } 
     utf_tcq_count = 0;
 
     utfslist_init(&utf_rmacq_waitlst, NULL);
@@ -278,7 +295,7 @@ utf_egrrbuf_show()
 void
 utf_debugdebug(struct utf_msgreq *req)
 {
-    req->ustatus = REQ_OVERRUN;
+    req->reclaim = 1;
 }
 
 void

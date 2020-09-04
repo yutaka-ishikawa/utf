@@ -48,6 +48,7 @@ echo "UTF_TRANSMODE = " $UTF_TRANSMODE "(0: Chained, 1: Aggressive)"
 mpiexec ../bin/coll -l 51200
 echo 
 echo
+ldd ../bin/coll
 exit
 
 export UTF_MSGMODE=0	# Eager

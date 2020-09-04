@@ -24,8 +24,10 @@ export MPICH_CH4_OFI_ENABLE_SCALABLE_ENDPOINTS=1
 ## CONF_TOFU_INJECTSIZE=1856 (MSG_EAGER_SIZE = 1878)
 
 #export UTF_DEBUG=0x1f
+#export UTF_DEBUG=0x10
 export TOFULOG_DIR=./results
 export UTF_MSGMODE=1	# Rendezous
+#export UTF_MSGMODE=0	# Eager
 #export UTF_TRANSMODE=0	# Chained
 export UTF_TRANSMODE=1	# Aggressive
 export TOFU_NAMED_AV=1
@@ -38,7 +40,7 @@ echo "UTF_MSGMODE   = " $UTF_MSGMODE "(0: Eager, 1: Rendezous)"
 echo "UTF_TRANSMODE = " $UTF_TRANSMODE "(0: Chained, 1: Aggressive)"
 echo "UTF_DEBUG     = " $UTF_DEBUG
 
-mpiexec ../bin/sendrecv -l 1000 -i 1
+mpiexec ../bin/sendrecv -l 1000 -i 100 -d 8
 #mpiexec ../bin/sendrecv -l 10 -i 1000
 #mpiexec ../bin/sendrecv -l 10000 -v -d 1 -i 1
 echo 

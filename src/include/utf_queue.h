@@ -56,7 +56,8 @@ struct utf_vcqhdl_stadd {		/* 40B */
 };
 
 struct utf_vcqid_stadd {		/* 40B (8+8*2+8*2) */
-    size_t	nent;			/* */
+    uint32_t	rndzpos;			/* position of rendezvous progress structure */
+    uint32_t	nent;			/* */
     uint64_t	vcqid[MSG_NTNI];	/* utofu_vcq_hdl_t */
     uint64_t	stadd[MSG_NTNI];	/* utofu_stadd_t */
 };
@@ -149,14 +150,14 @@ struct utf_egr_rbuf {
 enum utq_reqstatus {
     REQ_NONE		= 0,
     REQ_PRG_NORMAL	= 1,
-    REQ_PRG_RECLAIM	= 2,
     REQ_DONE		= 3,
-    REQ_OVERRUN		= 4,
-    REQ_WAIT_RNDZ	= 5		/* waiting rendzvous */
+    REQ_WAIT_RNDZ	= 4,		/* waiting rendzvous */
+    REQ_DO_RNDZ		= 5
 };
+//    REQ_PRG_RECLAIM	= 2,
 
 /*
- * recv_ctr state
+ * request type (XXXX recv_ctr state)
  */
 enum {
     REQ_RECV_EXPECTED		= 1,
@@ -200,13 +201,20 @@ enum rstate {
 struct utf_msgreq {
     struct utf_msghdr hdr;	/* 28: message header, size field is sender's one */
     uint8_t	*buf;		/* 32: buffer address */
-    uint64_t	rsize:35,	/* 40: received size */
-		state: 8,	/* 40: utf-level  status */
-		ustatus: 8,	/* 40: user-level status */
-		rndz:1,		/* 40: set if rendezvous mode */
-		type:3,		/* 40: EXPECTED or UNEXPECTED or SENDREQ */
-		ptype:4,	/* 40: PKT_EAGER | PKT_RENDZ | PKT_WRITE | PKT_READ */
-		fistate:5;	/* 40: fabric-level status */
+    union {
+	struct {
+	    uint64_t	rsize:35,	/* 40: received size */
+			state: 8,	/* 40: utf-level  status */
+			ustatus: 6,	/* 40: user-level status */
+			overrun:1,
+			reclaim:1,
+			rndz:1,		/* 40: set if rendezvous mode */
+			type:3,		/* 40: EXPECTED or UNEXPECTED or SENDREQ */
+			ptype:4,	/* 40: PKT_EAGER | PKT_RENDZ | PKT_WRITE | PKT_READ */
+			fistate:5;	/* 40: fabric-level status */
+	};
+	uint64_t	allflgs;
+    };
     size_t	rcvexpsz;	/* 48: expected receive size used in rendezvous */
     size_t	usrreqsz;	/* 48: user request size */
     utfslist_entry_t slst;	/* 56: list */
@@ -214,6 +222,7 @@ struct utf_msgreq {
     struct utf_recv_cntr *rcntr;	/* 72: point to utf_recv_cntr */
     struct utf_vcqid_stadd rgetsender; /* 112: rendezous: sender's stadd's and vcqid's */
     struct utf_vcqhdl_stadd bufinfo; /* 152: rendezous: receiver's stadd's and vcqid's  */
+    utfslist_entry_t	rget_slst;/* rendezous: list of rget progress */
     /* for Fabric */
     uint64_t	fi_data;
     void	*fi_ctx;
@@ -242,7 +251,6 @@ struct utf_recv_cntr {
     uint8_t	state;
     uint8_t	mypos;
     uint32_t	tmp;
-    utfslist_entry_t	rget_slst;/* rendezous: list of rget progress */
     /* for debugging */
     uint32_t	dbg_idx;
     uint8_t	dbg_rsize[COM_RBUF_SIZE];
@@ -288,8 +296,10 @@ enum {
 #define EVT_END		8
 
 struct utf_send_msginfo { /* msg info */
+    uint32_t		rgetdone;
+    uint16_t		cntrtype;
+    uint16_t		mypos;
     struct utf_msghdr	msghdr;		/* message header     +28 = 28 Byte */
-    uint32_t		cntrtype;
     struct utf_egr_sbuf	*sndbuf;	/* send data for eger  +8 = 40 Byte */
     utofu_stadd_t	sndstadd;	/* stadd of sndbuf     +8 = 48 Byte */
     void		*usrbuf;	/* stadd of user buf   +8 = 56 Byte */
@@ -297,15 +307,21 @@ struct utf_send_msginfo { /* msg info */
 					 * stadd and vcqid for rget by dest, expose it to dest */
     struct utf_msgreq	*mreq;		/* request struct      +8 =104 Byte */
     void		*fi_context;	/* For fabric */
+    utfslist_entry_t	slst;
 };
 
 /* used for remote operation */
-#define SCNTR_RGETDONE_OFFST		0x0
+#define MSGINFO_RGETDONE_OFFST		0x0
+//#define SCNTR_RGETDONE_OFFST		0x0
 #define SCNTR_RST_RECVRESET_OFFST	0x4
 #define SCNTR_RST_RMARESET_OFFST	0x8
 #define SCNTR_CHN_NEXT_OFFST		0x10
 #define SCNTR_CHN_READY_OFFST		0x18
-#define SCNTR_ADDR_CNTR_FIELD(sidx)	\
+
+#define MSGINFO_STADDR(pos)	\
+    (utf_rndz_stadd + sizeof(struct utf_send_msginfo)*(pos))
+
+#define SCNTR_ADDR_CNTR_FIELD(sidx)				\
     (utf_sndctr_stadd + sizeof(struct utf_send_cntr)*(sidx))
 #define SCNTR_IS_RGETDONE_OFFST(off)	((off) == SCNTR_RGETDONE_OFFST)
 #define SCNTR_IS_RECVRESET_OFFST(off)	((off) == SCNTR_RST_RECVRESET_OFFST)

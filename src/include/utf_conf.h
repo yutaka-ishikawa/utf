@@ -75,6 +75,7 @@
 #define STAG_SBUF	12	/* utf_egr_sbuf */
 #define STAG_SNDCTR	13	/* utf_scntr */
 #define STAG_RCVCTR	14	/* utf_rcntr */
+#define STAG_RNDV	15	/* utf_rndz_freelst */
 
 /* 
  * MTU 1920 Byte, Piggyback size 32 Byte, Assume payload(1888 Byte)

@@ -37,6 +37,7 @@ export TOFULOG_DIR=./results/coll-192
 
 export MPIR_CVAR_ALLTOALL_SHORT_MSG_SIZE=2147483647 # 32768 in default (integer value)
 
+echo "LD_LIBRARY_PATH=" $LD_LIBRARY_PATH
 echo "TOFU_NAMED_AV = " $TOFU_NAMED_AV
 echo "UTF_MSGMODE   = " $UTF_MSGMODE "(0: Eager, 1: Rendezous)"
 echo "UTF_TRANSMODE = " $UTF_TRANSMODE "(0: Chained, 1: Aggressive)"
@@ -52,3 +53,7 @@ echo "MPIR_CVAR_ALLTOALL_SHORT_MSG_SIZE = " $MPIR_CVAR_ALLTOALL_SHORT_MSG_SIZE
 
 echo "Scatter test"
 mpiexec ../bin/coll -l 512 -s 0x20 -V # 512*192 = 393216
+
+echo
+echo
+ldd ../bin/coll

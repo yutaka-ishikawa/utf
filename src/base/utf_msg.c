@@ -197,10 +197,9 @@ utf_recv(void *buf, size_t size, int src, int tag,  UTF_reqid *ridx)
 	int	cpsz;
 	req = utf_idx2msgreq(idx);
 	if (req->rndz) {  /* rendezvous message */
-	    struct utf_recv_cntr *urp = req->rcntr;
 	    req->buf = buf;
 	    req->rcvexpsz = size;
-	    rget_start(urp, req);
+	    rget_start(req);
 	} else if (req->state == REQ_DONE) {
 	    cpsz = size < req->hdr.size ? size : req->hdr.size;
 	    memcpy(buf, req->buf, cpsz);
@@ -277,7 +276,7 @@ utf_wait(UTF_reqid reqid)
     if (req->type == REQ_SND_BUFFERED_EAGER) {
 	if (req->state != REQ_DONE) {
 	    /* still in-progress */
-	    req->state = REQ_PRG_RECLAIM;
+	    req->reclaim = 1;
 	    goto skip;
 	}
     } else {
