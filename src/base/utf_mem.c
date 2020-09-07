@@ -12,6 +12,7 @@
 #include "utf_timer.h"
 
 int utf_tcq_count, utf_mrq_count;
+int utf_sreq_count, utf_rreq_count;
 int utf_dflag;
 int utf_rflag;
 int utf_initialized;
@@ -36,13 +37,12 @@ struct utf_egr_sbuf MALGN(256)	utf_egr_sbuf[COM_SBUF_SIZE]; /* eager send buffer
 struct utf_send_cntr MALGN(256)	utf_scntr[SND_CNTRL_MAX]; /* sender control */
 /**/
 struct utf_recv_cntr MALGN(256)	utf_rcntr[RCV_CNTRL_MAX]; /* receiver control */
-struct utf_msgreq MALGN(256)	utf_msgrq[REQ_SIZE];
-struct utf_msglst MALGN(256)	utf_msglst[REQ_SIZE];
+struct utf_msgreq MALGN(256)	utf_msgrq[MSGREQ_SIZE];
+struct utf_msglst MALGN(256)	utf_msglst[MSGLST_SIZE];
 struct utf_rma_cq MALGN(256)	utf_rmacq_pool[COM_RMACQ_SIZE];
-struct utf_send_msginfo MALGN(256) utf_rndz_pool[REQ_SIZE];	/* used for rendezvous at sender */
+struct utf_send_msginfo MALGN(256) utf_rndz_pool[MSGREQ_SEND_SZ];	/* used for rendezvous at sender */
 
 
-int	utf_tcq_count;
 utfslist_t	utf_explst;	/* expected message list */
 utfslist_t	utf_uexplst;	/* unexpected message list */
 utfslist_t	tfi_tag_explst;	/* fi: expected tagged message list */
@@ -69,6 +69,7 @@ utofu_stadd_t	utf_sndctr_stadd_end;	/* stadd of utf_scntr */
 utofu_stadd_t	utf_rcntr_stadd;	/* stadd of utf_rcntr */
 utofu_stadd_t	utf_rndz_stadd;		/* stadd of utf_rndz_freelst */
 utofu_stadd_t	utf_rndz_stadd_end;	/* stadd of utf_rndz_freelst */
+utofu_stadd_t	utf_rmacq_stadd;	/* rmacq for injectdata */
 
 /**/
 uint8_t	utf_zero256[256];
@@ -156,12 +157,12 @@ utf_mem_init()
     /**/
     memset(utf_msgrq, 0, sizeof(utf_msgrq));
     utfslist_init(&utf_msgreq_freelst, NULL);
-    for (i = 0; i < REQ_SIZE; i++) {
+    for (i = 0; i < MSGREQ_SIZE; i++) {
 	utfslist_append(&utf_msgreq_freelst, &utf_msgrq[i].slst);
     }
 
     utfslist_init(&utf_msglst_freelst, NULL);
-    for (i = 0; i < REQ_SIZE; i++) {
+    for (i = 0; i < MSGLST_SIZE; i++) {
 	utfslist_append(&utf_msglst_freelst, &utf_msglst[i].slst);
 	utf_msglst[i].reqidx = 0;
     }
@@ -174,17 +175,21 @@ utf_mem_init()
     utfslist_init(&utf_rget_proglst, NULL);
     utfslist_init(&utf_rndz_proglst, NULL);
     utfslist_init(&utf_rndz_freelst, NULL);
-    for (i = 0; i < REQ_SIZE; i++) {                                             
+    for (i = 0; i < MSGREQ_SEND_SZ; i++) {                                             
         utfslist_append(&utf_rndz_freelst, &utf_rndz_pool[i].slst);
 	utf_rndz_pool[i].mypos = i;
 	utf_printf("%s: utf_rndz_pool[%d]=%p mypos(%d)\n", __func__, i, &utf_rndz_pool[i], utf_rndz_pool[i].mypos);
     } 
     utf_tcq_count = 0;
 
+    /* rma */
+    UTOFU_CALL(1, utofu_reg_mem_with_stag, utf_info.vcqh, (void*) utf_rmacq_pool,
+	       sizeof(utf_rmacq_pool), STAG_RMACQ, 0, &utf_rmacq_stadd);
     utfslist_init(&utf_rmacq_waitlst, NULL);
     utfslist_init(&utf_rmacq_freelst, NULL);
     for (i = 0; i < COM_RMACQ_SIZE; i++) {
 	utfslist_append(&utf_rmacq_freelst, &utf_rmacq_pool[i].slst);
+	utf_rmacq_pool[i].mypos = i;
     }
 
     memset(utf_zero256, 0, sizeof(utf_zero256));
@@ -240,8 +245,8 @@ utf_rmacq_alloc()
     utfslist_entry_t *slst = utfslist_remove(&utf_rmacq_freelst);
     struct utf_rma_cq *cq;
     if (slst == NULL) {
-	utf_printf("%s: no more RMA CQ entry\n", __func__);
-	abort();
+	utf_printf("%s: ERROR no more RMA CQ entry\n", __func__);
+	return NULL;
     }
     cq = container_of(slst, struct utf_rma_cq, slst);
     return cq;

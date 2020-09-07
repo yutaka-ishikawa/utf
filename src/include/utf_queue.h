@@ -97,7 +97,8 @@ struct utf_packet {
 #define PKT_PYLDSZ(pkt) ((pkt)->hdr.pyldsz)
 #define PKT_RADDR(pkt)  ((pkt)->pyld.rndzdata)
 
-#define PKT_FI_DATA(pkt) ((pkt)->pyld.fi_msg.msgdata)
+#define PKT_FI_DATA(pkt) ((pkt)->pyld.fi_msg.data)
+#define PKT_FI_MSGDATA(pkt) ((pkt)->pyld.fi_msg.msgdata)
 #define PKT_FI_RADDR(pkt)  ((pkt)->pyld.fi_msg.rndzdata)
 
 struct utf_egr_sbuf {
@@ -162,7 +163,7 @@ enum utq_reqstatus {
 enum {
     REQ_RECV_EXPECTED		= 1,
     REQ_RECV_UNEXPECTED		= 2,
-    REQ_RECV_EXPECTED2		= 3,
+    REQ_RECV_EXPECTED2		= 3, /* this value is used to distingush recv/send request */
     REQ_SND_BUFFERED_EAGER	= 4,
     REQ_SND_INPLACE_EAGER	= 5,
     REQ_SND_RENDEZOUS		= 6
@@ -306,6 +307,7 @@ struct utf_send_msginfo { /* msg info */
     struct utf_vcqid_stadd rgetaddr;	/* for rendezvous     +40 = 96 Byte
 					 * stadd and vcqid for rget by dest, expose it to dest */
     struct utf_msgreq	*mreq;		/* request struct      +8 =104 Byte */
+    struct utf_send_cntr *scntr;
     void		*fi_context;	/* For fabric */
     utfslist_entry_t	slst;
 };
@@ -349,8 +351,9 @@ struct utf_send_cntr {	/* 500 Byte */
     utofu_vcq_id_t	rvcqid;		/*  48 = +8 Byte */
     size_t		usize;		/*  56 = +8 user-level sent size */
     utfslist_t		smsginfo;	/*  64 = +8 Byte */
-    uint16_t		micur;		/*  72 = +8 Byte */
-    uint16_t		mient;		/*  80 = +4 Byte */
+    uint8_t		micur;		/*  72 = +8 Byte */
+    uint8_t		mient;		/*  80 = +4 Byte */
+    uint16_t		inflight;	/**/
     struct utf_send_msginfo msginfo[COM_SCNTR_MINF_SZ];	/*  84 = +408 the first entry */
     utfslist_entry_t	slst;		/* 492 = + 8 Byte for free list */
 					/* 500  */
@@ -365,6 +368,7 @@ struct utf_send_cntr {	/* 500 Byte */
  *****************************************************/
 #define UTF_RMA_READ	1
 #define UTF_RMA_WRITE	2
+#define UTF_RMA_WRITE_INJECT 3
 struct utf_rma_cq {
     utfslist_entry_t	slst;
     struct tofu_ctx	*ctx;
@@ -378,10 +382,12 @@ struct utf_rma_cq {
     uint64_t		data;
     void		(*notify)(struct utf_rma_cq *);
     int			type;
+    int			mypos;
     uint64_t		utf_flgs;
     uint64_t		fi_flags;
     void		*fi_ctx;
     void		*fi_ucontext;
+    uint8_t		inject[TOFU_INJECTSIZE];
 };
 
 extern utfslist_t	utf_explst;	/* expected message list */
@@ -492,7 +498,7 @@ find:
 }
 
 static inline int
-tfi_utf_uexplst_match(utfslist_t *uexplst, uint64_t src, uint64_t tag, uint64_t ignore, int peek)
+tfi_utf_uexplst_match(utfslist_t *uexplst, uint32_t src, uint64_t tag, uint64_t ignore, int peek)
 {
     struct utf_msglst	*msl;
     utfslist_entry_t	*cur, *prev;
@@ -505,7 +511,7 @@ tfi_utf_uexplst_match(utfslist_t *uexplst, uint64_t src, uint64_t tag, uint64_t 
 	//utf_printf("\t: list is null\n");
 	return -1;
     }
-    if (src == -1UL) {
+    if (src == -1) {
 	utfslist_foreach2(uexplst, cur, prev) {
 	    msl = container_of(cur, struct utf_msglst, slst);
 	    if ((tag & ~ignore) == (msl->hdr.tag & ~ignore)) {
@@ -551,11 +557,15 @@ tfi_utf_explst_match(utfslist_t *explst, uint32_t src, uint64_t tag,  int peek)
     }
     utfslist_foreach2(explst, cur, prev) {
 	mlst = container_of(cur, struct utf_msglst, slst);
-	uint64_t exp_src = mlst->hdr.src;
+	uint32_t exp_src = mlst->hdr.src;
 	uint64_t exp_tag = mlst->hdr.tag;
 	uint64_t exp_rvignr = ~mlst->fi_ignore;
 	DEBUG(DLEVEL_PROTOCOL) {
-	    utf_printf("\t mlst(%p) exp_src(%d) exp_tag(%x) exp_rvignr(%lx)\n", mlst, exp_src, exp_tag, exp_rvignr);
+	    utf_printf("\t mlst(%p) exp_src(%d) exp_tag(%lx) exp_rvignr(%lx) exp1(%d) exp2(%d) match1(%d) match2(%d)\n",
+		       mlst, exp_src, exp_tag, exp_rvignr,
+		       exp_src == -1, (tag & exp_rvignr) == (exp_tag & exp_rvignr),
+		       (exp_src == -1 && ((tag & exp_rvignr) == (exp_tag & exp_rvignr))),
+		       (exp_src == src && ((tag & exp_rvignr) == (exp_tag & exp_rvignr))));
 	}
 	if (exp_src == -1 && (tag & exp_rvignr) == (exp_tag & exp_rvignr)) {
 	    goto find;

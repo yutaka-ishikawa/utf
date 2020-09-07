@@ -26,6 +26,8 @@
 
 #define SHMEM_KEY_VAL_FMT	"/tmp/MPICH-shm"
 #define TOFU_NIC_SIZE	6	/* number of NIC */
+#define TOFU_INJECTSIZE	228
+#define NODE_MAX	158976
 #define PROC_MAX	663552	/* 24*23*24*12 * 4(ppn) */
 #define SND_CNTRL_MAX	128	/* shorter than 2^7 (sidx) */
 #define RCV_CNTRL_MAX	128	/* shorter than 2^7 (sidx) */
@@ -45,7 +47,12 @@
 #define TRANSMODE_THR	10	/* max is 255 (1B) */
 
 /* request */
-#define REQ_SIZE	512
+#define MSGREQ_SEND_SZ	256	/* MUST BE CHANGED to handle maximum */
+#define MSGREQ_RECV_SZ	256	/* MUST BE CHANGED to handle maximum, COM_PEERS * MSGREQ_SEND_SZ */
+#define MSGREQ_SIZE	(MSGREQ_SEND_SZ + MSGREQ_RECV_SZ)
+#define MSGREQ_SENDMAX_INFLIGHT	200
+/* exp/uexp message list */
+#define MSGLST_SIZE	512
 /* network related */
 #define TOFU_NTNI	6
 #define TOFU_ALIGN	256
@@ -76,6 +83,7 @@
 #define STAG_SNDCTR	13	/* utf_scntr */
 #define STAG_RCVCTR	14	/* utf_rcntr */
 #define STAG_RNDV	15	/* utf_rndz_freelst */
+#define STAG_RMACQ	16	/* utf_rmacq_pool */
 
 /* 
  * MTU 1920 Byte, Piggyback size 32 Byte, Assume payload(1888 Byte)

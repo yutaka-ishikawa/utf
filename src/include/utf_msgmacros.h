@@ -1,7 +1,7 @@
 /*
  *
  */
-extern struct utf_msgreq	utf_msgrq[REQ_SIZE];
+extern struct utf_msgreq	utf_msgrq[MSGREQ_SIZE];
 extern utfslist_t		utf_msgreq_freelst;
 extern utfslist_t		utf_egr_sbuf_freelst;
 extern utofu_stadd_t		utf_sndctr_stadd;	/* stadd of utf_scntr */
@@ -10,8 +10,9 @@ extern struct utf_recv_cntr	utf_rcntr[RCV_CNTRL_MAX]; /* receiver control */
 extern utfslist_t	utf_rget_proglst;
 extern utfslist_t	utf_rndz_proglst;
 extern utfslist_t	utf_rndz_freelst;
-extern utfslist_t	utf_rmacq_waitlst;
-extern int     utf_tcq_count, utf_mrq_count;
+//extern utfslist_t	utf_rmacq_waitlst;
+extern int	utf_tcq_count, utf_mrq_count;
+extern int	utf_sreq_count, utf_rreq_count;
 
 extern void	utf_tcqprogress();
 extern int	utf_mrqprogress();
@@ -54,9 +55,34 @@ utf_msgreq2idx(struct utf_msgreq *req)
 }
 
 static inline struct utf_msgreq *
-utf_msgreq_alloc()
+utf_sendreq_alloc()
 {
-    utfslist_entry_t *slst = utfslist_remove(&utf_msgreq_freelst);
+    utfslist_entry_t *slst;
+
+    if (utf_sreq_count > MSGREQ_SEND_SZ) {
+	return NULL;
+    }
+    utf_sreq_count++;
+    slst = utfslist_remove(&utf_msgreq_freelst);
+    if (slst != 0) {
+	return container_of(slst, struct utf_msgreq, slst);
+    } else {
+	utf_printf("%s: No more request object\n", __func__);
+	abort();
+	return NULL;
+    }
+}
+
+static inline struct utf_msgreq *
+utf_recvreq_alloc()
+{
+    utfslist_entry_t *slst;
+
+    if (utf_rreq_count > MSGREQ_RECV_SZ) {
+	return NULL;
+    }
+    utf_rreq_count++;
+    slst = utfslist_remove(&utf_msgreq_freelst);
     if (slst != 0) {
 	return container_of(slst, struct utf_msgreq, slst);
     } else {
@@ -67,12 +93,22 @@ utf_msgreq_alloc()
 }
 
 static inline void
-utf_msgreq_free(struct utf_msgreq *req)
+utf_sendreq_free(struct utf_msgreq *req)
 {
-    //utf_printf("%s: YI<<<<<\n", __func__);
     req->state = REQ_NONE;
     req->ustatus = REQ_NONE;
     req->notify = NULL;
+    --utf_sreq_count;
+    utfslist_insert(&utf_msgreq_freelst, &req->slst);
+}
+
+static inline void
+utf_recvreq_free(struct utf_msgreq *req)
+{
+    req->state = REQ_NONE;
+    req->ustatus = REQ_NONE;
+    req->notify = NULL;
+    --utf_rreq_count;
     utfslist_insert(&utf_msgreq_freelst, &req->slst);
 }
 
@@ -144,11 +180,13 @@ find:
     return minfo;
 }
 
+#if 0
 static inline void
 utf_rmacq_waitappend(struct utf_rma_cq *rma_cq)
 {
     utfslist_append(&utf_rmacq_waitlst, &rma_cq->slst);
 }
+#endif
 
 /*
  * UTOFU_ONESIDED_FLAG_LOCAL_MRQ_NOTICE is controled by caller !!
@@ -346,14 +384,14 @@ eager_copy_and_check(struct utf_recv_cntr *urp,
 	    req->overrun = 1;
 	    if (rest > 0) {
 		utf_copy_to_iov(req->fi_msg, req->fi_iov_count, req->rsize,
-				PKT_FI_DATA(pkt), rest);
+				PKT_FI_MSGDATA(pkt), rest);
 	    }
 	}  else {
 	    if (req->buf) { /* enough buffer area has been allocated */
-		memcpy(&req->buf[req->rsize], PKT_FI_DATA(pkt), cpysz);
+		memcpy(&req->buf[req->rsize], PKT_FI_MSGDATA(pkt), cpysz);
 	    } else {
 		utf_copy_to_iov(req->fi_msg, req->fi_iov_count, req->rsize,
-				PKT_FI_DATA(pkt), cpysz);
+				PKT_FI_MSGDATA(pkt), cpysz);
 	    }
 	}
     }

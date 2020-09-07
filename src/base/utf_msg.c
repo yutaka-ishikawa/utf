@@ -11,7 +11,8 @@
 #include "utf_msgmacros.h"
 
 extern void	utf_scntr_free(int idx);
-extern void	utf_msgreq_free(struct utf_msgreq *req);
+extern void	utf_sendreq_free(struct utf_msgreq *req);
+extern void	utf_recvreq_free(struct utf_msgreq *req);
 extern int	utf_send_start(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo);
 
 extern int	utf_tcq_count;
@@ -23,7 +24,7 @@ extern struct utf_egr_sbuf	utf_egr_sbuf[COM_SBUF_SIZE]; /* eager send buffer per
 extern utofu_stadd_t	utf_egr_sbuf_stadd;
 extern utfslist_t		utf_scntr_freelst;
 extern struct utf_send_cntr	utf_scntr[SND_CNTRL_MAX]; /* sender control */
-extern struct utf_msgreq	utf_msgrq[REQ_SIZE];
+extern struct utf_msgreq	utf_msgrq[MSGREQ_SIZE];
 
 static inline struct utf_egr_sbuf *
 utf_egr_sbuf_alloc(utofu_stadd_t *stadd)
@@ -146,7 +147,7 @@ utf_send(void *buf, size_t size, int dst, uint64_t tag, UTF_reqid *ridx)
 	/* progress */
 	utf_tcqprogress();
     }
-    if ((req = utf_msgreq_alloc()) == NULL) {
+    if ((req = utf_sendreq_alloc()) == NULL) {
 	rc = UTF_ERR_NOMORE_REQBUF;
 	goto ext;
     }
@@ -179,7 +180,7 @@ ext:
 err2:
     utf_scntr_free(dst);
 err1:
-    utf_msgreq_free(req);
+    utf_sendreq_free(req);
     ridx->id = -1;
     ridx->reqid1 = -1;
     goto ext;
@@ -217,7 +218,7 @@ utf_recv(void *buf, size_t size, int src, int tag,  UTF_reqid *ridx)
 	    ridx->reqid1 = utf_msgreq2idx(req);
 	}
     } else {
-	if ((req = utf_msgreq_alloc()) == NULL) {
+	if ((req = utf_recvreq_alloc()) == NULL) {
 	    rc = UTF_ERR_NOMORE_REQBUF;
 	    goto err;
 	}
@@ -287,7 +288,11 @@ utf_wait(UTF_reqid reqid)
 	    utf_progress();
 	}
     }
-    utf_msgreq_free((struct utf_msgreq*) req); /* state is reset to REQ_NONE */
+    if (req->type <= REQ_RECV_EXPECTED2) {
+	utf_recvreq_free((struct utf_msgreq*) req); /* state is reset to REQ_NONE */
+    } else {
+	utf_sendreq_free((struct utf_msgreq*) req); /* state is reset to REQ_NONE */
+    }
 skip:
     utf_tmr_end(TMR_UTF_WAIT);
     return 0;
@@ -322,7 +327,11 @@ utf_waitcmpl(UTF_reqid reqid)
 	/* In case of REQ_SND_BUFFERED_EAGER, the request object has been freed
 	 * in the sendending.
 	 */
-	utf_msgreq_free((struct utf_msgreq*) req);
+	if (req->type <= REQ_RECV_EXPECTED2) {
+	    utf_recvreq_free((struct utf_msgreq*) req); /* state is reset to REQ_NONE */
+	} else {
+	    utf_sendreq_free((struct utf_msgreq*) req); /* state is reset to REQ_NONE */
+	}
     }
 skip:
     utf_tmr_end(TMR_UTF_WAIT);
@@ -336,7 +345,7 @@ utf_req_wipe()
     int	id;
     int	i;
 
-    for (i = 0; i < REQ_SIZE; i++) {
+    for (i = 0; i < MSGREQ_SIZE; i++) {
 	switch (utf_msgrq[i].state) {
 	case REQ_NONE: continue;
 	case REQ_DONE:

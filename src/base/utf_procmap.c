@@ -166,8 +166,8 @@ utf_peers_init()
     sz = sizeof(struct tofu_vname)*utf_info.nprocs;
     vnmp = utf_info.vname = utf_malloc(sz);
     memset(vnmp, 0, sz);
-    nnodes = utf_info.nnodes = utf_info.nprocs/ppn;
-    sz = sizeof(union jtofu_phys_coords)*nnodes;
+    nnodes = 0; //nnodes = utf_info.nnodes = utf_info.nprocs/ppn;
+    sz = sizeof(union jtofu_phys_coords)*NODE_MAX;
     physnode = utf_info.phys_node = utf_malloc(sz);
     /* vcqid is also copied */
     sz = sizeof(utofu_vcq_id_t)*utf_info.nprocs;
@@ -195,8 +195,9 @@ utf_peers_init()
 		       rank, &pcoords);
 	    JTOFU_CALL(1, jtofu_query_log_coords, utf_info.jobid,
 		       rank, &lcoords);
-	    assert(node < nnodes);
+	    assert(node < NODE_MAX);
 	    physnode[node++] = pcoords;
+	    nnodes++;
 	    /* rank info */
 	    JTOFU_CALL(1, jtofu_query_ranks_from_phys_coords, utf_info.jobid,
 		       &pcoords, ppn, nd_ranks, &nranks);
@@ -227,6 +228,9 @@ utf_peers_init()
 		   vnmp[rank].vcqid, vnmp[rank].tniq[0]>>4, vnmp[rank].tniq[0]&0x0f,
 		   vnmp[rank].cid);
     }
+    utf_info.nnodes = nnodes;
+    utf_printf("NNODE = %d\n", utf_info.nnodes);
+#if 0
     {
 	int	i;
 	utf_printf("NODE LIST:\n");
@@ -234,6 +238,7 @@ utf_peers_init()
 	    utf_printf("\t<%d> %s\n", i, pcoords2string(physnode[i], NULL, 0));
 	}
     }
+#endif
     utf_free(pmarker);
     utf_info.myppn = ppn;
     {
@@ -562,7 +567,6 @@ PMIx_Resolve_nodes(const char *nspace, char **nodelist)
     ptr = lst;
     for (i = 0; i < utf_info.nnodes; i++) {
 	int len;
-	/* Compiler claim the following statement, but it is OK */
         len = snprintf(ptr, NODE_NM_LEN+1, NODE_NAME, pcoords2string(utf_info.phys_node[i], NULL, 0));
 	assert(len <= NODE_NM_LEN + 1);
         ptr += NODE_NM_LEN;

@@ -14,6 +14,7 @@
 extern int utf_tcq_count;
 extern utf_sndmgt_t		utf_egrmgt[PROC_MAX];
 extern struct utf_send_cntr	utf_scntr[SND_CNTRL_MAX];
+extern struct utf_rma_cq	utf_rmacq_pool[COM_RMACQ_SIZE];
 extern utofu_stadd_t	utf_sndctr_stadd;	/* stadd of utf_scntr */
 extern utofu_stadd_t	utf_sndctr_stadd_end;	/* stadd of utf_scntr */
 extern utofu_stadd_t	utf_egr_rbuf_stadd;	/* stadd of utf_egr_rbuf: packet buffer */
@@ -155,9 +156,10 @@ utf_rndz_done(int pos)
 	utf_mem_dereg(utf_info.vcqh, req->bufinfo.stadd[0]);
 	req->bufinfo.stadd[0] = 0;
     }
+    --minfo->scntr->inflight;
     if (req->notify) req->notify(req);
     if (req->reclaim) {
-	utf_msgreq_free(req); /* req->state is reset to REQ_NONE */
+	utf_sendreq_free(req); /* req->state is reset to REQ_NONE */
     } else {
 	req->state = REQ_DONE;
     }
@@ -349,9 +351,10 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 	}
 	{
 	    struct utf_msgreq	*req = minfo->mreq;
+	    --usp->inflight;
 	    if (req->notify) req->notify(req);
 	    if (req->reclaim) {
-		utf_msgreq_free(req); /* req->state is reset to REQ_NONE */
+		utf_sendreq_free(req); /* req->state is reset to REQ_NONE */
 	    } else {
 		req->state = REQ_DONE;
 	    }
@@ -525,9 +528,12 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 	if ((idx = utfgen_explst_match(PKT_MSGFLG(pkt), PKT_MSGSRC(pkt), PKT_MSGTAG(pkt))) != -1) {
 	    req = utf_idx2msgreq(idx);
 	    req->rndz = pkt->hdr.rndz;
+#if 0
 	    if (pkt->hdr.size != req->usrreqsz) {
 		utf_printf("%s: YI###### SENDER SIZE(%ld) RECEIVER SIZE(%ld)\n", __func__, pkt->hdr.size, req->rcvexpsz);
 	    }
+#endif
+	    req->fi_data = PKT_FI_DATA(pkt);
 	    if (req->rndz) {
 		if (PKT_MSGFLG(pkt) == 0) { /* utf message */
 		    memcpy(&req->rgetsender, &pkt->pyld.rndzdata, sizeof(struct utf_vcqid_stadd));
@@ -546,7 +552,9 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 		urp->req = req;
 	    }
 	} else { /* New Unexpected message */
-	    req = utf_msgreq_alloc();
+	    req = utf_recvreq_alloc();
+	    assert(req != 0);
+	    req->fi_data = PKT_FI_DATA(pkt);
 	    req->hdr = pkt->hdr;
 	    req->rsize = 0; req->ustatus = 0; req->type = REQ_RECV_UNEXPECTED;
 	    req->rndz = pkt->hdr.rndz;
@@ -664,19 +672,20 @@ utf_mrqprogress()
 	int	sidx = mrq_notice.edata;
 	struct utf_send_msginfo	*minfo;
 
-	DEBUG(DLEVEL_UTOFU|DLEVEL_ADHOC) {
-	    utf_printf("%s: MRQ_TYPE_LCL_PUT: edata(%d) rmt_val(%ld/0x%lx)"
-		       "vcq_id(%lx) sidx(%x)\n",  __func__, mrq_notice.edata,
+	DEBUG(DLEVEL_PROTO_RMA|DLEVEL_PROTOCOL) {
+	    utf_printf("%s: MRQ_TYPE_LCL_PUT: edata(%d) rmt_val(%ld/0x%lx) "
+		       "vcq_id(%lx) sidx(0x%x)\n",  __func__, mrq_notice.edata,
 		       mrq_notice.rmt_value, mrq_notice.rmt_value,
 		       mrq_notice.vcq_id, sidx);
 	}
-#if 0
 	if (sidx & EDAT_RMA) {
 	    /* RMA operation */
-	    utf_rma_lclcq(mrq_notice, UTF_RMA_WRITE);
+	    int	rma_idx = sidx & ~EDAT_RMA;
+	    struct utf_rma_cq	*rma_cq;
+	    rma_cq = &utf_rmacq_pool[rma_idx];
+	    if (rma_cq->notify) rma_cq->notify(rma_cq);
 	    break;
 	}
-#endif
 	usp = utf_idx2scntr(sidx);
 	minfo = &usp->msginfo[usp->micur];
 	utf_sendengine(usp, minfo, 0, EVT_LCL);
