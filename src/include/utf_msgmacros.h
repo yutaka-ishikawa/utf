@@ -370,9 +370,9 @@ eager_copy_and_check(struct utf_recv_cntr *urp,
 
     cpysz = PKT_PYLDSZ(pkt);
     DEBUG(DLEVEL_PROTOCOL) {
-	utf_printf("%s: req->rsize(%ld) req->hdr.size(%ld) cpysz(%ld) "
-		 "EMSG_SIZE(msgp)=%ld\n",
-		 __func__, req->rsize, req->hdr.size, cpysz, PKT_PYLDSZ(pkt));
+	utf_printf("%s: req->rsize(%ld) req->hdr.size(%ld) cpysz(%ld) fi_data(%ld) "
+		   "EMSG_SIZE(msgp)=%ld\n",
+		   __func__, req->rsize, req->hdr.size, cpysz, req->fi_data, PKT_PYLDSZ(pkt));
     }
     if (pkt->hdr.flgs == 0) { /* utf message */
 	memcpy(&req->buf[req->rsize], PKT_DATA(pkt), cpysz);
@@ -400,6 +400,7 @@ eager_copy_and_check(struct utf_recv_cntr *urp,
 	/* Must receive data from the sender */
 	urp->state = R_DONE;
     } else {
+	assert(req->hdr.size < req->rsize);
 	/* More data will arrive */
 	urp->state = R_BODY;
     }
@@ -522,7 +523,7 @@ utf_progress()
 	struct utf_packet	*msgbase = utf_recvbuf_get(j);
 	struct utf_recv_cntr	*urp = &utf_rcntr[j];
 	volatile struct utf_packet	*pktp;
-	int	marker, sidx;
+	int	marker, sidx, rc;
     try_again:
 	pktp = msgbase + urp->recvidx;
 	if (pktp->hdr.marker == MSG_MARKER) {
@@ -538,7 +539,11 @@ utf_progress()
 	    /* for debugging */
 	    urp->dbg_rsize[urp->dbg_idx] = PKT_PYLDSZ(pktp);
 	    urp->dbg_idx = (urp->dbg_idx + 1) % COM_RBUF_SIZE;
-	    if (utf_recvengine(urp, (struct utf_packet*) pktp, sidx) < 0) {
+	    rc = utf_recvengine(urp, (struct utf_packet*) pktp, sidx);
+	    if (rc == 1) { /* Cannot handle at this time */
+		/* Do we need to handle this situation at the sender side ? */
+		continue;
+	    } else if (rc < 0) {
 		utf_printf("%s: j(%d) protocol error urp(%p)->state(%d:%s) sidx(%d) pkt(%p) MSG(%s)\n",
 			   __func__, j, urp, urp->state, rstate_symbol[urp->state],
 			   sidx, pktp, pkt2string((struct utf_packet*) pktp, NULL, 0));

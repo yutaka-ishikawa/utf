@@ -553,7 +553,13 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 	    }
 	} else { /* New Unexpected message */
 	    req = utf_recvreq_alloc();
-	    assert(req != 0);
+	    if (req == NULL) {
+		/* Cannot handle this message at this time */
+		DEBUG(DLEVEL_PROTOCOL) {
+		    utf_printf("%s: Unexepected Lack of free utf_msgreq\n", __func__);
+		}
+		return 1;
+	    }
 	    req->fi_data = PKT_FI_DATA(pkt);
 	    req->hdr = pkt->hdr;
 	    req->rsize = 0; req->ustatus = 0; req->type = REQ_RECV_UNEXPECTED;

@@ -3,8 +3,12 @@
 #include <stdlib.h>
 #include <limits.h>
 #include "utf_conf.h"
-#include "utf_tofu.h"
 #include "utf_debug.h"
+#include "utf_tofu.h"
+#include "utf_queue.h"
+#include "utf_externs.h"
+#include "utf_errmacros.h"
+#include "utf_msgmacros.h"
 
 static FILE	*logfp;
 static char	logname[PATH_MAX];
@@ -87,4 +91,16 @@ utf_getenvint(char *envp)
 	}
     }
     return val;
+}
+
+void
+utf_msglist_show(char *msg, utfslist_t *lst)
+{
+    struct utf_msglst	*msl;
+    utfslist_entry_t	*cur;
+    utfslist_foreach(lst, cur) {
+	msl = container_of(cur, struct utf_msglst, slst);
+	utf_printf("\t%s msl(%p) src(%d) tag(%x) reqidx(%d) req(%p)\n", msg, msl, msl->hdr.src, msl->hdr.tag,
+		   msl->reqidx, utf_idx2msgreq(msl->reqidx));
+    }
 }

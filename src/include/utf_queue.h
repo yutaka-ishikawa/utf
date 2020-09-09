@@ -232,6 +232,8 @@ struct utf_msgreq {
     uint64_t	fi_flgs;
     size_t	fi_iov_count;
     struct iovec fi_msg[4];	/* TOFU_IOV_LIMIT */
+    size_t	fi_recvd;	/* size of received data */
+    struct utf_msghdr fi_svdhdr;
 };
 
 struct utf_msglst {
@@ -308,7 +310,7 @@ struct utf_send_msginfo { /* msg info */
 					 * stadd and vcqid for rget by dest, expose it to dest */
     struct utf_msgreq	*mreq;		/* request struct      +8 =104 Byte */
     struct utf_send_cntr *scntr;
-    void		*fi_context;	/* For fabric */
+//QWE    void		*fi_context;	/* For fabric */
     utfslist_entry_t	slst;
 };
 

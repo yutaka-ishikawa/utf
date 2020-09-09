@@ -380,14 +380,17 @@ utf_shm_init(size_t sz, void **area)
 {
     static int	shm_usd = 0;
 
+    if (sz == 0 || area == NULL) {
+	return -1;
+    }
     if (shm_usd) {
 	*area = NULL;
-	return -1;
+	return -2;
     }
     shm_usd = 1;
     *area = utf_info.shm = utf_shm_init_internal(sz, PMIX_USR_SHMEM);
     if (utf_info.shm == NULL) {
-	return -2;
+	return -3;
     }
     return 0;
 }
