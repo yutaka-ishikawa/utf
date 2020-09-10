@@ -3,8 +3,8 @@
 include mkdef.$(UTF_ARCH)
 
 INSTDIR = ../bin
-MPIPROGS = hello coll
-MPISRCS = hello.c coll.c
+MPIPROGS = hello coll sendrecv
+MPISRCS = hello.c coll.c sendrecv.c
 MPIOBJS = $(MPISRCS:.c=.o)
 SRCS = testlib.c
 OBJS = $(SRCS:.c=.o)

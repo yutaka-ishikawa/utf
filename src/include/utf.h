@@ -20,6 +20,8 @@ typedef	union {
 } UTF_reqid;
 
 extern int	utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn);
+extern int	utf_shm_init(size_t, void **);
+extern int	utf_shm_finalize();
 extern int	utf_finalize(int wipe);
 extern int	utf_send(void *buf, size_t size, int dst, uint64_t tag, UTF_reqid *reqid);
 extern int	utf_recv(void *buf, size_t size, int src, int tag, UTF_reqid *reqid);

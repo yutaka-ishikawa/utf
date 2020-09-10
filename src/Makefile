@@ -5,7 +5,7 @@ include dep/mkdef.$(UTF_ARCH)
 INSTDIR  := $(HOME)/mpich-tofu
 INSTALL  := install
 
-CFLAGS += -I./include/ -shared -fPIC
+CFLAGS += -I../include/ -shared -fPIC -Wall
 CFLAGS += $(INCLUDES)
 SRCDIR   := ./base/
 INCDIR   := ./include
@@ -19,7 +19,7 @@ SRCS     := $(wildcard $(SRCDIR)/*.c)
 OBJS     := $(addprefix $(BUILDDIR)/, $(SRCS:.c=.o))
 DEPS	 := $(addprefix $(BUILDDIR)/, $(SRCS:.c=.d))
 
-.PHONY: all install clean
+.PHONY: all install clean depend
 all: $(TARGET)
 install:
 	[ -d $(INSTDIR)/lib ] || mkdir $(INSTDIR)/lib
@@ -31,16 +31,9 @@ $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 $(BUILDDIR)/%.o: %.c
 	@mkdir -p $(BUILDDIR)/$(SRCDIR)
-	$(CC) $(CFLAGS) -c  $< -o $@
+	$(CC) $(CFLAGS) -c  -MMD $< -o $@
 
 clean:
-	rm -f $(BUILDDIR)/$(SRCDIR)/*.o $(TARGET)
-depend:
-	makedepend -p $(BUILDDIR)  -I$(INCLUDES) $(SRCS) -f dep/depend
-#	makedepend -I$(INCLUDES) $(SRCS)
-#include dep/depend
-
-##depend: $(DEPS)
-##$(BUILDDIR)/%.d: %.c
-##	$(CC) $(CFLAGS) -M $<  >  $@
-##include $(DEPS)
+	rm -f $(BUILDDIR)/$(SRCDIR)/*.o $(BUILDDIR)/$(SRCDIR)/*.d. $(TARGET)
+#
+-include $(DEPS)

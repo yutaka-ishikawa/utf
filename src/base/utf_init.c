@@ -140,8 +140,10 @@ utf_finalize(int wipe)
     if (wipe) {
 	utf_req_wipe();
 	utf_fence();
+    } else {
+	utf_fence();
     }
-    utf_fence();
+    utf_egrbuf_show();
     utf_mem_finalize();
     utf_procmap_finalize();
     jtofu_finalize();

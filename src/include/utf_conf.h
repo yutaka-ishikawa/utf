@@ -26,6 +26,8 @@
 
 #define SHMEM_KEY_VAL_FMT	"/tmp/MPICH-shm"
 #define TOFU_NIC_SIZE	6	/* number of NIC */
+#define TOFU_INJECTSIZE	228
+#define NODE_MAX	158976
 #define PROC_MAX	663552	/* 24*23*24*12 * 4(ppn) */
 #define SND_CNTRL_MAX	128	/* shorter than 2^7 (sidx) */
 #define RCV_CNTRL_MAX	128	/* shorter than 2^7 (sidx) */
@@ -45,11 +47,17 @@
 #define TRANSMODE_THR	10	/* max is 255 (1B) */
 
 /* request */
-#define REQ_SIZE	512
+#define MSGREQ_SEND_SZ	256	/* MUST BE CHANGED to handle maximum */
+#define MSGREQ_RECV_SZ	256	/* MUST BE CHANGED to handle maximum, COM_PEERS * MSGREQ_SEND_SZ */
+#define MSGREQ_SIZE	(MSGREQ_SEND_SZ + MSGREQ_RECV_SZ)
+#define MSGREQ_SENDMAX_INFLIGHT	200
+/* exp/uexp message list */
+#define MSGLST_SIZE	512
 /* network related */
 #define TOFU_NTNI	6
 #define TOFU_ALIGN	256
 #define TOFU_RMA_MAXSZ	(8*1024*1024)	/* 8 MiB (8388608 B) */
+
 #define MSG_MTU		1920	/* Tofu MTU */
 //#define MSG_PKTSZ	(256*2)	/* must be cache align (256B) and shorter than MTU */
 #define MSG_PKTSZ	(256)	/* must be cache align (256B) and shorter than MTU */
@@ -58,11 +66,15 @@
 //#define MSG_MARKER	0x9 	/* 4 bit */
 //#define MSG_MARKER	(0x4B414E00L)	/* 4B */
 #define MSG_RCNTRSZ	sizeof(struct utf_vcqid_stadd)
-#define MSG_EAGER_SIZE	MSG_PYLDSZ
+#define MSG_EAGER_SIZE	MSG_PYLDSZ	/* 236 B (256 - 20) */
 #define UTOFU_PIGBACKSZ	32 /* See below */
-#define MSG_EAGER_PIGBACK_SZ	(UTOFU_PIGBACKSZ - sizeof(struct utf_msghdr))
+#define MSG_EAGER_PIGBACK_SZ	(UTOFU_PIGBACKSZ - sizeof(struct utf_msghdr))	/* 12 B */
 #define MSG_EGR		0
 #define MSG_RENDEZOUS	1
+
+//#define MSG_FI_PYLDSZ		(MSG_PYLDSZ - sizeof(uint64_t))	/* 228 B */ defined in utf_queue.h
+#define MSG_FI_EAGER_PIGBACK_SZ	(MSG_EAGER_PIGBACK_SZ - sizeof(uint64_t))	/* 4 B */
+#define MSG_FI_EAGER_SIZE	(MSG_EAGER_SIZE - sizeof(uint64_t))		/* 228 B */
 
 /* stadd */
 #define STAG_EGRMGT	10	/* utf_egrmgt */
@@ -70,6 +82,8 @@
 #define STAG_SBUF	12	/* utf_egr_sbuf */
 #define STAG_SNDCTR	13	/* utf_scntr */
 #define STAG_RCVCTR	14	/* utf_rcntr */
+#define STAG_RNDV	15	/* utf_rndz_freelst */
+#define STAG_RMACQ	16	/* utf_rmacq_pool */
 
 /* 
  * MTU 1920 Byte, Piggyback size 32 Byte, Assume payload(1888 Byte)
@@ -106,4 +120,3 @@
  * max_mtu:		 1920 B
  * max_gap:		 255 B
  */
-

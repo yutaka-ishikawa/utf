@@ -1,25 +1,32 @@
 /*
  *
  */
-extern struct utf_msgreq	utf_msgrq[REQ_SIZE];
+extern struct utf_msgreq	utf_msgrq[MSGREQ_SIZE];
 extern utfslist_t		utf_msgreq_freelst;
 extern utfslist_t		utf_egr_sbuf_freelst;
 extern utofu_stadd_t		utf_sndctr_stadd;	/* stadd of utf_scntr */
 extern struct utf_egr_rbuf	utf_egr_rbuf;		/* eager receive buffer */
 extern struct utf_recv_cntr	utf_rcntr[RCV_CNTRL_MAX]; /* receiver control */
 extern utfslist_t	utf_rget_proglst;
-extern utfslist_t	utf_rmacq_waitlst;
-extern int     utf_tcq_count, utf_mrq_count;
+extern utfslist_t	utf_rndz_proglst;
+extern utfslist_t	utf_rndz_freelst;
+//extern utfslist_t	utf_rmacq_waitlst;
+extern int	utf_tcq_count, utf_mrq_count;
+extern int	utf_sreq_count, utf_rreq_count;
 
 extern void	utf_tcqprogress();
 extern int	utf_mrqprogress();
 extern void	utf_peers_show();
-//extern void	utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx);
+extern int	utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx);
+extern char	*utf_pkt_getinfo(struct utf_packet *pktp, int *mrkr, int *sidx);
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
+
+#ifdef UTF_RSTATESYM_NEEDED
 static char *rstate_symbol[] =
 {	"R_FREE", "R_NONE", "R_HEAD", "R_BODY",	"R_WAIT_RNDZ",
 	"R_DO_RNDZ", "R_DO_READ", "R_DO_WRITE", "R_DONE" };
+#endif /* UTF_RSTATESYM_NEEDED */
 
 static inline char*
 pkt2string(struct utf_packet *pkt, char *buf, size_t len)
@@ -48,9 +55,34 @@ utf_msgreq2idx(struct utf_msgreq *req)
 }
 
 static inline struct utf_msgreq *
-utf_msgreq_alloc()
+utf_sendreq_alloc()
 {
-    utfslist_entry_t *slst = utfslist_remove(&utf_msgreq_freelst);
+    utfslist_entry_t *slst;
+
+    if (utf_sreq_count > MSGREQ_SEND_SZ) {
+	return NULL;
+    }
+    utf_sreq_count++;
+    slst = utfslist_remove(&utf_msgreq_freelst);
+    if (slst != 0) {
+	return container_of(slst, struct utf_msgreq, slst);
+    } else {
+	utf_printf("%s: No more request object\n", __func__);
+	abort();
+	return NULL;
+    }
+}
+
+static inline struct utf_msgreq *
+utf_recvreq_alloc()
+{
+    utfslist_entry_t *slst;
+
+    if (utf_rreq_count > MSGREQ_RECV_SZ) {
+	return NULL;
+    }
+    utf_rreq_count++;
+    slst = utfslist_remove(&utf_msgreq_freelst);
     if (slst != 0) {
 	return container_of(slst, struct utf_msgreq, slst);
     } else {
@@ -61,12 +93,22 @@ utf_msgreq_alloc()
 }
 
 static inline void
-utf_msgreq_free(struct utf_msgreq *req)
+utf_sendreq_free(struct utf_msgreq *req)
 {
-    //utf_printf("%s: YI<<<<<\n", __func__);
     req->state = REQ_NONE;
     req->ustatus = REQ_NONE;
     req->notify = NULL;
+    --utf_sreq_count;
+    utfslist_insert(&utf_msgreq_freelst, &req->slst);
+}
+
+static inline void
+utf_recvreq_free(struct utf_msgreq *req)
+{
+    req->state = REQ_NONE;
+    req->ustatus = REQ_NONE;
+    req->notify = NULL;
+    --utf_rreq_count;
     utfslist_insert(&utf_msgreq_freelst, &req->slst);
 }
 
@@ -112,11 +154,39 @@ utf_msglst_append(struct utfslist *head, struct utf_msgreq *req)
     return mlst;
 }
 
+static inline struct utf_send_msginfo *
+utf_rndzprog_alloc()
+{
+    utfslist_entry_t		*slst = utfslist_remove(&utf_rndz_freelst);
+    struct utf_send_msginfo *cpyinfo;
+    assert(slst != NULL);
+    cpyinfo = container_of(slst, struct utf_send_msginfo, slst);
+    return cpyinfo;
+}
+
+static inline struct utf_send_msginfo *
+find_rndzprog(int pos)
+{
+    utfslist_entry_t	*cur, *prev;
+    struct utf_send_msginfo	*minfo = NULL;
+    utfslist_foreach2(&utf_rndz_proglst, cur, prev) {
+	minfo = container_of(cur, struct utf_send_msginfo, slst);
+	if (minfo->mypos == pos) goto find;
+    }
+    /* not found */
+    return NULL;
+find:
+    utfslist_remove2(&utf_rndz_proglst, cur, prev);
+    return minfo;
+}
+
+#if 0
 static inline void
 utf_rmacq_waitappend(struct utf_rma_cq *rma_cq)
 {
     utfslist_append(&utf_rmacq_waitlst, &rma_cq->slst);
 }
+#endif
 
 /*
  * UTOFU_ONESIDED_FLAG_LOCAL_MRQ_NOTICE is controled by caller !!
@@ -205,8 +275,9 @@ remote_put(utofu_vcq_hdl_t vcqh,
 		  vcqh, rvcqid,  lstadd, rstadd, len, edata, flgs, cbdata);
     utf_tcq_count++;
 #else
-    flgs |= UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE
-	 | UTOFU_ONESIDED_FLAG_LOCAL_MRQ_NOTICE
+    flgs = 
+	 UTOFU_ONESIDED_FLAG_LOCAL_MRQ_NOTICE
+/*	 |UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE*/
 	 | UTOFU_ONESIDED_FLAG_STRONG_ORDER
 	 | UTOFU_ONESIDED_FLAG_CACHE_INJECTION;
     UTOFU_MSGCALL(1, usp, vcqh, utofu_put,
@@ -299,33 +370,37 @@ eager_copy_and_check(struct utf_recv_cntr *urp,
 
     cpysz = PKT_PYLDSZ(pkt);
     DEBUG(DLEVEL_PROTOCOL) {
-	utf_printf("%s: req->rsize(%ld) req->hdr.size(%ld) cpysz(%ld) "
-		 "EMSG_SIZE(msgp)=%ld\n",
-		 __func__, req->rsize, req->hdr.size, cpysz, PKT_PYLDSZ(pkt));
+	utf_printf("%s: req->rsize(%ld) req->hdr.size(%ld) cpysz(%ld) fi_data(%ld) "
+		   "EMSG_SIZE(msgp)=%ld\n",
+		   __func__, req->rsize, req->hdr.size, cpysz, req->fi_data, PKT_PYLDSZ(pkt));
     }
     if (pkt->hdr.flgs == 0) { /* utf message */
 	memcpy(&req->buf[req->rsize], PKT_DATA(pkt), cpysz);
     } else { /* Fabric */
-	if (req->ustatus == REQ_OVERRUN) {
+	if (req->overrun) {
 	    /* no copy */
-	} else if ((req->rsize + cpysz) > req->expsize) { /* overrun */
-	    size_t	rest = req->expsize - req->rsize;
-	    req->ustatus = REQ_OVERRUN;
-	    utf_copy_to_iov(req->fi_msg, req->fi_iov_count, req->rsize,
-			    PKT_DATA(pkt), rest);
+	} else if ((req->rsize + cpysz) > req->rcvexpsz) { /* overrun */
+	    size_t	rest = req->rcvexpsz - req->rsize;
+	    req->overrun = 1;
+	    if (rest > 0) {
+		utf_copy_to_iov(req->fi_msg, req->fi_iov_count, req->rsize,
+				PKT_FI_MSGDATA(pkt), rest);
+	    }
 	}  else {
 	    if (req->buf) { /* enough buffer area has been allocated */
-		memcpy(&req->buf[req->rsize], PKT_DATA(pkt), cpysz);
+		memcpy(&req->buf[req->rsize], PKT_FI_MSGDATA(pkt), cpysz);
 	    } else {
 		utf_copy_to_iov(req->fi_msg, req->fi_iov_count, req->rsize,
-				PKT_DATA(pkt), cpysz);
+				PKT_FI_MSGDATA(pkt), cpysz);
 	    }
 	}
     }
     req->rsize += cpysz;
     if (req->hdr.size == req->rsize) {
+	/* Must receive data from the sender */
 	urp->state = R_DONE;
     } else {
+	assert(req->hdr.size < req->rsize);
 	/* More data will arrive */
 	urp->state = R_BODY;
     }
@@ -333,51 +408,66 @@ eager_copy_and_check(struct utf_recv_cntr *urp,
 }
 
 static inline void
-rget_start(struct utf_recv_cntr *urp, struct utf_msgreq *req)
+rget_start(struct utf_msgreq *req)
 {
     int	sidx = req->hdr.sidx;
 
     /* req->hdr.size is defined by the sender
-     * req->expsize is defined by the receiver */
-    urp->state = R_DO_RNDZ;
-    req->bufinfo.stadd[0] = utf_mem_reg(utf_info.vcqh, req->buf, req->expsize);
-    utfslist_append(&utf_rget_proglst, &urp->rget_slst);
+     * req->usrreqsz is defined by the receiver */
+    if (req->usrreqsz < req->hdr.size) {
+	req->rcvexpsz = req->usrreqsz;
+	req->overrun = 1;
+    } else {
+	req->rcvexpsz = req->hdr.size;
+    }
+    if (req->buf) {
+	req->bufinfo.stadd[0] = utf_mem_reg(utf_info.vcqh, req->buf, req->rcvexpsz);
+    } else { /* Fabric request */
+	if (req->fi_iov_count == 1) {
+	    req->bufinfo.stadd[0] = utf_mem_reg(utf_info.vcqh, req->fi_msg[0].iov_base, req->rcvexpsz);
+	} else {
+	    utf_printf("%s: cannot handle message vector\n", __func__);
+	    abort();
+	}
+    }
     DEBUG(DLEVEL_PROTO_RENDEZOUS) {
 	utf_printf("%s: Receiving Rendezous reqsize(0x%lx) "
 		   "rvcqid(0x%lx) lcl_stadd(0x%lx) rmt_stadd(0x%lx) "
-		   "sidx(%d) mypos(%d)\n",
-		   __func__, req->expsize,
+		   "sidx(%d)\n",
+		   __func__, req->rcvexpsz,
 		   req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
-		   req->rgetsender.stadd[0], sidx, urp->mypos);
+		   req->rgetsender.stadd[0]);
     }
     req->rsize =
-	(req->expsize > TOFU_RMA_MAXSZ) ? TOFU_RMA_MAXSZ : req->expsize;
+	(req->rcvexpsz > TOFU_RMA_MAXSZ) ? TOFU_RMA_MAXSZ : req->rcvexpsz;
     remote_get(utf_info.vcqh, req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
 	       req->rgetsender.stadd[0], req->rsize, sidx, 0, 0);
+    req->state = REQ_DO_RNDZ;
+    utfslist_append(&utf_rget_proglst, &req->rget_slst);
 }
 
 static inline void
-rget_continue(struct utf_recv_cntr *urp, struct utf_msgreq *req)
+rget_continue(struct utf_msgreq *req)
 {
     int	sidx = req->hdr.sidx;
     size_t	restsz, transsz;
 
     /* req->hdr.size is defined by the sender
      * req->expsize is defined by the receiver */
-    utfslist_append(&utf_rget_proglst, &urp->rget_slst);
     DEBUG(DLEVEL_PROTO_RENDEZOUS) {
 	utf_printf("%s: Continueing Rendezous reqsize(0x%lx) "
 		   "rvcqid(0x%lx) lcl_stadd(0x%lx) rmt_stadd(0x%lx) "
-		   "sidx(%d) mypos(%d)\n",
-		   __func__, req->expsize,
+		   "sidx(%d)\n",
+		   __func__, req->rcvexpsz,
 		   req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
-		   req->rgetsender.stadd[0], sidx, urp->mypos);
+		   req->rgetsender.stadd[0], sidx);
     }
-    restsz = req->expsize - req->rsize;
+    restsz = req->rcvexpsz - req->rsize;
     transsz = (restsz > TOFU_RMA_MAXSZ) ? TOFU_RMA_MAXSZ : restsz;
     remote_get(utf_info.vcqh, req->rgetsender.vcqid[0], req->bufinfo.stadd[0] + req->rsize,
 	       req->rgetsender.stadd[0] + req->rsize, transsz, sidx, 0, 0);
     req->rsize += transsz;
+    utfslist_append(&utf_rget_proglst, &req->rget_slst);
 }
 
 static inline int
@@ -413,135 +503,15 @@ utfgen_uexplst_enqueue(uint8_t flgs, struct utf_msgreq *req)
     }
 }
 
-/*
- * receiver engine
- */
-static inline int
-utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
-{
-    struct utf_msgreq	*req;
-
-    //utf_printf("%s: urp(%p), ridx(%d) recvidx(%d) state(%s)\n",
-    //__func__, urp, urp->mypos, urp->recvidx, rstate_symbol[urp->state]);
-    DEBUG(DLEVEL_PROTOCOL) {
-	utf_printf("%s: urp(%p), ridx(%d) recvidx(%d) state(%s) MSG(%s)\n",
-		   __func__, urp, urp->mypos, urp->recvidx, rstate_symbol[urp->state], pkt2string(pkt, NULL, 0));
-    }
-    switch (urp->state) {
-    case R_NONE: /* Begin receiving message */
-    {
-	int	idx;
-	utf_printf("%s: NEW MESSAGE SRC(%d) size(%ld)\n", __func__, pkt->hdr.src, (uint64_t)pkt->hdr.size);
-	DEBUG(DLEVEL_PROTOCOL) {
-	    utf_printf("%s: NEW MESSAGE SRC(%d)\n", __func__, pkt->hdr.src);
-	}
-	if ((idx = utfgen_explst_match(PKT_MSGFLG(pkt), PKT_MSGSRC(pkt), PKT_MSGTAG(pkt))) != -1) {
-	    req = utf_idx2msgreq(idx);
-	    utf_printf("\t: SRC EXP IDX(%d)\n", idx);
-	    req->rndz = pkt->hdr.rndz;
-	    if (req->rndz) {
-		memcpy(&req->rgetsender, &pkt->pyld.rndzdata, sizeof(struct utf_vcqid_stadd));
-		req->hdr = pkt->hdr;
-		req->rcntr = urp;
-		rget_start(urp, req); /* state is changed to R_DO_RNDZ */
-	    } else { /* eager */
-		req->hdr = pkt->hdr; /* size is needed */
-		if (eager_copy_and_check(urp, req, pkt) == R_DONE) goto done;
-		urp->req = req;
-	    }
-	} else { /* New Unexpected message */
-	    utf_printf("\t: SRC UNEXP IDX\n");
-	    req = utf_msgreq_alloc();
-	    req->hdr = pkt->hdr;
-	    req->rsize = 0; req->ustatus = 0; req->type = REQ_RECV_UNEXPECTED;
-	    req->rndz = pkt->hdr.rndz;
-	    /* registering unexpected queue now */
-	    utfgen_uexplst_enqueue(pkt->hdr.flgs, req);
-	    if (req->rndz) {
-		memcpy(&req->rgetsender, &pkt->pyld.rndzdata, sizeof(struct utf_vcqid_stadd));
-		req->state = REQ_WAIT_RNDZ;
-		req->rcntr = urp;
-	    } else {/* eager */
-		req->buf = utf_malloc(PKT_MSGSZ(pkt));
-		req->expsize = PKT_MSGSZ(pkt); /* during receiving */
-		req->state = REQ_NONE;
-		if (eager_copy_and_check(urp, req, pkt) == R_DONE) goto done;
-	    }
-	}
-	urp->req = req;
-	goto exiting;
-    }
-	break;
-    case R_BODY:
-	req = urp->req;
-	utf_nullfunc();
-	//getpid();
-	//utf_printf("%s: SRC(%d) rsize(%ld)\n", __func__, req->hdr.src, PKT_PYLDSZ(pkt));
-	//utf_printf("%s: SRC(%d) req->rsize(%ld)\n", __func__, req->hdr.src, PKT_PYLDSZ(pkt));
-	if (eager_copy_and_check(urp, req, pkt) == R_DONE) goto done;
-	/* otherwise, continue to receive message */
-	break;
-    case R_DO_RNDZ: /* R_DO_RNDZ --> R_DONE */
-    {
-	utofu_stadd_t	stadd = SCNTR_ADDR_CNTR_FIELD(sidx);
-	req = urp->req;
-	DEBUG(DLEVEL_PROTO_RENDEZOUS) {
-	    utf_printf("%s: R_DO_RNDZ done urp(%p) req(%p)->vcqid(%lx) rsize(%ld) expsize(%ld)\n",
-		       __func__, urp, req, req->rgetsender.vcqid[0], req->rsize, req->expsize);
-	}
-	if (req->rsize != req->expsize) {
-	    /* continue to issue */
-	    rget_continue(urp, req);
-	    break;
-	}
-	/*
-	 * notification to the sender: local mrq notification is supressed
-	 * currently local notitication is enabled
-	 */
-	utf_remote_armw4(utf_info.vcqh, req->rgetsender.vcqid[0], 0,
-			 UTOFU_ARMW_OP_OR, SCNTR_OK,
-			 stadd + SCNTR_RGETDONE_OFFST, sidx, 0);
-	if (req->bufinfo.stadd[0]) {
-	    utf_mem_dereg(utf_info.vcqh, req->bufinfo.stadd[0]);
-	    req->bufinfo.stadd[0] = 0;
-	}
-	req->rsize = req->hdr.size;
-    }	/* Falls through. */
-    done:
-	req->state = REQ_DONE;
-	utf_printf("%s: recv_post NEW MESSAGE COMPLETED: SRC(%d) %s msg is now ready\n", __func__, pkt->hdr.src,
-		   req->type == REQ_RECV_UNEXPECTED ? "Unexpected" : "Expected");
-	if (req->type == REQ_RECV_UNEXPECTED) {
-	    DEBUG(DLEVEL_PROTOCOL) {
-		utf_printf("%s: recv_post SRC(%d) unexp msg is now ready (idx=%d)\n", __func__, pkt->hdr.src,
-			   utf_msgreq2idx(req));
-	    }
-	} else {
-	    DEBUG(DLEVEL_PROTOCOL) {
-		utf_printf("%s: recv_post SRC(%d) Expected message arrived (idx=%d)\n", __func__, pkt->hdr.src,
-			   utf_msgreq2idx(req));
-	    }
-	    if (req->notify) req->notify(req);
-	}
-	/* reset the state */
-	urp->state = R_NONE;
-	break;
-    case R_HEAD:
-    case R_DONE:
-    default:
-	return -1;
-    }
-    exiting:
-	return 0;
-}
-
+extern int	utf_progress();
+#if 0
 static inline int
 utf_progress()
 {
-    int		j;
+    int	j;
+    int	arvd = 0;
 
     if (utf_tcq_count) utf_tcqprogress();
-    utf_mrqprogress();
 
     if ((int64_t) utf_egr_rbuf.head.cntr < 0) {
 	utf_printf("%s: No more Eager Receiver Buffer in my rank\n", __func__);
@@ -552,29 +522,42 @@ utf_progress()
     for (j = utf_egr_rbuf.head.cntr + 1; j <= RCV_CNTRL_INIT/*RCV_CNTRL_MAX*/ ; j++) {
 	struct utf_packet	*msgbase = utf_recvbuf_get(j);
 	struct utf_recv_cntr	*urp = &utf_rcntr[j];
-	struct utf_packet	*pktp;
-	int	sidx;
+	volatile struct utf_packet	*pktp;
+	int	marker, sidx, rc;
     try_again:
 	pktp = msgbase + urp->recvidx;
 	if (pktp->hdr.marker == MSG_MARKER) {
 	    /* message arrives */
 	    utf_tmr_end(TMR_UTF_RCVPROGRESS);
 	    sidx = pktp->hdr.sidx;
-	    if (utf_recvengine(urp, pktp, sidx) < 0) {
+	    if ((sidx & 0xff) == 0xff) {
+		utf_printf("%s: j(%d) PROTOCOL ERROR urp(%p)->state(%d:%s) sidx(%d) pkt(%p) MSG(%s)\n",
+			   __func__, j, urp, urp->state, rstate_symbol[urp->state],
+			   sidx, pktp, pkt2string((struct utf_packet*) pktp, NULL, 0));
+		utf_printf("%s: sidx(%d)\n", __func__, pktp->hdr.sidx);
+	    }
+	    /* for debugging */
+	    urp->dbg_rsize[urp->dbg_idx] = PKT_PYLDSZ(pktp);
+	    urp->dbg_idx = (urp->dbg_idx + 1) % COM_RBUF_SIZE;
+	    rc = utf_recvengine(urp, (struct utf_packet*) pktp, sidx);
+	    if (rc == 1) { /* Cannot handle at this time */
+		/* Do we need to handle this situation at the sender side ? */
+		continue;
+	    } else if (rc < 0) {
 		utf_printf("%s: j(%d) protocol error urp(%p)->state(%d:%s) sidx(%d) pkt(%p) MSG(%s)\n",
 			   __func__, j, urp, urp->state, rstate_symbol[urp->state],
-			   sidx, pktp, pkt2string(pktp, NULL, 0));
+			   sidx, pktp, pkt2string((struct utf_packet*) pktp, NULL, 0));
 		abort();
 	    }
 	    pktp->hdr.hall = -1UL;
 	    urp->recvidx++;
+	    arvd = 1;
 	    if (IS_COMRBUF_FULL(urp)) {
 		utofu_stadd_t	stadd = SCNTR_ADDR_CNTR_FIELD(sidx);
 		urp->recvidx = 0;
 		if (urp->svcqid == 0) {
 		    urp->svcqid = utf_info.vname[pktp->hdr.src].vcqid;
 		}
-		utf_printf("%s: YI>>>>> RST to src(%d)\n", __func__, pktp->hdr.src);
 		utf_remote_armw4(utf_info.vcqh, urp->svcqid, urp->flags,
 				 UTOFU_ARMW_OP_OR, SCNTR_OK,
 				 stadd + SCNTR_RST_RECVRESET_OFFST, sidx, 0);
@@ -583,5 +566,8 @@ utf_progress()
 	    }
 	}
     }
+    if (!arvd) utf_mrqprogress();
+
     return 0;
 }
+#endif

@@ -21,38 +21,68 @@ main(int argc, char** argv)
     size_t	i, sz;
 
     length = LEN_INIT;
+    iteration = 1;
+    sflag = 0x10;	// Alltoall in default
     test_init(argc, argv);
 
     MPI_Type_size(MPI_INT, &tsz);
     sz = length*nprocs*tsz;
     sendbuf = malloc(sz);
     recvbuf = malloc(sz);
-    for (i = 0; i < length*nprocs; i++) sendbuf[i] = myrank + i + 1;
-
     MYPRINT {
 	printf("sendbuf=%p recvbuf=%p\n"
 	       "MPI_INT SIZE: %d\n"
-	       "length(%ld) byte(%ld) nprocs(%d)\n",
-	       sendbuf, recvbuf, tsz, length, sz, nprocs); fflush(stdout);
+	       "length(%ld) byte(%ld) nprocs(%d) iteration(%d) sflag(0x%x)\n",
+	       sendbuf, recvbuf, tsz, length, sz, nprocs, iteration, sflag); fflush(stdout);
     }
-#if 0
-    MYPRINT { VERBOSE("After MPI_Init with %d\n", nprocs); }
-    MPI_Barrier(MPI_COMM_WORLD);
-    MYPRINT { VERBOSE("After MPI_Barrier with %d\n", nprocs); }
+    if (sendbuf == NULL || recvbuf == NULL) {
+	MYPRINT {printf("Cannot allocate buffers: sz=%ldMiB * 2\n", (uint64_t)(((double)sz)/(1024.0*1024.0))); }
+	exit(-1);
+    }
+    for (i = 0; i < length*nprocs; i++) sendbuf[i] = myrank + i + 1;
 
-    MPI_Reduce(sendbuf, recvbuf, length, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
-    MYPRINT { VERBOSE("After MPI_Reduce with %d\n", nprocs); }
-
-    MPI_Allreduce(MPI_IN_PLACE, sendbuf, length, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-    MYPRINT { VERBOSE("After MPI_Allreduce with %d\n", nprocs); }
-
-    MPI_Gather(sendbuf, length, MPI_INT, recvbuf, length, MPI_INT, 0, MPI_COMM_WORLD);
-    MYPRINT { VERBOSE("After MPI_Gather with %d\n", nprocs); }
-#endif
-
-    VERBOSE("Start of Alltoall %d\n", nprocs);
-    MPI_Alltoall(sendbuf, length, MPI_INT, recvbuf, length, MPI_INT, MPI_COMM_WORLD);
-    VERBOSE("End of Alltoall %d\n", nprocs);
+    if (sflag & 0x1) {
+	for (i = 0; i < iteration; i++) {
+	    MYPRINT { MYVERBOSE("Start MPI_Barier %ldth\n", i); }
+	    MPI_Barrier(MPI_COMM_WORLD);
+	    MYPRINT { MYVERBOSE("End of MPI_Barrier %ld\n", i); }
+	}
+    }
+    if (sflag & 0x2) {
+	for (i = 0; i < iteration; i++) {
+	    MYPRINT { MYVERBOSE("Start MPI_Reduce %ldth\n", i); }
+	    MPI_Reduce(sendbuf, recvbuf, length, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+	    MYPRINT { MYVERBOSE("End of MPI_Reduce %ld\n", i); }
+	}
+    }
+    if (sflag & 0x4) {
+	for (i = 0; i < iteration; i++) {
+	    MYPRINT { MYVERBOSE("Start MPI_Allreduce %ldth\n", i); }
+	    MPI_Allreduce(MPI_IN_PLACE, sendbuf, length, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+	    MYPRINT { MYVERBOSE("End of MPI_Allreduce %ld\n", i); }
+	}
+    }
+    if (sflag & 0x8) {
+	for (i = 0; i < iteration; i++) {
+	    MYPRINT { MYVERBOSE("Start MPI_Gather %ldth\n", i); }
+	    MPI_Gather(sendbuf, length, MPI_INT, recvbuf, length, MPI_INT, 0, MPI_COMM_WORLD);
+	    MYPRINT { MYVERBOSE("End of MPI_Gather %ldth\n", i); }
+	}
+    }
+    if (sflag & 0x10) {
+	for (i = 0; i < iteration; i++) {
+	    MYVERBOSE("Start of Alltoall %ldth\n", i);
+	    MPI_Alltoall(sendbuf, length, MPI_INT, recvbuf, length, MPI_INT, MPI_COMM_WORLD);
+	    MYVERBOSE("End of Alltoall %ldth\n", i);
+	}
+    }
+    if (sflag & 0x20) {
+	for (i = 0; i < iteration; i++) {
+	    MYPRINT { MYVERBOSE("Start MPI_Scatter %ldth\n", i); }
+	    MPI_Scatter(sendbuf, length, MPI_INT, recvbuf, length, MPI_INT, 0, MPI_COMM_WORLD);
+	    MYPRINT { MYVERBOSE("End of MPI_Scatter %ldth\n", i); }
+	}
+    }
 
     MPI_Finalize();
     MYPRINT { printf("RESULT coll: PASS\n"); fflush(stdout); }

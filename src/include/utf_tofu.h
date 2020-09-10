@@ -54,6 +54,7 @@ struct utf_info {
     utofu_vcq_hdl_t	vcqhs[TOFU_NIC_SIZE];
     utofu_vcq_id_t	vcqids[TOFU_NIC_SIZE];
     uint64_t		counter;
+    void		*shm;
 };
 
 extern struct utf_info utf_info;
@@ -93,13 +94,15 @@ static inline char *
 pcoords2string(union jtofu_phys_coords jcoords, char *buf, size_t len)
 {
     static char	pbuf[50];
+    size_t	ln;
     if (buf == NULL) {
 	buf = pbuf;
 	len = 50;
     }
-    snprintf(buf, len, FMT_PHYS_COORDS,
-	     jcoords.s.x, jcoords.s.y, jcoords.s.z,
-	     jcoords.s.a, jcoords.s.b, jcoords.s.c);
+    ln = snprintf(buf, sizeof(FMT_PHYS_COORDS) + 1, FMT_PHYS_COORDS,
+		  jcoords.s.x, jcoords.s.y, jcoords.s.z,
+		  jcoords.s.a, jcoords.s.b, jcoords.s.c);
+    assert(ln <= len);
     return buf;
 }
 
@@ -107,18 +110,20 @@ static inline char *
 lcoords2string(union jtofu_log_coords coords, char *buf, size_t len)
 {
     static char	pbuf[50];
+    size_t	ln;
     if (buf == NULL) {
 	buf = pbuf;
 	len = 50;
     }
-    snprintf(buf, len, "%02d:%02d:%02d", coords.s.x, coords.s.y, coords.s.z);
+    ln = snprintf(buf, len, "%02d:%02d:%02d", coords.s.x, coords.s.y, coords.s.z);
+    assert(ln <= len);
     return buf;
 }
 
 static inline char *
 vcqh2string(utofu_vcq_hdl_t vcqh, char *buf, size_t len)
 {
-    static char	pbuf[50];
+    static char	pbuf[128];
     int uc;
     utofu_vcq_id_t vcqi = -1UL;
     uint8_t	xyz[8];
@@ -126,7 +131,7 @@ vcqh2string(utofu_vcq_hdl_t vcqh, char *buf, size_t len)
 
     if (buf == NULL) {
 	buf = pbuf;
-	len = 50;
+	len = 128;
     }
     buf[0] = 0;
     if ((uc = utofu_query_vcq_id(vcqh, &vcqi)) != UTOFU_SUCCESS) goto bad;

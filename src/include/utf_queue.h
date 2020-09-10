@@ -56,7 +56,8 @@ struct utf_vcqhdl_stadd {		/* 40B */
 };
 
 struct utf_vcqid_stadd {		/* 40B (8+8*2+8*2) */
-    size_t	nent;			/* */
+    uint32_t	rndzpos;			/* position of rendezvous progress structure */
+    uint32_t	nent;			/* */
     uint64_t	vcqid[MSG_NTNI];	/* utofu_vcq_hdl_t */
     uint64_t	stadd[MSG_NTNI];	/* utofu_stadd_t */
 };
@@ -66,7 +67,10 @@ struct utf_vcqid_stadd {		/* 40B (8+8*2+8*2) */
 #pragma pack(1)
 struct fi_1stpacket {
     uint64_t	data;
-    uint8_t	msgdata[MSG_FI_PYLDSZ];
+    union {
+	uint8_t	msgdata[MSG_FI_PYLDSZ];
+	struct utf_vcqid_stadd	rndzdata;
+    };
 };
 #pragma pack()
 
@@ -75,8 +79,10 @@ struct fi_1stpacket {
 struct utf_packet {
     struct utf_msghdr	hdr;
     union {
-	uint8_t		msgdata[MSG_PYLDSZ];
-	struct utf_vcqid_stadd	rndzdata;
+	union {
+	    uint8_t		msgdata[MSG_PYLDSZ];
+	    struct utf_vcqid_stadd	rndzdata;
+	};
 	struct fi_1stpacket	fi_msg;
     } pyld;
 };
@@ -90,6 +96,10 @@ struct utf_packet {
 #define PKT_DATA(pkt) ((pkt)->pyld.msgdata)
 #define PKT_PYLDSZ(pkt) ((pkt)->hdr.pyldsz)
 #define PKT_RADDR(pkt)  ((pkt)->pyld.rndzdata)
+
+#define PKT_FI_DATA(pkt) ((pkt)->pyld.fi_msg.data)
+#define PKT_FI_MSGDATA(pkt) ((pkt)->pyld.fi_msg.msgdata)
+#define PKT_FI_RADDR(pkt)  ((pkt)->pyld.fi_msg.rndzdata)
 
 struct utf_egr_sbuf {
     union {
@@ -141,19 +151,19 @@ struct utf_egr_rbuf {
 enum utq_reqstatus {
     REQ_NONE		= 0,
     REQ_PRG_NORMAL	= 1,
-    REQ_PRG_RECLAIM	= 2,
     REQ_DONE		= 3,
-    REQ_OVERRUN		= 4,
-    REQ_WAIT_RNDZ	= 5		/* waiting rendzvous */
+    REQ_WAIT_RNDZ	= 4,		/* waiting rendzvous */
+    REQ_DO_RNDZ		= 5
 };
+//    REQ_PRG_RECLAIM	= 2,
 
 /*
- * recv_ctr state
+ * request type (XXXX recv_ctr state)
  */
 enum {
     REQ_RECV_EXPECTED		= 1,
     REQ_RECV_UNEXPECTED		= 2,
-    REQ_RECV_EXPECTED2		= 3,
+    REQ_RECV_EXPECTED2		= 3, /* this value is used to distingush recv/send request */
     REQ_SND_BUFFERED_EAGER	= 4,
     REQ_SND_INPLACE_EAGER	= 5,
     REQ_SND_RENDEZOUS		= 6
@@ -171,22 +181,49 @@ enum rstate {
     R_DONE		= 8
 };
 
+/*                 +--------------+----------------------+----------+-----------------+
+ *		   | usrreqsz     |  hdr.size            | rcvexpsz |rsize(progress)  |
+ *                 +--------------+----------------------+----------+-----------------+
+ * eager expected  | defined      |set at matching.      | defined  | During transfer,|
+ *                 |              |receiving this size   |          | rsize is a real |
+ *                 +--------------+----------------------+----------+ data trans size.|
+ * eager unexpected| undef and set|set at msg arrival.   | tempolary| Comparing it    |
+ *                 | at matching  |receiving this size   | set      | with hdr.size.  |
+ *                 |              |                      |          | copy size is    |
+ *                 |              |                      |          | rcvexpsz.       |
+ *                 +--------------+----------------------+----------+-----------------+
+ * rendz expected  | defined      |set at matching.      |          | During transfer,|
+ *                 |              |No-use during transfer| Use for  | rsize is a real |
+ *                 +--------------+--------------+-------+ rmt-get  | data trans size.|
+ * rendz unexpected| undef and set|set at msg arrival.   | opertion | Comparing it    |
+ *                 | at matching  |No-use during transfer|          | with rcvexpsz   |
+ *                 +--------------+----------------------+----------+-----------------+
+ */
 struct utf_msgreq {
-    struct utf_msghdr hdr;	/* 28: message header */
+    struct utf_msghdr hdr;	/* 28: message header, size field is sender's one */
     uint8_t	*buf;		/* 32: buffer address */
-    uint64_t	rsize:35,	/* 40: received size */
-		state: 8,	/* 40: utf-level  status */
-		ustatus: 8,	/* 40: user-level status */
-		rndz:1,		/* 40: set if rendezvous mode */
-		type:3,		/* 40: EXPECTED or UNEXPECTED or SENDREQ */
-		ptype:4,	/* 40: PKT_EAGER | PKT_RENDZ | PKT_WRITE | PKT_READ */
-		fistate:5;	/* 40: fabric-level status */
-    size_t	expsize;	/* 48: expected size in expected queue */
+    union {
+	struct {
+	    uint64_t	rsize:35,	/* 40: received size */
+			state: 8,	/* 40: utf-level  status */
+			ustatus: 6,	/* 40: user-level status */
+			overrun:1,
+			reclaim:1,
+			rndz:1,		/* 40: set if rendezvous mode */
+			type:3,		/* 40: EXPECTED or UNEXPECTED or SENDREQ */
+			ptype:4,	/* 40: PKT_EAGER | PKT_RENDZ | PKT_WRITE | PKT_READ */
+			fistate:5;	/* 40: fabric-level status */
+	};
+	uint64_t	allflgs;
+    };
+    size_t	rcvexpsz;	/* 48: expected receive size used in rendezvous */
+    size_t	usrreqsz;	/* 48: user request size */
     utfslist_entry_t slst;	/* 56: list */
     void	(*notify)(struct utf_msgreq*);	/* 64: notifier */
     struct utf_recv_cntr *rcntr;	/* 72: point to utf_recv_cntr */
     struct utf_vcqid_stadd rgetsender; /* 112: rendezous: sender's stadd's and vcqid's */
     struct utf_vcqhdl_stadd bufinfo; /* 152: rendezous: receiver's stadd's and vcqid's  */
+    utfslist_entry_t	rget_slst;/* rendezous: list of rget progress */
     /* for Fabric */
     uint64_t	fi_data;
     void	*fi_ctx;
@@ -195,6 +232,8 @@ struct utf_msgreq {
     uint64_t	fi_flgs;
     size_t	fi_iov_count;
     struct iovec fi_msg[4];	/* TOFU_IOV_LIMIT */
+    size_t	fi_recvd;	/* size of received data */
+    struct utf_msghdr fi_svdhdr;
 };
 
 struct utf_msglst {
@@ -215,7 +254,9 @@ struct utf_recv_cntr {
     uint8_t	state;
     uint8_t	mypos;
     uint32_t	tmp;
-    utfslist_entry_t	rget_slst;/* rendezous: list of rget progress */
+    /* for debugging */
+    uint32_t	dbg_idx;
+    uint8_t	dbg_rsize[COM_RBUF_SIZE];
 };
 
 /*****************************************************
@@ -230,9 +271,10 @@ enum {
     S_DO_EGR_WAITCMPL	= 5,
     S_DONE_EGR		= 6,
     S_REQ_RDVR		= 7,
-    S_RDVDONE		= 8,
-    S_DONE		= 9,
-    S_WAIT_BUFREADY	= 10
+    S_DO_RDVR		= 8,
+    S_RDVDONE		= 9,
+    S_DONE		= 10,
+    S_WAIT_BUFREADY	= 11
 };
 
 enum {
@@ -257,24 +299,33 @@ enum {
 #define EVT_END		8
 
 struct utf_send_msginfo { /* msg info */
+    uint32_t		rgetdone;
+    uint16_t		cntrtype;
+    uint16_t		mypos;
     struct utf_msghdr	msghdr;		/* message header     +28 = 28 Byte */
-    uint32_t		cntrtype;
     struct utf_egr_sbuf	*sndbuf;	/* send data for eger  +8 = 40 Byte */
     utofu_stadd_t	sndstadd;	/* stadd of sndbuf     +8 = 48 Byte */
     void		*usrbuf;	/* stadd of user buf   +8 = 56 Byte */
     struct utf_vcqid_stadd rgetaddr;	/* for rendezvous     +40 = 96 Byte
 					 * stadd and vcqid for rget by dest, expose it to dest */
     struct utf_msgreq	*mreq;		/* request struct      +8 =104 Byte */
-    void		*fi_context;	/* For fabric */
+    struct utf_send_cntr *scntr;
+//QWE    void		*fi_context;	/* For fabric */
+    utfslist_entry_t	slst;
 };
 
 /* used for remote operation */
-#define SCNTR_RGETDONE_OFFST		0x0
+#define MSGINFO_RGETDONE_OFFST		0x0
+//#define SCNTR_RGETDONE_OFFST		0x0
 #define SCNTR_RST_RECVRESET_OFFST	0x4
 #define SCNTR_RST_RMARESET_OFFST	0x8
 #define SCNTR_CHN_NEXT_OFFST		0x10
 #define SCNTR_CHN_READY_OFFST		0x18
-#define SCNTR_ADDR_CNTR_FIELD(sidx)	\
+
+#define MSGINFO_STADDR(pos)	\
+    (utf_rndz_stadd + sizeof(struct utf_send_msginfo)*(pos))
+
+#define SCNTR_ADDR_CNTR_FIELD(sidx)				\
     (utf_sndctr_stadd + sizeof(struct utf_send_cntr)*(sidx))
 #define SCNTR_IS_RGETDONE_OFFST(off)	((off) == SCNTR_RGETDONE_OFFST)
 #define SCNTR_IS_RECVRESET_OFFST(off)	((off) == SCNTR_RST_RECVRESET_OFFST)
@@ -302,11 +353,15 @@ struct utf_send_cntr {	/* 500 Byte */
     utofu_vcq_id_t	rvcqid;		/*  48 = +8 Byte */
     size_t		usize;		/*  56 = +8 user-level sent size */
     utfslist_t		smsginfo;	/*  64 = +8 Byte */
-    uint16_t		micur;		/*  72 = +8 Byte */
-    uint16_t		mient;		/*  80 = +4 Byte */
+    uint8_t		micur;		/*  72 = +8 Byte */
+    uint8_t		mient;		/*  80 = +4 Byte */
+    uint16_t		inflight;	/**/
     struct utf_send_msginfo msginfo[COM_SCNTR_MINF_SZ];	/*  84 = +408 the first entry */
     utfslist_entry_t	slst;		/* 492 = + 8 Byte for free list */
 					/* 500  */
+    /* for debugging */
+    uint32_t	dbg_idx;
+    uint8_t	dbg_ssize[COM_RBUF_SIZE];
 };
 #pragma pack()
 
@@ -315,6 +370,7 @@ struct utf_send_cntr {	/* 500 Byte */
  *****************************************************/
 #define UTF_RMA_READ	1
 #define UTF_RMA_WRITE	2
+#define UTF_RMA_WRITE_INJECT 3
 struct utf_rma_cq {
     utfslist_entry_t	slst;
     struct tofu_ctx	*ctx;
@@ -328,10 +384,12 @@ struct utf_rma_cq {
     uint64_t		data;
     void		(*notify)(struct utf_rma_cq *);
     int			type;
+    int			mypos;
     uint64_t		utf_flgs;
     uint64_t		fi_flags;
     void		*fi_ctx;
     void		*fi_ucontext;
+    uint8_t		inject[TOFU_INJECTSIZE];
 };
 
 extern utfslist_t	utf_explst;	/* expected message list */
@@ -442,7 +500,7 @@ find:
 }
 
 static inline int
-tfi_utf_uexplst_match(utfslist_t *uexplst, uint64_t src, uint64_t tag, uint64_t ignore, int peek)
+tfi_utf_uexplst_match(utfslist_t *uexplst, uint32_t src, uint64_t tag, uint64_t ignore, int peek)
 {
     struct utf_msglst	*msl;
     utfslist_entry_t	*cur, *prev;
@@ -455,7 +513,7 @@ tfi_utf_uexplst_match(utfslist_t *uexplst, uint64_t src, uint64_t tag, uint64_t 
 	//utf_printf("\t: list is null\n");
 	return -1;
     }
-    if (src == -1UL) {
+    if (src == -1) {
 	utfslist_foreach2(uexplst, cur, prev) {
 	    msl = container_of(cur, struct utf_msglst, slst);
 	    if ((tag & ~ignore) == (msl->hdr.tag & ~ignore)) {
@@ -501,11 +559,15 @@ tfi_utf_explst_match(utfslist_t *explst, uint32_t src, uint64_t tag,  int peek)
     }
     utfslist_foreach2(explst, cur, prev) {
 	mlst = container_of(cur, struct utf_msglst, slst);
-	uint64_t exp_src = mlst->hdr.src;
+	uint32_t exp_src = mlst->hdr.src;
 	uint64_t exp_tag = mlst->hdr.tag;
 	uint64_t exp_rvignr = ~mlst->fi_ignore;
 	DEBUG(DLEVEL_PROTOCOL) {
-	    utf_printf("\t mlst(%p) exp_src(%d) exp_tag(%x) exp_rvignr(%lx)\n", mlst, exp_src, exp_tag, exp_rvignr);
+	    utf_printf("\t mlst(%p) exp_src(%d) exp_tag(%lx) exp_rvignr(%lx) exp1(%d) exp2(%d) match1(%d) match2(%d)\n",
+		       mlst, exp_src, exp_tag, exp_rvignr,
+		       exp_src == -1, (tag & exp_rvignr) == (exp_tag & exp_rvignr),
+		       (exp_src == -1 && ((tag & exp_rvignr) == (exp_tag & exp_rvignr))),
+		       (exp_src == src && ((tag & exp_rvignr) == (exp_tag & exp_rvignr))));
 	}
 	if (exp_src == -1 && (tag & exp_rvignr) == (exp_tag & exp_rvignr)) {
 	    goto find;

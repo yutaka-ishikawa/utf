@@ -11,7 +11,8 @@
 #include "utf_msgmacros.h"
 
 extern void	utf_scntr_free(int idx);
-extern void	utf_msgreq_free(struct utf_msgreq *req);
+extern void	utf_sendreq_free(struct utf_msgreq *req);
+extern void	utf_recvreq_free(struct utf_msgreq *req);
 extern int	utf_send_start(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo);
 
 extern int	utf_tcq_count;
@@ -23,7 +24,7 @@ extern struct utf_egr_sbuf	utf_egr_sbuf[COM_SBUF_SIZE]; /* eager send buffer per
 extern utofu_stadd_t	utf_egr_sbuf_stadd;
 extern utfslist_t		utf_scntr_freelst;
 extern struct utf_send_cntr	utf_scntr[SND_CNTRL_MAX]; /* sender control */
-extern struct utf_msgreq	utf_msgrq[REQ_SIZE];
+extern struct utf_msgreq	utf_msgrq[MSGREQ_SIZE];
 
 static inline struct utf_egr_sbuf *
 utf_egr_sbuf_alloc(utofu_stadd_t *stadd)
@@ -119,6 +120,7 @@ minfo_setup(struct utf_send_msginfo *minfo, int rank, uint64_t tag, uint64_t siz
 	req->type = REQ_SND_RENDEZOUS;
     }
     minfo->sndbuf = sbufp;
+    req->hdr = minfo->msghdr; /* copy the header */
     req->state = REQ_PRG_NORMAL;
 }
 
@@ -133,7 +135,6 @@ utf_send(void *buf, size_t size, int dst, uint64_t tag, UTF_reqid *ridx)
 {
     int	rc = 0;
     struct utf_send_cntr *usp;
-    struct utf_egr_sbuf	*sbufp;
     struct utf_msgreq	*req;
     struct utf_send_msginfo *minfo;
     struct utf_egr_sbuf	*sbuf;
@@ -146,7 +147,7 @@ utf_send(void *buf, size_t size, int dst, uint64_t tag, UTF_reqid *ridx)
 	/* progress */
 	utf_tcqprogress();
     }
-    if ((req = utf_msgreq_alloc()) == NULL) {
+    if ((req = utf_sendreq_alloc()) == NULL) {
 	rc = UTF_ERR_NOMORE_REQBUF;
 	goto ext;
     }
@@ -179,7 +180,7 @@ ext:
 err2:
     utf_scntr_free(dst);
 err1:
-    utf_msgreq_free(req);
+    utf_sendreq_free(req);
     ridx->id = -1;
     ridx->reqid1 = -1;
     goto ext;
@@ -197,10 +198,9 @@ utf_recv(void *buf, size_t size, int src, int tag,  UTF_reqid *ridx)
 	int	cpsz;
 	req = utf_idx2msgreq(idx);
 	if (req->rndz) {  /* rendezvous message */
-	    struct utf_recv_cntr *urp = req->rcntr;
 	    req->buf = buf;
-	    req->expsize = size;
-	    rget_start(urp, req);
+	    req->rcvexpsz = size;
+	    rget_start(req);
 	} else if (req->state == REQ_DONE) {
 	    cpsz = size < req->hdr.size ? size : req->hdr.size;
 	    memcpy(buf, req->buf, cpsz);
@@ -218,14 +218,14 @@ utf_recv(void *buf, size_t size, int src, int tag,  UTF_reqid *ridx)
 	    ridx->reqid1 = utf_msgreq2idx(req);
 	}
     } else {
-	if ((req = utf_msgreq_alloc()) == NULL) {
+	if ((req = utf_recvreq_alloc()) == NULL) {
 	    rc = UTF_ERR_NOMORE_REQBUF;
 	    goto err;
 	}
 	req->hdr.src = src; req->hdr.tag = tag;
 	/* req->hdr.size = size; req->hdr.size will be set at the message arrival */
 	req->buf = buf;
-	req->expsize = size;
+	req->rcvexpsz = size;
 	req->ustatus = REQ_NONE; req->state = REQ_PRG_NORMAL;
 	req->type = REQ_RECV_EXPECTED;	req->rsize = 0;
 	utf_msglst_append(&utf_explst, req);
@@ -269,7 +269,6 @@ int
 utf_wait(UTF_reqid reqid)
 {
     volatile struct utf_msgreq	*req;
-    int	ttp;
 
     utf_tmr_begin(TMR_UTF_WAIT);
     if (reqid.reqid1 < 0) return -1;
@@ -278,7 +277,7 @@ utf_wait(UTF_reqid reqid)
     if (req->type == REQ_SND_BUFFERED_EAGER) {
 	if (req->state != REQ_DONE) {
 	    /* still in-progress */
-	    req->state = REQ_PRG_RECLAIM;
+	    req->reclaim = 1;
 	    goto skip;
 	}
     } else {
@@ -289,7 +288,11 @@ utf_wait(UTF_reqid reqid)
 	    utf_progress();
 	}
     }
-    utf_msgreq_free((struct utf_msgreq*) req); /* state is reset to REQ_NONE */
+    if (req->type <= REQ_RECV_EXPECTED2) {
+	utf_recvreq_free((struct utf_msgreq*) req); /* state is reset to REQ_NONE */
+    } else {
+	utf_sendreq_free((struct utf_msgreq*) req); /* state is reset to REQ_NONE */
+    }
 skip:
     utf_tmr_end(TMR_UTF_WAIT);
     return 0;
@@ -304,7 +307,6 @@ int
 utf_waitcmpl(UTF_reqid reqid)
 {
     volatile struct utf_msgreq	*req;
-    int	ttp;
 
     utf_tmr_begin(TMR_UTF_WAIT);
     if (reqid.reqid1 < 0) return -1;
@@ -325,7 +327,11 @@ utf_waitcmpl(UTF_reqid reqid)
 	/* In case of REQ_SND_BUFFERED_EAGER, the request object has been freed
 	 * in the sendending.
 	 */
-	utf_msgreq_free((struct utf_msgreq*) req);
+	if (req->type <= REQ_RECV_EXPECTED2) {
+	    utf_recvreq_free((struct utf_msgreq*) req); /* state is reset to REQ_NONE */
+	} else {
+	    utf_sendreq_free((struct utf_msgreq*) req); /* state is reset to REQ_NONE */
+	}
     }
 skip:
     utf_tmr_end(TMR_UTF_WAIT);
@@ -335,12 +341,11 @@ skip:
 void
 utf_req_wipe()
 {
-    struct utf_msgreq	*req;
     UTF_reqid	reqid;
     int	id;
-    int	i, rc;
+    int	i;
 
-    for (i = 0; i < REQ_SIZE; i++) {
+    for (i = 0; i < MSGREQ_SIZE; i++) {
 	switch (utf_msgrq[i].state) {
 	case REQ_NONE: continue;
 	case REQ_DONE:
@@ -355,7 +360,7 @@ utf_req_wipe()
 	}
 	reqid.id = 0;
 	reqid.reqid1 = id;
-	rc = utf_waitcmpl(reqid);
+	utf_waitcmpl(reqid);
 	utf_printf("\tDone\n");
     }
 }
