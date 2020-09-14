@@ -400,7 +400,6 @@ eager_copy_and_check(struct utf_recv_cntr *urp,
 	/* Must receive data from the sender */
 	urp->state = R_DONE;
     } else {
-	assert(req->hdr.size < req->rsize);
 	/* More data will arrive */
 	urp->state = R_BODY;
     }

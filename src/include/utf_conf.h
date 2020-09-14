@@ -20,7 +20,7 @@
 #define DLEVEL_PROTO_RMA	0x20	/* 32 */
 #define DLEVEL_PROTO_VBG	0x40	/* 64 */
 #define DLEVEL_ADHOC		0x80	/* 128 */
-#define DLEVEL_CHAIN		0x100
+#define DLEVEL_ERR		0x100
 #define DLEVEL_CHAIN2		0x200
 #define DLEVEL_ALL		0xffff
 
@@ -50,7 +50,7 @@
 #define MSGREQ_SEND_SZ	256	/* MUST BE CHANGED to handle maximum */
 #define MSGREQ_RECV_SZ	256	/* MUST BE CHANGED to handle maximum, COM_PEERS * MSGREQ_SEND_SZ */
 #define MSGREQ_SIZE	(MSGREQ_SEND_SZ + MSGREQ_RECV_SZ)
-#define MSGREQ_SENDMAX_INFLIGHT	200
+#define MSGREQ_SENDMAX_INFLIGHT	200 /* pending rendezvous messages */
 /* exp/uexp message list */
 #define MSGLST_SIZE	512
 /* network related */

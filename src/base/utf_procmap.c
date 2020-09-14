@@ -73,11 +73,11 @@ utf_jtofuinit(int pmixclose)
     char *errstr;
     int	rc;
 
-    fprintf(stderr, "%s: calling PMIX_Init\n", __func__); fflush(stderr);
+    utf_printf("%s: calling PMIX_Init\n", __func__);
     /* PMIx initialization */
     LIB_CALL(rc, PMIx_Init(utf_info.pmix_proc, NULL, 0),
 	     err, errstr, "PMIx_Init");
-    fprintf(stderr, "%s: nspace(%s)\n", __func__, utf_info.pmix_proc->nspace); fflush(stderr);
+    utf_printf("%s: nspace(%s)\n", __func__, utf_info.pmix_proc->nspace);
     utf_info.myrank = utf_info.pmix_proc->rank;
     {	/* PMIx info is created */
 	int	flag = 1;
@@ -105,8 +105,8 @@ utf_jtofuinit(int pmixclose)
     }
     return 0;
 err:
-    fprintf(stderr, "%s\n", errstr);
-    fprintf(stdout, "%s\n", errstr);
+    utf_printf("error at %s\n", errstr);
+    fprintf(stdout, "error at %s\n", errstr);
     return -1;
 }
 
@@ -155,8 +155,12 @@ utf_peers_init()
     int		rank, node;
     int		ppn, nnodes;	/* process per node, # of nodes  */
     uint8_t	*pmarker;
+    int		rc;
 
-    utf_jtofuinit(0);
+    rc = utf_jtofuinit(0);
+    if (rc < 0) {
+	return -1;
+    }
     if (utf_rflag || getenv("TOFULOG_DIR")) {
 	utf_redirect();
     }

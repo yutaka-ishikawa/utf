@@ -170,6 +170,7 @@ static inline struct utf_send_cntr *
 utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64_t rslt, int evt)
 {
     struct utf_send_cntr *newusp = NULL;
+
     DEBUG(DLEVEL_PROTOCOL) {
 	utf_printf("%s: usp(%p)->state(%s), evt(%d) rcvreset(%d) recvidx(%d)\n",
 		 __func__, usp, sstate_symbol[usp->state],
@@ -778,6 +779,7 @@ utf_mrqprogress()
 		    utf_sendengine(usp, minfo, mrq_notice.rmt_value, evtype);
 		}
 	    } else { /* other type */
+		utf_printf("%s: YI############# ???? evtype(%d)\n", __func__, evtype);
 		utf_sendengine(usp, minfo, mrq_notice.rmt_value, evtype);
 	    }
 	    fflush(NULL);
