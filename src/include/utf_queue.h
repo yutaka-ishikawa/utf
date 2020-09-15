@@ -243,7 +243,6 @@ struct utf_msglst {
     /* for Fabric */
     uint64_t	fi_ignore;	/* ignore */
 //    uint64_t	fi_flgs;
-//    void	*fi_context;
 };
 
 struct utf_recv_cntr {
