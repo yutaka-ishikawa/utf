@@ -1,0 +1,16 @@
+[0]: Calling MPI_Init
+choose_netmod: YI####### MPIR_CVAR_CH4_NETMOD 0x465800
+choose_netmod: YI####### MPIDI_NM_func = (nil)
+MPIR_pmi_init: YI############  1
+MPIR_pmi_init: YI############  2 pmi_errno(0)
+MPIR_pmi_init: YI############  3 pmi_errno(0)
+MPIR_pmi_init: YI############  4 pmi_errno(0)
+MPIR_pmi_init: YI############  5 pmi_errno(0)
+[0]: Done MPI_Init
+[0]: Proc Size = 1024 myrank = 0
+sendbuf=0x40000a290010 recvbuf=0x40000a4a0010
+MPI_INT SIZE: 4
+length(512) byte(2097152) nprocs(1024)
+[0]: Start of Alltoall 1024
+[0]: End of Alltoall 1024
+RESULT coll: PASS

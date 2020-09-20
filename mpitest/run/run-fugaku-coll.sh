@@ -15,9 +15,17 @@
 #	PJM -o "results/coll-256-l1/%n.%j.out"
 #	PJM -e "results/coll-256-l1/%n.%j.err"
 #
-#PJM --spath "results/coll-256-l512/%n.%j.stat"
-#PJM -o "results/coll-256-l512/%n.%j.out"
-#PJM -e "results/coll-256-l512/%n.%j.err"
+#	PJM --spath "results/coll-256-l512/%n.%j.stat"
+#	PJM -o "results/coll-256-l512/%n.%j.out"
+#	PJM -e "results/coll-256-l512/%n.%j.err"
+#
+#	PJM --spath "results/coll-256-l1024/%n.%j.stat"
+#	PJM -o "results/coll-256-l1024/%n.%j.out"
+#	PJM -e "results/coll-256-l1024/%n.%j.err"
+#
+#PJM --spath "results/coll-384-l1536/%n.%j.stat"
+#PJM -o "results/coll-384-l1536/%n.%j.out"
+#PJM -e "results/coll-384-l1536/%n.%j.err"
 #
 #	PJM --spath "results/coll-192-l512/%n.%j.stat"
 #	PJM -o "results/coll-192-l512/%n.%j.out"
@@ -31,8 +39,8 @@
 #	PJM -e "results/coll-32-l512/%n.%j.err"
 #
 #	PJM -L "node=16384" #OK	#
-#	PJM -L "node=384" #OK	9sec	# 1 rack
-#PJM -L "node=256" #OK	# 4x3x16
+#PJM -L "node=384" #OK	9sec	# 1 rack
+#	PJM -L "node=256" #OK	# 4x3x16
 #	PJM -L "node=192" #OK	# 4x3x16
 #	PJM -L "node=64"		#
 #	PJM -L "node=32"
@@ -40,9 +48,9 @@
 #	PJM -L "node=8" #OK 3sec (960ms) 1025576
 #	PJM -L "node=2" #OK 3sec (960ms) 1025576
 #	PJM --mpi "max-proc-per-node=2"
-#	PJM --mpi "max-proc-per-node=4"
-#PJM --mpi "max-proc-per-node=1"
-#PJM -L "elapse=00:00:30"
+#PJM --mpi "max-proc-per-node=4"
+#	PJM --mpi "max-proc-per-node=1"
+#PJM -L "elapse=00:02:30"
 #PJM -L "rscunit=rscunit_ft01,rscgrp=eap-small,jobenv=linux"
 #	PJM -L "rscunit=rscunit_ft01,rscgrp=dvsys-mck1,jobenv=linux"
 #PJM -L proc-core=unlimited
@@ -53,7 +61,8 @@ export MPIR_CVAR_OFI_USE_PROVIDER=tofu
 export MPICH_CH4_OFI_ENABLE_SCALABLE_ENDPOINTS=1
 ##export MPIR_CVAR_ALLTOALL_INTER_ALGORITHM=pairwise_exchange
 ##export MPIR_PARAM_ALLTOALLV_INTRA_ALGORITHM=pairwise_sendrecv_replace
-export MPIR_CVAR_ALLTOALL_SHORT_MSG_SIZE=204800
+###export MPIR_CVAR_ALLTOALL_SHORT_MSG_SIZE=204800
+export MPIR_CVAR_ALLTOALL_SHORT_MSG_SIZE=2147483647 # 32768 in default (integer value) 
 #export MPIR_CVAR_ALLTOALL_MEDIUM_MSG_SIZE=128	# shorter than MPIR_CVAR_ALLTOALL_SHORT_MSG_SIZE
 ## CONF_TOFU_INJECTSIZE=1856 (MSG_EAGER_SIZE = 1878)
 
@@ -63,8 +72,8 @@ export MPIR_CVAR_ALLTOALL_SHORT_MSG_SIZE=204800
 #export FI_LOG_LEVEL=Debug
 #export FI_LOG_PROV=tofu
 
-export UTF_MSGMODE=0	# Eager 
-#export UTF_MSGMODE=1	# Rendezous
+#export UTF_MSGMODE=0	# Eager 
+export UTF_MSGMODE=1	# Rendezous
 #export UTF_TRANSMODE=0	# Chained
 export UTF_TRANSMODE=1	# Aggressive
 export TOFU_NAMED_AV=1

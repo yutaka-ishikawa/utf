@@ -1,0 +1,12 @@
+[0]: Calling MPI_Init
+[0]: Done MPI_Init
+[0]: Proc Size = 32 myrank = 0
+sendbuf=0x6be500 recvbuf=0x6be620
+MPI_INT SIZE: 4
+length(1) nprocs(32)
+[0]: After MPI_Init with 32
+[0]: After MPI_Barrier with 32
+[0]: After MPI_Reduce with 32
+[0]: After MPI_Allreduce with 32
+[0]: After MPI_Gather with 32
+RESULT coll: PASS

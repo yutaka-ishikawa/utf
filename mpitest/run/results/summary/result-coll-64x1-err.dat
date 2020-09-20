@@ -1,0 +1,4 @@
+utf_jtofuinit: calling PMIX_Init
+utf_jtofuinit: nspace(0x1e8b0005004a0000@0000000000)
+utf_jtofuinit: rank(0) nprocs(64) pval->data.ptr(0x400004004330)
+stderr output is now stored in the logfile: ./results/coll-64-l512//tofulog-1033372-0

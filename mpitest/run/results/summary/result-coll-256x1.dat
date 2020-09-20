@@ -1,0 +1,9 @@
+[0]: Calling MPI_Init
+[0]: Done MPI_Init
+[0]: Proc Size = 256 myrank = 0
+sendbuf=0x6e4d30 recvbuf=0x6e5550
+MPI_INT SIZE: 4
+length(1) byte(1024) nprocs(256)
+[0]: Start of Alltoall 256
+[0]: End of Alltoall 256
+RESULT coll: PASS

@@ -1,0 +1,5 @@
+[0]: Calling MPI_Init
+utf_jtofuinit: calling PMIX_Init
+utf_jtofuinit: nspace(0x16850005000b0000@0000000000)
+utf_jtofuinit: rank(0) nprocs(64) pval->data.ptr(0x400004004330)
+stderr output is now stored in the logfile: ./results/tofulog-1028565-0

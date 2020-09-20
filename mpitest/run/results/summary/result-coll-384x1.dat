@@ -1,0 +1,13 @@
+[0]: Calling MPI_Init
+[0]: Done MPI_Init
+[0]: Proc Size = 384 myrank = 0
+sendbuf=0x71c690 recvbuf=0x71d2b0
+MPI_INT SIZE: 4
+length(1) nprocs(384)
+[0]: After MPI_Init with 384
+[0]: After MPI_Barrier with 384
+[0]: After MPI_Reduce with 384
+[0]: After MPI_Allreduce with 384
+[0]: After MPI_Gather with 384
+[0]: End of Alltoall 384
+RESULT coll: PASS
