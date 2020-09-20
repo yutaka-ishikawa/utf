@@ -562,6 +562,7 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 		return 1;
 	    }
 	    req->fi_data = PKT_FI_DATA(pkt);
+	    req->fi_ucontext = 0;
 	    req->hdr = pkt->hdr;
 	    req->rsize = 0; req->ustatus = 0; req->type = REQ_RECV_UNEXPECTED;
 	    req->rndz = pkt->hdr.rndz;
@@ -608,13 +609,13 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 	req->state = REQ_DONE;
 	if (req->type == REQ_RECV_UNEXPECTED) {
 	    DEBUG(DLEVEL_PROTOCOL) {
-		utf_printf("%s: recv_post SRC(%d) UEXP DONE(idx=%d)\n", __func__, req->hdr.src,
-			   utf_msgreq2idx(req));
+		utf_printf("%s: recv_post SRC(%d) UEXP DONE(req=%p,idx=%d)\n", __func__, req->hdr.src,
+			   req, utf_msgreq2idx(req));
 	    }
 	} else {
 	    DEBUG(DLEVEL_PROTOCOL) {
-		utf_printf("%s: recv_post SRC(%d) EXP DONE(idx=%d)\n", __func__, req->hdr.src,
-			   utf_msgreq2idx(req));
+		utf_printf("%s: recv_post SRC(%d) EXP DONE(req=%p,idx=%d)\n", __func__, req->hdr.src,
+			   req, utf_msgreq2idx(req));
 	    }
 	    if (req->notify) req->notify(req);
 	}
