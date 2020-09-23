@@ -102,7 +102,7 @@ minfo_setup(struct utf_send_msginfo *minfo, int rank, uint64_t tag, uint64_t siz
 	sbufp->pkt.hdr.pyldsz = size;
 	req->type = REQ_SND_BUFFERED_EAGER;
     } else if (utf_mode_msg != MSG_RENDEZOUS) {
-	minfo->cntrtype = SNDCNTR_INPLACE_EAGER;
+	minfo->cntrtype = SNDCNTR_INPLACE_EAGER1;
 	minfo->usrbuf = usrbuf;
 	memcpy(sbufp->pkt.pyld.msgdata, usrbuf, MSG_PYLDSZ);
 	sbufp->pkt.hdr.pyldsz = MSG_PYLDSZ;

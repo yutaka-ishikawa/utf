@@ -61,7 +61,7 @@
 #define MSG_MTU		1920	/* Tofu MTU */
 //#define MSG_PKTSZ	(256*2)	/* must be cache align (256B) and shorter than MTU */
 #define MSG_PKTSZ	(256)	/* must be cache align (256B) and shorter than MTU */
-#define MSG_NTNI	2	/* see struct utf_vcqid_stadd in utf_queue.h */
+#define MSG_NTNI	3	/* see struct utf_vcqid_stadd in utf_queue.h */
 #define MSG_MARKER	0x0 	/* marker is now zero */
 //#define MSG_MARKER	0x9 	/* 4 bit */
 //#define MSG_MARKER	(0x4B414E00L)	/* 4B */
@@ -75,6 +75,7 @@
 //#define MSG_FI_PYLDSZ		(MSG_PYLDSZ - sizeof(uint64_t))	/* 228 B */ defined in utf_queue.h
 #define MSG_FI_EAGER_PIGBACK_SZ	(MSG_EAGER_PIGBACK_SZ - sizeof(uint64_t))	/* 4 B */
 #define MSG_FI_EAGER_SIZE	(MSG_EAGER_SIZE - sizeof(uint64_t))		/* 228 B */
+#define MSG_FI_EAGER_INPLACE_SZ (1024 - sizeof(uint64_t))
 
 /* stadd */
 #define STAG_EGRMGT	10	/* utf_egrmgt */

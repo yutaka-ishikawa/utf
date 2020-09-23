@@ -59,9 +59,11 @@ find_rget_msgreq(utofu_vcq_id_t vcqid)
 	req = container_of(cur, struct utf_msgreq, rget_slst);
 	vsp = &req->rgetsender;
 	for (i = 0; i < vsp->nent; i++) {
+	    utf_printf("%s: vsp->vcqid[%d] = %p vcqid(%p)\n", __func__, i, vsp->vcqid[i], vcqid);
 	    if (vsp->vcqid[i] == vcqid) {
 		utfslist_remove2(&utf_rget_proglst, cur, prev);
 		req->rget_slst.next = NULL;
+		utf_printf("%s: found\n", __func__);
 		goto find;
 	    }
 	}
@@ -233,7 +235,8 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 	    usp->usize = PKT_PYLDSZ(pkt);
 	    usp->state = S_DONE_EGR;
 	    break;
-	case SNDCNTR_INPLACE_EAGER:  /* packet data is already filled */
+	case SNDCNTR_INPLACE_EAGER1:  /* packet data is already filled */
+	case SNDCNTR_INPLACE_EAGER2:  /* packet data is already filled */
 	    usp->usize = PKT_PYLDSZ(pkt);
 	    usp->state = S_DO_EGR;
 	    newusp = remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd,
@@ -353,6 +356,11 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 	{
 	    struct utf_msgreq	*req = minfo->mreq;
 	    --usp->inflight;
+	    if (minfo->cntrtype == SNDCNTR_INPLACE_EAGER2
+		&& minfo->usrbuf) {
+		utf_free(minfo->usrbuf);
+		minfo->usrbuf = NULL;
+	    }
 	    if (req->notify) req->notify(req);
 	    if (req->reclaim) {
 		utf_sendreq_free(req); /* req->state is reset to REQ_NONE */
@@ -484,6 +492,11 @@ utf_rget_progress(struct utf_msgreq *req)
     if (req->rsize != req->rcvexpsz) {
 	/* continue to issue */
 	rget_continue(req);
+	return;
+    }
+    if (--req->rgetsender.inflight > 0) {
+	/* waiting for completion */
+	utfslist_append(&utf_rget_proglst, &req->rget_slst);
 	return;
     }
     /*
@@ -691,7 +704,11 @@ utf_mrqprogress()
 	    int	rma_idx = sidx & ~EDAT_RMA;
 	    struct utf_rma_cq	*rma_cq;
 	    rma_cq = &utf_rmacq_pool[rma_idx];
-	    if (rma_cq->notify) rma_cq->notify(rma_cq);
+	    if (rma_cq->notify) {
+		rma_cq->notify(rma_cq);
+	    } else {
+		utf_rmacq_free(rma_cq);
+	    }
 	    break;
 	}
 	usp = utf_idx2scntr(sidx);
@@ -721,17 +738,31 @@ utf_mrqprogress()
     }
     case UTOFU_MRQ_TYPE_LCL_GET: /* 2 */
     {
+	int	sidx = mrq_notice.edata;
 	struct utf_msgreq	*req;
 
-	req = find_rget_msgreq(mrq_notice.vcq_id);
-	DEBUG(DLEVEL_UTOFU) {
-	    utf_printf("%s: MRQ_TYPE_LCL_GET: edata(%d) "
-		       "lcl_stadd(%lx) rmt_stadd(%lx) req(%p) sidx(%d)\n",
-		       __func__, mrq_notice.edata,
-		       mrq_notice.lcl_stadd, mrq_notice.rmt_stadd,
-		       req, req->hdr.sidx);
+	if (sidx & EDAT_RMA) {
+	    int	rma_idx = sidx & ~EDAT_RMA;
+	    struct utf_rma_cq	*rma_cq;
+	    rma_cq = &utf_rmacq_pool[rma_idx];
+	    if (rma_cq->notify) {
+		rma_cq->notify(rma_cq);
+	    } else {
+		utf_rmacq_free(rma_cq);
+	    }
+	    break;
+	} else {
+	    req = find_rget_msgreq(mrq_notice.vcq_id);
+	    assert(req != 0);
+	    DEBUG(DLEVEL_UTOFU) {
+		utf_printf("%s: MRQ_TYPE_LCL_GET: edata(%d) "
+			   "lcl_stadd(%lx) rmt_stadd(%lx) req(%p) sidx(%d)\n",
+			   __func__, mrq_notice.edata,
+			   mrq_notice.lcl_stadd, mrq_notice.rmt_stadd,
+			   req, req->hdr.sidx);
+	    }
+	    utf_rget_progress(req);
 	}
-	utf_rget_progress(req);
 	break;
     }
     case UTOFU_MRQ_TYPE_LCL_ARMW:/* 4 */

@@ -425,22 +425,47 @@ rget_start(struct utf_msgreq *req)
 	if (req->fi_iov_count == 1) {
 	    req->bufinfo.stadd[0] = utf_mem_reg(utf_info.vcqh, req->fi_msg[0].iov_base, req->rcvexpsz);
 	} else {
-	    utf_printf("%s: cannot handle message vector\n", __func__);
+	    utf_printf("%s: ERROR cannot handle message vector\n", __func__);
 	    abort();
 	}
     }
     DEBUG(DLEVEL_PROTO_RENDEZOUS) {
 	utf_printf("%s: Receiving Rendezous reqsize(0x%lx) "
-		   "rvcqid(0x%lx) lcl_stadd(0x%lx) rmt_stadd(0x%lx) "
+		   "io_count(%d) rvcqid(0x%lx) lcl_stadd(0x%lx) rmt_stadd(0x%lx) "
 		   "sidx(%d)\n",
 		   __func__, req->rcvexpsz,
+		   req->rgetsender.nent,
 		   req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
-		   req->rgetsender.stadd[0]);
+		   req->rgetsender.stadd[0], sidx);
     }
-    req->rsize =
-	(req->rcvexpsz > TOFU_RMA_MAXSZ) ? TOFU_RMA_MAXSZ : req->rcvexpsz;
-    remote_get(utf_info.vcqh, req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
-	       req->rgetsender.stadd[0], req->rsize, sidx, 0, 0);
+    utf_printf("%s: Receiving Rendezous reqsize(0x%lx) "
+	       "io_count(%d) rvcqid(0x%lx) lcl_stadd(0x%lx) rmt_stadd(0x%lx) "
+	       "sidx(%d)\n",
+	       __func__, req->rcvexpsz,
+	       req->rgetsender.nent,
+	       req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
+	       req->rgetsender.stadd[0], sidx);
+    if (req->rgetsender.nent == 1) {
+	req->rsize =
+	    (req->rcvexpsz > TOFU_RMA_MAXSZ) ? TOFU_RMA_MAXSZ : req->rcvexpsz;
+	remote_get(utf_info.vcqh, req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
+		   req->rgetsender.stadd[0], req->rsize, sidx, 0, 0);
+	req->bufinfo.recvlen[0] = req->rsize;
+    } else {
+	int	i;
+	uint64_t	len, off = 0;
+	req->rsize = 0;
+	for (i = 0; i < req->rgetsender.nent; i++) {
+	    len = (req->rgetsender.len[i] > TOFU_RMA_MAXSZ) ? TOFU_RMA_MAXSZ : req->rgetsender.len[i];
+	    remote_get(utf_info.vcqh, req->rgetsender.vcqid[i],
+		       req->bufinfo.stadd[0] + off,
+		       req->rgetsender.stadd[i], len, sidx, 0, 0);
+	    req->bufinfo.recvlen[i] = req->rsize;
+	    req->rsize += len;
+	    off += len;
+	}
+    }
+    req->rgetsender.inflight = req->rgetsender.nent;
     req->state = REQ_DO_RNDZ;
     utfslist_append(&utf_rget_proglst, &req->rget_slst);
 }
@@ -461,11 +486,33 @@ rget_continue(struct utf_msgreq *req)
 		   req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
 		   req->rgetsender.stadd[0], sidx);
     }
-    restsz = req->rcvexpsz - req->rsize;
-    transsz = (restsz > TOFU_RMA_MAXSZ) ? TOFU_RMA_MAXSZ : restsz;
-    remote_get(utf_info.vcqh, req->rgetsender.vcqid[0], req->bufinfo.stadd[0] + req->rsize,
-	       req->rgetsender.stadd[0] + req->rsize, transsz, sidx, 0, 0);
-    req->rsize += transsz;
+    utf_printf("%s: Continueing Rendezous reqsize(0x%lx) "
+	       "rvcqid(0x%lx) lcl_stadd(0x%lx) rmt_stadd(0x%lx) "
+	       "sidx(%d)\n",
+	       __func__, req->rcvexpsz,
+	       req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
+	       req->rgetsender.stadd[0], sidx);
+    if (req->rgetsender.nent == 1) {
+	restsz = req->rcvexpsz - req->rsize;
+	transsz = (restsz > TOFU_RMA_MAXSZ) ? TOFU_RMA_MAXSZ : restsz;
+	remote_get(utf_info.vcqh, req->rgetsender.vcqid[0], req->bufinfo.stadd[0] + req->rsize,
+		   req->rgetsender.stadd[0] + req->rsize, transsz, sidx, 0, 0);
+	req->bufinfo.recvlen[0] += transsz;
+	req->rsize += transsz;
+    } else {
+	int	i;
+	for (i = 0; i < req->rgetsender.nent; i++) {
+	    restsz = req->rgetsender.len[i] - req->bufinfo.recvlen[i];
+	    if (restsz == 0) continue;
+	    transsz = (restsz > TOFU_RMA_MAXSZ) ? TOFU_RMA_MAXSZ : restsz;
+	    remote_get(utf_info.vcqh, req->rgetsender.vcqid[0],
+		       req->bufinfo.stadd[0] + req->rsize,
+		       req->rgetsender.stadd[0] + req->bufinfo.recvlen[i],
+		       transsz, sidx, 0, 0);
+	    req->bufinfo.recvlen[i] += transsz;
+	    req->rsize += transsz;
+	}
+    }
     utfslist_append(&utf_rget_proglst, &req->rget_slst);
 }
 

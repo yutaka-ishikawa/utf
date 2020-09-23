@@ -49,15 +49,18 @@ struct utf_fabmsghdr { /* 28 Byte */
     uint64_t	data;	/* used for libfabric */
 };
 
-struct utf_vcqhdl_stadd {		/* 40B */
+struct utf_vcqhdl_stadd {		/* 80B (8 +8*3*3) */
     size_t	nent;			/* */
+    uint64_t	recvlen[MSG_NTNI];	/* length */
     uint64_t	vcqhdl[MSG_NTNI];	/* utofu_vcq_hdl_t */
     uint64_t	stadd[MSG_NTNI];	/* utofu_stadd_t */
 };
 
-struct utf_vcqid_stadd {		/* 40B (8+8*2+8*2) */
-    uint32_t	rndzpos;			/* position of rendezvous progress structure */
-    uint32_t	nent;			/* */
+struct utf_vcqid_stadd {		/* 80B (8+8*3+8*3+8*3) */
+    uint32_t	rndzpos;		/* position of rendezvous progress structure */
+    uint16_t	inflight;		/* used in protocol handling */
+    uint16_t	nent;			/* */
+    uint64_t	len[MSG_NTNI];		/* length */
     uint64_t	vcqid[MSG_NTNI];	/* utofu_vcq_hdl_t */
     uint64_t	stadd[MSG_NTNI];	/* utofu_stadd_t */
 };
@@ -68,8 +71,8 @@ struct utf_vcqid_stadd {		/* 40B (8+8*2+8*2) */
 struct fi_1stpacket {
     uint64_t	data;
     union {
-	uint8_t	msgdata[MSG_FI_PYLDSZ];
-	struct utf_vcqid_stadd	rndzdata;
+	uint8_t	msgdata[MSG_FI_PYLDSZ];		/* 228B */
+	struct utf_vcqid_stadd	rndzdata;	/*  80B */
     };
 };
 #pragma pack()
@@ -280,8 +283,9 @@ enum {
     SNDCNTR_NONE		   = 0,
     SNDCNTR_BUFFERED_EAGER_PIGBACK = 1,
     SNDCNTR_BUFFERED_EAGER	   = 2,
-    SNDCNTR_INPLACE_EAGER	   = 3,
-    SNDCNTR_RENDEZOUS		   = 4
+    SNDCNTR_INPLACE_EAGER1	   = 3,
+    SNDCNTR_INPLACE_EAGER2	   = 4,
+    SNDCNTR_RENDEZOUS		   = 5
 };
 
 /*
