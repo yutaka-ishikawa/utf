@@ -47,6 +47,20 @@ utf_nprocs(int *psize)
 }
 
 int
+utf_intra_rank(int *rank)
+{
+    *rank = utf_info.mynrnk;
+    return 0;
+}
+
+int
+utf_intra_nprocs(int *psize)
+{
+    *psize = utf_info.myppn;
+    return 0;
+}
+
+int
 utf_vcqh(utofu_vcq_hdl_t *vp)
 {
     *vp = utf_info.vcqh;

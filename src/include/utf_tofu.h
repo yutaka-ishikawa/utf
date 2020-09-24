@@ -43,7 +43,8 @@ struct utf_info {
     uint64_t		*myfiaddr;
     struct tofu_vname	*vname;
     struct tni_info	*tinfo;
-    struct cqsel_table	*cqseltab;
+    struct cqsel_table	*cqseltab;	/* shared memory */
+    int			cqselid;	/* shmem id */
     size_t		nnodes;
     union jtofu_phys_coords	*phys_node;	/* needs for PMIx_Resolve_peers */
     size_t              max_mtu;
@@ -54,7 +55,8 @@ struct utf_info {
     utofu_vcq_hdl_t	vcqhs[TOFU_NIC_SIZE];
     utofu_vcq_id_t	vcqids[TOFU_NIC_SIZE];
     uint64_t		counter;
-    void		*shm;
+    void		*shmaddr;	/* user shmem area */
+    int			shmid;		/* user shmem id */
 };
 
 extern struct utf_info utf_info;

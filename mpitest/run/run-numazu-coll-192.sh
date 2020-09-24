@@ -13,13 +13,14 @@
 #PJM --mpi "max-proc-per-node=48"
 #	PJM --mpi "max-proc-per-node=1"
 #PJM -L "elapse=00:00:20"
-#PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-mck2_and_spack2,jobenv=linux"
-#	PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-spack2,jobenv=linux"
+#	PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-mck2_and_spack2,jobenv=linux"
+#PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-spack2,jobenv=linux"
 #	PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-spack1,jobenv=linux"
 #PJM -L proc-core=unlimited
 #------- Program execution -------#
 
-export LD_LIBRARY_PATH=${HOME}/mpich-tofu/lib:$LD_LIBRARY_PATH
+MPICH_HOME=/home/users/ea01/share/mpich-tofu
+export LD_LIBRARY_PATH=${MPICH_HOME}/mpich-tofu/lib:$LD_LIBRARY_PATH
 export MPIR_CVAR_OFI_USE_PROVIDER=tofu
 export MPICH_CH4_OFI_ENABLE_SCALABLE_ENDPOINTS=1
 ## CONF_TOFU_INJECTSIZE=1856 (MSG_EAGER_SIZE = 1878)

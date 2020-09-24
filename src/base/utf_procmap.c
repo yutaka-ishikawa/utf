@@ -8,6 +8,7 @@
 #include <jtofu.h>
 #include <pmix_fjext.h>
 #include <limits.h>
+#include <libgen.h>
 #include "utf_conf.h"
 #include "utf_externs.h"
 #include "utf_errmacros.h"
@@ -35,6 +36,15 @@
 		evar = str; goto lbl;	\
 	}				\
 } while(0);
+
+#define SYS_CALL(rc, syscall, erstr) do {\
+	rc = syscall;			\
+	if (rc != 0) {			\
+		perror(erstr);	\
+	}				\
+	return rc;			\
+} while(0);
+
 
 /*
  * 31             24 23           16 15            8 7 6 5  2 1 0
@@ -215,7 +225,7 @@ utf_peers_init()
 		}
 		assert(this_rank < utf_info.nprocs);
 		vnmp[this_rank].tniq[0] = ((tni << 4) & 0xf0) | (cq & 0x0f);
-		vnmp[this_rank].vpid = rank;
+		vnmp[this_rank].vpid = this_rank;
 		vnmp[this_rank].cid = CONF_TOFU_CMPID;
 		memcpy(&vnmp[this_rank].xyzabc, &pcoords, sizeof(pcoords));
 		memcpy(&vnmp[this_rank].xyz, &lcoords, sizeof(lcoords));
@@ -329,31 +339,44 @@ utf_get_peers(uint64_t **fi_addr, int *npp, int *ppnp, int *rnkp)
     return utf_info.vname;
 }
 
-#define PMIX_TOFU_SHMEM	"UTF_TOFU_SHM"
-#define PMIX_USR_SHMEM	"UTF_USR_SHM"
+#define SHMEM_UTF	"-utf"
+#define SHMEM_USR	"-usr"
 
 static void	*
-utf_shm_init_internal(size_t sz, char *mykey)
+utf_shm_init_internal(size_t sz, char *mykey, char *type, int *idp)
 {
     int	rc = 0;
     char	*errstr;
     int	lead_rank = (utf_info.myrank/utf_info.myppn)*utf_info.myppn;
     key_t	key;
     int		shmid;
-    char	buf[128];
+    char	path[PATH_MAX+1], pmkey[PATH_MAX+1];
     void	*addr;
 
+    if (strlen(mykey) + strlen(type) > PATH_MAX) {
+	utf_printf("%s: the length of key and type (%ld) exceeds PATH_MAX(%d)\n",
+		   __func__, strlen(mykey) + strlen(type), PATH_MAX);
+	abort();
+    }
+    /*
+     * pmkey is a PMIx key, basename of mykey followed by type.
+     * e.g. pmkey is "MPICH-shm-utf" in case of
+     * mykey="/tmp/MPICH-shm" and type ="-utf"
+     */
+    strcpy(pmkey, basename(mykey)); strcat(pmkey, type);
     if (utf_info.myrank == lead_rank) {
 	pmix_value_t	pv;
-	strcpy(buf, mykey);
-	key = ftok(buf, 1);
+	/* */
+	snprintf(path, PATH_MAX, "%s-%07d%s", mykey, getpid(), type);
+	utf_printf("%s: SHMEM PATH=%s\n", __func__, path);
+	key = ftok(path, 1);
 	shmid = shmget(key, sz, IPC_CREAT | 0666);
 	if (shmid < 0) { perror("error:"); exit(-1); }
 	addr = shmat(shmid, NULL, 0);
 	/* expose SHMEM_KEY_VAL */
 	pv.type = PMIX_STRING;
-	pv.data.string = buf;
-	PMIx_Put(PMIX_LOCAL, PMIX_TOFU_SHMEM, &pv);
+	pv.data.string = path;
+	PMIx_Put(PMIX_LOCAL, pmkey, &pv);
 	LIB_CALL(rc, PMIx_Commit(), err, errstr, "PMIx_Commit");
     } else {
 	pmix_proc_t		pmix_tproc[1];
@@ -362,7 +385,7 @@ utf_shm_init_internal(size_t sz, char *mykey)
 	memcpy(pmix_tproc, utf_info.pmix_proc, sizeof(pmix_proc_t));
 	pmix_tproc->rank = lead_rank; // PMIX_RANK_LOCAL_NODE does not work
 	do {
-	    rc = PMIx_Get(pmix_tproc, PMIX_TOFU_SHMEM, NULL, 0, &pv);
+	    rc = PMIx_Get(pmix_tproc, pmkey, NULL, 0, &pv);
 	    usleep(1000);
 	} while (rc == PMIX_ERR_NOT_FOUND);
 	if (rc != PMIX_SUCCESS) {
@@ -373,17 +396,33 @@ utf_shm_init_internal(size_t sz, char *mykey)
 	shmid = shmget(key, sz, 0);
 	addr = shmat(shmid, NULL, 0);
     }
+    *idp = shmid;
     return addr;
 err:
     fprintf(stderr, "%s: rc(%d)\n", errstr, rc);
     return NULL;
 }
 
+
+/*
+ * utf_shm_finalize_internal is used for both user and utf shmem interface
+ */
+static int
+utf_shm_finalize_internal(int shmid, void *addr)
+{
+    int	rc = 0;
+    SYS_CALL(rc, shmctl(shmid, IPC_RMID, NULL), __func__);
+    SYS_CALL(rc, shmdt(addr), __func__);
+    return rc;
+}
+
+/*
+ * utf_shm_init and utf_shm_finalize are used by the user
+ */
+static int	shm_usd = 0;
 int
 utf_shm_init(size_t sz, void **area)
 {
-    static int	shm_usd = 0;
-
     if (sz == 0 || area == NULL) {
 	return -1;
     }
@@ -392,28 +431,24 @@ utf_shm_init(size_t sz, void **area)
 	return -2;
     }
     shm_usd = 1;
-    *area = utf_info.shm = utf_shm_init_internal(sz, PMIX_USR_SHMEM);
-    if (utf_info.shm == NULL) {
+    *area = utf_info.shmaddr = utf_shm_init_internal(sz, SHMEM_KEY_VAL_FMT, SHMEM_USR, &utf_info.shmid);
+    if (utf_info.shmaddr == NULL) {
 	return -3;
     }
     return 0;
-}
-
-static int
-utf_shm_finalize_internal(void *addr)
-{
-    return shmdt(addr);
 }
 
 int
 utf_shm_finalize()
 {
     int	rc = 0;
-    if (utf_info.shm) {
-	rc = shmdt(utf_info.shm);
+
+    if (!shm_usd) return 0;
+    if (utf_info.shmaddr) {
+	rc = utf_shm_finalize_internal(utf_info.shmid, utf_info.shmaddr);
     }
     if (rc == 0) {
-	utf_info.shm = NULL;
+	utf_info.shmaddr = NULL;
     }
     return rc;
 }
@@ -429,7 +464,8 @@ utf_cqselect_init(int ppn, int nrnk, int ntni, utofu_tni_id_t *tnis, utofu_vcq_h
     sz = ((sizeof(struct cqsel_table) + psz - 1)/sz)*sz;
     utf_printf("pid(%d) %s: nrnk(%d) ntni(%d) sz(%ld) sizeof(struct cqsel_table)=%ld\n", utf_info.mypid, __func__, nrnk, ntni, sz, sizeof(struct cqsel_table));
 
-    utf_info.cqseltab = (struct cqsel_table*) utf_shm_init_internal(sz, SHMEM_KEY_VAL_FMT);
+    utf_info.cqseltab =
+	(struct cqsel_table*) utf_shm_init_internal(sz, SHMEM_KEY_VAL_FMT, SHMEM_UTF, &utf_info.cqselid);
     if (utf_info.cqseltab == NULL) {
 	utf_printf("%s: cannot allocate shared memory for CQ management\n", __func__);
 	abort();
@@ -460,7 +496,7 @@ utf_cqselect_finalize()
     int	rc;
     utf_cqtab_show();
     if (utf_info.cqseltab) {
-	rc = utf_shm_finalize_internal(utf_info.cqseltab);
+	rc = utf_shm_finalize_internal(utf_info.cqselid, utf_info.cqseltab);
 	if (rc < 0) {
 	    perror("YIXXXXXXX  SHMEM");
 	}

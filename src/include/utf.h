@@ -32,6 +32,8 @@ extern int	utf_waitcmpl(UTF_reqid);
 extern int	utf_test(UTF_reqid);
 extern int	utf_rank(int *rank);
 extern int	utf_nprocs(int *psize);
+extern int	utf_intra_rank(int *rank);
+extern int	utf_intra_nprocs(int *psize);
 extern void	utf_fence();
 
 extern int	utf_printf(const char *fmt, ...);

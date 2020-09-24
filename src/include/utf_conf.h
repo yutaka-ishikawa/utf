@@ -25,6 +25,9 @@
 #define DLEVEL_ALL		0xffff
 
 #define SHMEM_KEY_VAL_FMT	"/tmp/MPICH-shm"
+#define PMIX_TOFU_SHMEM	"UTF_TOFU_SHM"
+#define PMIX_USR_SHMEM	"UTF_USR_SHM"
+
 #define TOFU_NIC_SIZE	6	/* number of NIC */
 #define TOFU_INJECTSIZE	228
 #define NODE_MAX	158976
