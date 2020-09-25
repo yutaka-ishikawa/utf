@@ -67,6 +67,7 @@ utf_progress()
 		goto try_again;
 	    }
 	}
+	// utf_printf("%s: waiting for recvidx(%d)\n", __func__, urp->recvidx);
     }
     if (!arvd) utf_mrqprogress();
 

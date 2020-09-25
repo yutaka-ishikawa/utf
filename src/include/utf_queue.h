@@ -222,7 +222,7 @@ struct utf_msgreq {
     size_t	rcvexpsz;	/* 48: expected receive size used in rendezvous */
     size_t	usrreqsz;	/* 48: user request size */
     utfslist_entry_t slst;	/* 56: list */
-    void	(*notify)(struct utf_msgreq*);	/* 64: notifier */
+    int		(*notify)(struct utf_msgreq*, int aux);	/* 64: notifier */
     struct utf_recv_cntr *rcntr;	/* 72: point to utf_recv_cntr */
     struct utf_vcqid_stadd rgetsender; /* 112: rendezous: sender's stadd's and vcqid's */
     struct utf_vcqhdl_stadd bufinfo; /* 152: rendezous: receiver's stadd's and vcqid's  */

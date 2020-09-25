@@ -383,8 +383,12 @@ eager_copy_and_check(struct utf_recv_cntr *urp,
 	    size_t	rest = req->rcvexpsz - req->rsize;
 	    req->overrun = 1;
 	    if (rest > 0) {
-		utf_copy_to_iov(req->fi_msg, req->fi_iov_count, req->rsize,
-				PKT_FI_MSGDATA(pkt), rest);
+		if (req->buf) {
+		    memcpy(&req->buf[req->rsize], PKT_FI_MSGDATA(pkt), rest);
+		} else {
+		    utf_copy_to_iov(req->fi_msg, req->fi_iov_count, req->rsize,
+				    PKT_FI_MSGDATA(pkt), rest);
+		}
 	    }
 	}  else {
 	    if (req->buf) { /* enough buffer area has been allocated */
@@ -429,22 +433,21 @@ rget_start(struct utf_msgreq *req)
 	    abort();
 	}
     }
-    DEBUG(DLEVEL_PROTO_RENDEZOUS) {
+//    DEBUG(DLEVEL_PROTO_RENDEZOUS) {
+    if (1) {
+	int i;
+	size_t ssz = 0;
+	for (i = 0; i < req->rgetsender.nent; i++) {
+	    ssz += req->rgetsender.len[i];
+	}
 	utf_printf("%s: Receiving Rendezous reqsize(0x%lx) "
-		   "io_count(%d) rvcqid(0x%lx) lcl_stadd(0x%lx) rmt_stadd(0x%lx) "
+		   "io_count(%d) sentsize(%ld) rvcqid(0x%lx) lcl_stadd(0x%lx) rmt_stadd(0x%lx) "
 		   "sidx(%d)\n",
 		   __func__, req->rcvexpsz,
-		   req->rgetsender.nent,
+		   req->rgetsender.nent, ssz,
 		   req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
 		   req->rgetsender.stadd[0], sidx);
     }
-    utf_printf("%s: Receiving Rendezous reqsize(0x%lx) "
-	       "io_count(%d) rvcqid(0x%lx) lcl_stadd(0x%lx) rmt_stadd(0x%lx) "
-	       "sidx(%d)\n",
-	       __func__, req->rcvexpsz,
-	       req->rgetsender.nent,
-	       req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
-	       req->rgetsender.stadd[0], sidx);
     if (req->rgetsender.nent == 1) {
 	req->rsize =
 	    (req->rcvexpsz > TOFU_RMA_MAXSZ) ? TOFU_RMA_MAXSZ : req->rcvexpsz;
