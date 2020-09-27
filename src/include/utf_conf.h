@@ -19,9 +19,10 @@
 #define DLEVEL_ALL		0xffff
 #define DLEVEL_PROTO_RMA	0x20	/* 32 */
 #define DLEVEL_PROTO_VBG	0x40	/* 64 */
-#define DLEVEL_ADHOC		0x80	/* 128 */
-#define DLEVEL_ERR		0x100
-#define DLEVEL_CHAIN2		0x200
+#define DLEVEL_PROTO_AM		0x80	/* 128 */
+#define DLEVEL_ADHOC		0x100	/* 128 */
+#define DLEVEL_ERR		0x200
+#define DLEVEL_CHAIN2		0x400
 #define DLEVEL_ALL		0xffff
 
 #define SHMEM_KEY_VAL_FMT	"/tmp/MPICH-shm"

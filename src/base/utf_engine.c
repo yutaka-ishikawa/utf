@@ -118,8 +118,7 @@ calc_recvstadd(struct utf_send_cntr *usp, uint64_t ridx)
 
     if (IS_COMRBUF_FULL(usp)) {
 	/* buffer full */
-	utf_printf("%s: BUSYWAIT usp(%p) DST(%d)\n", __func__, usp, usp->dst);
-	DEBUG(DLEVEL_PROTOCOL|DLEVEL_UTOFU) {
+	DEBUG(DLEVEL_PROTOCOL|DLEVEL_UTOFU|DLEVEL_PROTO_AM) {
 	    utf_printf("%s: BUSYWAIT usp(%p) DST(%d)\n", __func__, usp, usp->dst);
 	}
 	usp->ostate = usp->state;
@@ -337,7 +336,6 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 	break;
     case S_DONE_EGR:
     {
-	utf_printf("%s: DONE_EGR: DST(%d) usp(%p) minfo(%p) recvidx(%d) usize(%ld) micur(%d) cntrtype(%d) inflight(%d)\n", __func__, usp->dst, usp, minfo, usp->recvidx, usp->usize, usp->micur, minfo->cntrtype, usp->inflight);
 	DEBUG(DLEVEL_PROTOCOL) {
 	    utf_printf("%s: DONE_EGR: DST(%d) usp(%p) minfo(%p) recvidx(%d) usize(%ld) micur(%d) cntrtype(%d)\n", __func__, usp->dst, usp, minfo, usp->recvidx, usp->usize, usp->micur, minfo->cntrtype);
 	}
@@ -374,7 +372,6 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 		if (minfo->cntrtype != SNDCNTR_NONE) {
 		    usp->state = S_HAS_ROOM;
 		    evt = EVT_CONT;
-		    utf_printf("%s: NEXT minfo(%p) micur(%d) cntrtype(%d) recvidx(%d)\n", __func__, minfo, usp->micur, minfo->cntrtype, usp->recvidx);
 		    goto s_has_room;
 		} else {
 		    utf_printf("%s: usp->micur(%d) usp->mient(%d) minfo->cntrtype(%d)\n",
@@ -611,18 +608,14 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
     done:
 	req->state = REQ_DONE;
 	if (req->type == REQ_RECV_UNEXPECTED) {
-	    utf_printf("%s: recv_post SRC(%d) UEXP DONE(req=%p,idx=%d,flgs(%x))\n", __func__, req->hdr.src,
-		       req, utf_msgreq2idx(req), req->hdr.flgs);
 	    DEBUG(DLEVEL_PROTOCOL) {
 		utf_printf("%s: recv_post SRC(%d) UEXP DONE(req=%p,idx=%d,flgs(%x))\n", __func__, req->hdr.src,
 			   req, utf_msgreq2idx(req), req->hdr.flgs);
 	    }
 	} else {
-	    utf_printf("%s: recv_post SRC(%d) EXP DONE(req=%p,idx=%d,flgs(%x))\n", __func__, req->hdr.src,
-		       req, utf_msgreq2idx(req), req->hdr.flgs);
 	    DEBUG(DLEVEL_PROTOCOL) {
-		utf_printf("%s: recv_post SRC(%d) EXP DONE(req=%p,idx=%d,flgs(%x))\n", __func__, req->hdr.src,
-			   req, utf_msgreq2idx(req), req->hdr.flgs);
+		utf_printf("%s: recv_post SRC(%d) EXP DONE(req=%p,idx=%d,flgs(%x)), req->fi_flgs(0x%lx)\n", __func__, req->hdr.src,
+			   req, utf_msgreq2idx(req), req->hdr.flgs, req->fi_flgs);
 	    }
 	    if (req->notify) req->notify(req, 1);
 	}
@@ -707,7 +700,6 @@ utf_mrqprogress()
 	}
 	usp = utf_idx2scntr(sidx);
 	minfo = &usp->msginfo[usp->micur];
-	utf_printf("%s: LCL_PUT sidx(%d) usp(%p)->state(%s) minfo(%p)\n", __func__, sidx, usp, sstate_symbol[usp->state], minfo);
 	utf_sendengine(usp, minfo, 0, EVT_LCL);
 	break;
     }
@@ -800,7 +792,9 @@ utf_mrqprogress()
 			   usp->rcvreset, usp->mient);
 	    }
 	    if (evtype == EVT_RMT_RECVRST) {
-		utf_printf("%s: usp(%p)->rcevidx(%d) rcvreset(%d)\n", __func__, usp, usp->recvidx, usp->rcvreset);
+		DEBUG(DLEVEL_PROTO_AM) {
+		    utf_printf("%s: usp(%p)->rcevidx(%d) rcvreset(%d)\n", __func__, usp, usp->recvidx, usp->rcvreset);
+		}
 		usp->rcvreset = 0; usp->recvidx = 0;
 		if (usp->state == S_WAIT_BUFREADY) {
 		    usp->state = usp->ostate;
