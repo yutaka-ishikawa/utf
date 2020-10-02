@@ -1,0 +1,29 @@
+Steering Address (TAG<<32 + offset)
+stadd
+0x000f0b00 01f80100
+0x00100000 00000000
+0x000f0b00 00000000
+
+REGION TYPE
+0 : stack
+1 : heap
+2 : MMAP
+3 : Text
+4 : Data
+
+TYPE(1B) STADD(2B) REGION_ADDR(6B)
+
+MMAP
+400000387300
+USER
+0000000000000000	000003ffffffffff 2level
+0000000000000000	0000ffffffffffff 3level
+
+STACK
+HEAP
+MMAP
+
+
+https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tree/Documentation/arm64/memory.txt?h=v4.19.147
+
+
