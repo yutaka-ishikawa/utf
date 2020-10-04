@@ -1,16 +1,16 @@
 #!/bin/bash
 #------ pjsub option --------#
-#PJM -N "MPICH-COLL48" # jobname
+#PJM -N "MPICH-COLL8" # jobname
 #PJM -S		# output statistics
-#PJM --spath "results/coll-48/%n.%j.stat"
-#PJM -o "results/coll-48/%n.%j.out"
-#PJM -e "results/coll-48/%n.%j.err"
+#PJM --spath "results/coll-8/%n.%j.stat"
+#PJM -o "results/coll-8/%n.%j.out"
+#PJM -e "results/coll-8/%n.%j.err"
 #
 #	PJM -L "node=2:noncont"
 #PJM -L "node=1:noncont"
 #	PJM -L "node=8:noncont"
 #	PJM --mpi "max-proc-per-node=2"
-#PJM --mpi "max-proc-per-node=48"
+#PJM --mpi "max-proc-per-node=8"
 #	PJM --mpi "max-proc-per-node=1"
 #PJM -L "elapse=00:00:20"
 #PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-mck2_and_spack2,jobenv=linux"

@@ -1,3 +1,6 @@
+#ifndef UTF_H
+#define UTF_H
+
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -43,3 +46,5 @@ extern int	utf_printf(const char *fmt, ...);
     rc = func(__VA_ARGS__);			\
     if (rc < 0) goto label;		\
 } while (0);
+
+#endif /* ~UTF_H */

@@ -1,8 +1,46 @@
+num_reserved_stags: 256 (
 Steering Address (TAG<<32 + offset)
 stadd
-0x000f0b00 01f80100
+0x000f0b00 00000000	stag=11
+0x000f0e00 00000000     stag=14
 0x00100000 00000000
-0x000f0b00 00000000
+0x00100000 0000d930	0xffffffffd930, stack
+0x00100200 00007950	0x447950, bss
+0x00100400 00000410	0x420410, data
+0x00100200 00007970	0x80447970, bss
+0x00100c00 00007970	0x40447970, data 1G
+0x00100600 00006100	0x486100, malloc 1k
+0x00100600 0000d100	0x48d100, posix_memalign 1K
+0x00100800 00000010	0x400009000010, malloc 512K
+0x00103c00 00000010	0x4006891a0010, malloc 27GB
+
+Virtual address
+HEAP
+0x00004006 891a0010
+0x00004000 09000010
+DATA
+0x00100400 00000410
+
+0xfffffff000000000
+#define MAKE_KEY(stadd, virt)	(((stadd) & 0xfffffff000000000LL) | ((virt)&0x0000000fffffffffLL))
+#define KEY_STADD(key, virt)
+(((key) & 0xfffffff000000000LL) | (((((virt)&0x0000000fffffffffLL)) -  ((key)&0x0000000fffffffffLL)) + ((key)&0xffffLL)))
+
+struct memregion {
+       uint64_t	a32:40,	/* virtual address */
+		rsv:12,
+		type:4,
+		zero:16;
+};
+
+
+struct stadd {
+       uint64_t	a32:32,	/* virtual address */
+                a8:8,
+		stag:8,
+		type:8,
+		rsv:8;
+};
 
 REGION TYPE
 0 : stack
