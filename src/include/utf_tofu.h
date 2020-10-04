@@ -269,3 +269,11 @@ vcqh2string(utofu_vcq_hdl_t vcqh, char *buf, size_t len)
 bad:
     return buf;
 }
+
+#define MAKE_KEY(stadd, virt)	\
+    (((stadd) & 0xfffffff000000000LL) | ((uint64_t)(virt)&0x0000000fffffffffLL))
+#define CALC_STADD(key, virt)	\
+    (((key) & 0xfffffff000000000LL) \
+     | (((((uint64_t)(virt)&0x0000000fffffffffLL)) \
+	 -  ((key)&0x0000000fffffffffLL)) + ((key)&0xffffLL)))
+#define EXTRCT_STADD(key) ((uint64_t)(key)&0xfffffff00000ffffLL)
