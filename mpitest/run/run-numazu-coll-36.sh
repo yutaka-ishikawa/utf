@@ -1,16 +1,16 @@
 #!/bin/bash
 #------ pjsub option --------#
-#PJM -N "MPICH-COLL4" # jobname
+#PJM -N "MPICH-COLL36" # jobname
 #PJM -S		# output statistics
-#PJM --spath "results/coll-4/%n.%j.stat"
-#PJM -o "results/coll-4/%n.%j.out"
-#PJM -e "results/coll-4/%n.%j.err"
+#PJM --spath "results/coll-8/%n.%j.stat"
+#PJM -o "results/coll-36/%n.%j.out"
+#PJM -e "results/coll-36/%n.%j.err"
 #
 #	PJM -L "node=2:noncont"
 #PJM -L "node=1:noncont"
 #	PJM -L "node=8:noncont"
 #	PJM --mpi "max-proc-per-node=2"
-#PJM --mpi "max-proc-per-node=4"
+#PJM --mpi "max-proc-per-node=36"
 #	PJM --mpi "max-proc-per-node=1"
 #PJM -L "elapse=00:00:20"
 #PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-mck2_and_spack2,jobenv=linux"
@@ -31,7 +31,7 @@ export UTF_MSGMODE=1	# Rendezous
 #export UTF_TRANSMODE=0	# Chained
 export UTF_TRANSMODE=1	# Aggressive
 export TOFU_NAMED_AV=1
-##export TOFULOG_DIR=./results/coll-48
+#export TOFULOG_DIR=./results/coll-48
 
 echo "TOFU_NAMED_AV = " $TOFU_NAMED_AV
 echo "UTF_MSGMODE   = " $UTF_MSGMODE "(0: Eager, 1: Rendezous)"
@@ -42,14 +42,13 @@ echo "UTF_TRANSMODE = " $UTF_TRANSMODE "(0: Chained, 1: Aggressive)"
 #export FI_LOG_LEVEL=Debug
 #export FI_LOG_PROV=tofu
 
-#mpiexec ../bin/coll -l 4
-mpiexec ../bin/coll -l 512
+mpiexec ../bin/coll -l 4
+#mpiexec ../bin/coll -l 512
 #mpiexec ../bin/coll -v -l 16777216 -i 10	# all-to-all max 16MiB for 32 procs
 #						# 23 sec for 10 times
 ##mpiexec ../bin/coll -l 8388608		# 8MiB 6 sec
 echo 
 echo
-ldd ../bin/coll
 exit
 
 ############################################################################
@@ -65,6 +64,7 @@ echo "UTF_TRANSMODE = " $UTF_TRANSMODE "(0: Chained, 1: Aggressive)"
 #mpiexec ../bin/coll -v -l 8388608 -i 5		# 8MiB 52sec for 5 times using 32 procs
 mpiexec ../bin/coll -v -l 16777216 -i 2		# all-to-all max 16MiB (1 GiB working memory) for 32 procs
 						# 47 sec for 2 times
+
 echo
 echo
 ldd ../bin/coll
