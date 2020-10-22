@@ -6,11 +6,11 @@
 #PJM -o "results/coll-4/%n.%j.out"
 #PJM -e "results/coll-4/%n.%j.err"
 #
-#	PJM -L "node=2:noncont"
-#PJM -L "node=1:noncont"
+#PJM -L "node=4:noncont"
+#PJM --mpi "max-proc-per-node=4"
+#	PJM -L "node=1:noncont"
 #	PJM -L "node=8:noncont"
 #	PJM --mpi "max-proc-per-node=2"
-#PJM --mpi "max-proc-per-node=4"
 #	PJM --mpi "max-proc-per-node=1"
 #PJM -L "elapse=00:00:20"
 #PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-mck2_and_spack2,jobenv=linux"
@@ -26,13 +26,19 @@ export MPICH_CH4_OFI_ENABLE_SCALABLE_ENDPOINTS=1
 
 #export UTF_DEBUG=12
 #export UTF_DEBUG=0xfffc
+##export TOFULOG_DIR=./results/coll-48
 
-export UTF_MSGMODE=1	# Rendezous
+#export UTF_MSGMODE=1	# Rendezous
+export UTF_MSGMODE=0	# Eager
 #export UTF_TRANSMODE=0	# Chained
 export UTF_TRANSMODE=1	# Aggressive
 export TOFU_NAMED_AV=1
-##export TOFULOG_DIR=./results/coll-48
+export MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG=1
+export MPIR_CVAR_CH4_OFI_ENABLE_MR_VIRT_ADDRESS=1	# MPICH 3.4.x
+export MPIR_CVAR_CH4_OFI_ENABLE_RMA=1
+#export MPIR_CVAR_CH4_OFI_ENABLE_TAGGED=1	# DOES NOT WORK!!! MUST BE INVESTIGATED
 
+printenv | grep LD_LIBRARY
 echo "TOFU_NAMED_AV = " $TOFU_NAMED_AV
 echo "UTF_MSGMODE   = " $UTF_MSGMODE "(0: Eager, 1: Rendezous)"
 echo "UTF_TRANSMODE = " $UTF_TRANSMODE "(0: Chained, 1: Aggressive)"
@@ -42,8 +48,16 @@ echo "UTF_TRANSMODE = " $UTF_TRANSMODE "(0: Chained, 1: Aggressive)"
 #export FI_LOG_LEVEL=Debug
 #export FI_LOG_PROV=tofu
 
+export MPIR_CVAR_CH4_OFI_ENABLE_TAGGED=0
+#export UTF_DEBUG=0x1000	# COMM
+echo "UTF_MSGMODE    = " $UTF_MSGMODE
+echo "MPIR_CVAR_CH4_OFI_ENABLE_TAGGED = " $MPIR_CVAR_CH4_OFI_ENABLE_TAGGED
+echo "mpiexec -np 4 ../bin/coll -s 2 -l 1024 -i 1"
+mpiexec -np 4 ../bin/coll -s 2 -l 1024 -i 1
+exit
+
 #mpiexec ../bin/coll -l 4
-mpiexec ../bin/coll -l 512
+mpiexec -n 4 ../bin/coll -l 512 -V -s 0x3f -i 10
 #mpiexec ../bin/coll -v -l 16777216 -i 10	# all-to-all max 16MiB for 32 procs
 #						# 23 sec for 10 times
 ##mpiexec ../bin/coll -l 8388608		# 8MiB 6 sec

@@ -37,14 +37,13 @@
 	}				\
 } while(0);
 
-#define SYS_CALL(rc, syscall, erstr) do {\
+#define SYS_CALL(rc, syscall, lbl, erstr) do {	\
 	rc = syscall;			\
-	if (rc != 0) {			\
-		perror(erstr);	\
+	if (rc < 0) {			\
+		perror(erstr);		\
+		goto lbl;		\
 	}				\
-	return rc;			\
 } while(0);
-
 
 /*
  * 31             24 23           16 15            8 7 6 5  2 1 0
@@ -58,7 +57,7 @@ union tofu_coord {
 };
 
 struct utf_info utf_info;
-utofu_vcq_id_t	*tab_vcqid;
+utofu_vcq_id_t	*tab_vcqid; /* do we really need this variable ? */
 
 static uint32_t
 generate_hash_string(char *cp, int len)
@@ -83,11 +82,15 @@ utf_jtofuinit(int pmixclose)
     char *errstr;
     int	rc;
 
-    utf_printf("%s: calling PMIX_Init\n", __func__);
+    DEBUG(DLEVEL_INIFIN) {
+	utf_printf("%s: calling PMIX_Init\n", __func__);
+    }
     /* PMIx initialization */
     LIB_CALL(rc, PMIx_Init(utf_info.pmix_proc, NULL, 0),
 	     err, errstr, "PMIx_Init");
-    utf_printf("%s: nspace(%s)\n", __func__, utf_info.pmix_proc->nspace);
+    DEBUG(DLEVEL_INIFIN) {
+	utf_printf("%s: nspace(%s)\n", __func__, utf_info.pmix_proc->nspace);
+    }
     utf_info.myrank = utf_info.pmix_proc->rank;
     {	/* PMIx info is created */
 	int	flag = 1;
@@ -175,7 +178,9 @@ utf_peers_init()
 	utf_redirect();
     }
     ppn = jtofu_query_max_proc_per_node();
-    utf_printf("%s: ppn(%d) nprocs(%d), jobid(%x)\n", __func__, ppn, utf_info.nprocs, utf_info.jobid);
+    DEBUG(DLEVEL_INIFIN) {
+	utf_printf("%s: ppn(%d) nprocs(%d), jobid(%x)\n", __func__, ppn, utf_info.nprocs, utf_info.jobid);
+    }
     /* node info */
     sz = sizeof(struct tofu_vname)*utf_info.nprocs;
     vnmp = utf_info.vname = utf_malloc(sz);
@@ -196,7 +201,9 @@ utf_peers_init()
     pmarker = utf_malloc(sz);
     memset(pmarker, UCHAR_MAX, sz);
     node = 0;
-    utf_printf("%s: RANK LIST\n", __func__);
+    DEBUG(DLEVEL_INIFIN) {
+	utf_printf("%s: RANK LIST\n", __func__);
+    }
     for (rank = 0; rank < utf_info.nprocs; rank++) {
 	if(pmarker[rank] == UCHAR_MAX) {
 	    utofu_tni_id_t	tni;
@@ -222,6 +229,7 @@ utf_peers_init()
 		this_rank = nd_ranks[i];
 		if (this_rank == utf_info.myrank) {
 		    utf_info.mynrnk = i;	/* rank within node */
+		    utf_info.myppn = nranks;	/* myrank on a node has nranks processes */
 		}
 		assert(this_rank < utf_info.nprocs);
 		vnmp[this_rank].tniq[0] = ((tni << 4) & 0xf0) | (cq & 0x0f);
@@ -237,13 +245,17 @@ utf_peers_init()
 	    }
 	}
 	/* show */
-	utf_printf("\t<%d> %s, vcqid(%lx), tni(%d), cq(%d), cid(%d)\n",
-		   rank, pcoords2string(pcoords, NULL, 0),
-		   vnmp[rank].vcqid, vnmp[rank].tniq[0]>>4, vnmp[rank].tniq[0]&0x0f,
-		   vnmp[rank].cid);
+	DEBUG(DLEVEL_INIFIN) {
+	    utf_printf("\t<%d> %s, vcqid(%lx), tni(%d), cq(%d), cid(%d)\n",
+		       rank, pcoords2string(pcoords, NULL, 0),
+		       vnmp[rank].vcqid, vnmp[rank].tniq[0]>>4, vnmp[rank].tniq[0]&0x0f,
+		       vnmp[rank].cid);
+	}
     }
     utf_info.nnodes = nnodes;
-    utf_printf("NNODE = %d\n", utf_info.nnodes);
+    DEBUG(DLEVEL_INIFIN) {
+	utf_printf("NNODE = %d\n", utf_info.nnodes);
+    }
 #if 0
     {
 	int	i;
@@ -254,7 +266,7 @@ utf_peers_init()
     }
 #endif
     utf_free(pmarker);
-    utf_info.myppn = ppn;
+    utf_info.ppn = ppn;
     {
 	utofu_tni_id_t	tni_prim;
         utofu_tni_id_t	*tnis = 0;
@@ -262,8 +274,11 @@ utf_peers_init()
 	int	vhent;
 
 	/* my primary tni */
-	utf_tni_select(utf_info.myppn, utf_info.mynrnk, &tni_prim, 0);
-	utf_printf("%s: ppn(%d) nrank(%d) tni_prim=%d\n", __func__, utf_info.myppn, utf_info.mynrnk, tni_prim);
+	utf_tni_select(utf_info.ppn, utf_info.mynrnk, &tni_prim, 0);
+	DEBUG(DLEVEL_INIFIN) {
+	    utf_printf("%s: ppn(%d) myppn(%d) nrank(%d) tni_prim=%d\n",
+		       __func__, utf_info.ppn, utf_info.myppn, utf_info.mynrnk, tni_prim);
+	}
 	utf_info.tniid = tni_prim;
 
 	/* other VCQ handles are created */
@@ -283,11 +298,13 @@ utf_peers_init()
 	    vhent++;
 	}
 	if (tnis) free(tnis);
-	utf_printf("%s: MY CQ LIST:\n", __func__);
-	for (ni = 0; ni < ntni; ni++) {
-	    utf_printf("\t: ni(%d) vcqh(%lx) vcqid(%lx) --> %s\n",
-		       utf_info.tniids[ni], utf_info.vcqhs[ni], utf_info.vcqids[ni],
-		       vcqh2string(utf_info.vcqhs[ni], NULL, 0));
+	DEBUG(DLEVEL_INIFIN) {
+	    utf_printf("%s: MY CQ LIST:\n", __func__);
+	    for (ni = 0; ni < ntni; ni++) {
+		utf_printf("\t: ni(%d) vcqh(%lx) vcqid(%lx) --> %s\n",
+			   utf_info.tniids[ni], utf_info.vcqhs[ni], utf_info.vcqids[ni],
+			   vcqh2string(utf_info.vcqhs[ni], NULL, 0));
+	    }
 	}
     }
     {	/* other attributes */
@@ -299,7 +316,9 @@ utf_peers_init()
     }
     utf_cqselect_init(utf_info.myppn, utf_info.mynrnk, utf_info.ntni, utf_info.tniids,
 		      utf_info.vcqhs);
-    utf_printf("%s: returns\n", __func__);
+    DEBUG(DLEVEL_INIFIN) {
+	utf_printf("%s: returns\n", __func__);
+    }
     return 1;
 }
 
@@ -347,7 +366,7 @@ utf_shm_init_internal(size_t sz, char *mykey, char *type, int *idp)
 {
     int	rc = 0;
     char	*errstr;
-    int	lead_rank = (utf_info.myrank/utf_info.myppn)*utf_info.myppn;
+    int	lead_rank = (utf_info.myrank/utf_info.ppn)*utf_info.ppn;
     key_t	key;
     int		shmid;
     char	path[PATH_MAX+1], pmkey[PATH_MAX+1];
@@ -364,20 +383,37 @@ utf_shm_init_internal(size_t sz, char *mykey, char *type, int *idp)
      * mykey="/tmp/MPICH-shm" and type ="-utf"
      */
     strcpy(pmkey, basename(mykey)); strcat(pmkey, type);
+    utf_printf("%s: utf_info.myrank(%d) lead_rank(%d) PMI_X key=%s\n", __func__, utf_info.myrank, lead_rank, pmkey);
     if (utf_info.myrank == lead_rank) {
 	pmix_value_t	pv;
+	volatile unsigned long	ul;
 	/* */
 	snprintf(path, PATH_MAX, "%s-%07d%s", mykey, getpid(), type);
-	utf_printf("%s: SHMEM PATH=%s\n", __func__, path);
 	key = ftok(path, 1);
-	shmid = shmget(key, sz, IPC_CREAT | 0666);
-	if (shmid < 0) { perror("error:"); exit(-1); }
+	utf_printf("%s: SHMEM PATH=%s key=0x%x\n", __func__, path, key);
+	SYS_CALL(shmid, shmget(key, sz, IPC_CREAT | 0666), errext, __func__);
 	addr = shmat(shmid, NULL, 0);
+	if (addr == (void*) -1) { perror(__func__); goto errext; }
+	/* the head memory is used for synchronization */
+	atomic_init((atomic_ulong*)addr, 1);
 	/* expose SHMEM_KEY_VAL */
 	pv.type = PMIX_STRING;
 	pv.data.string = path;
 	PMIx_Put(PMIX_LOCAL, pmkey, &pv);
 	LIB_CALL(rc, PMIx_Commit(), err, errstr, "PMIx_Commit");
+	/* wait for other processes' progress */
+	utf_printf("%s: utf_info.myppn = %d utf_info.nprocs = %d\n", __func__, utf_info.myppn, utf_info.nprocs);
+	do {
+	    usleep(10);
+	    ul = atomic_load((atomic_ulong*)addr);
+	} while (ul != utf_info.myppn);
+	/* reset the head memory */
+	atomic_init((atomic_ulong*)addr, 0);
+	SYS_CALL(rc, shmctl(shmid, IPC_RMID, NULL), errext, __func__);
+	/*
+	 * This shared memory is now private, and this region will be destroyed
+	 * if all processes exit. It does not matter if processes abnormaly exit.
+	 */
     } else {
 	pmix_proc_t		pmix_tproc[1];
 	pmix_value_t	*pv;
@@ -393,14 +429,20 @@ utf_shm_init_internal(size_t sz, char *mykey, char *type, int *idp)
 	    goto err;
 	}
 	key = ftok(pv->data.string, 1);
-	shmid = shmget(key, sz, 0);
+	utf_printf("%s: key=0x%x\n", __func__, key);
+	SYS_CALL(shmid, shmget(key, sz, 0), errext, __func__);
 	addr = shmat(shmid, NULL, 0);
+	if (addr == (void*) -1) { perror(__func__); fflush(stderr); goto errext; }
+	atomic_fetch_add((atomic_ulong*)addr, 1);
     }
+    utf_printf("%s: returns %d\n", __func__, shmid);
+
     *idp = shmid;
     return addr;
 err:
     fprintf(stderr, "%s: rc(%d)\n", errstr, rc);
-    return NULL;
+errext:
+    abort();
 }
 
 
@@ -411,8 +453,10 @@ static int
 utf_shm_finalize_internal(int shmid, void *addr)
 {
     int	rc = 0;
-    SYS_CALL(rc, shmctl(shmid, IPC_RMID, NULL), __func__);
-    SYS_CALL(rc, shmdt(addr), __func__);
+
+    // SYS_CALL(rc, shmctl(shmid, IPC_RMID, NULL), err2, __func__);
+    SYS_CALL(rc, shmdt(addr), ext, __func__);
+ext:
     return rc;
 }
 
@@ -483,8 +527,10 @@ utf_cqselect_init(int ppn, int nrnk, int ntni, utofu_tni_id_t *tnis, utofu_vcq_h
 	tinfo->idx[i] = tnis[i];
 	tinfo->vcqhdl[i] = vcqhp[i];
 	utofu_query_vcq_id(vcqhp[i], &tinfo->vcqid[i]);
-	utf_printf("pid(%d) \t[%d]idx[%d]: vcqh(0x%lx) vcqid(0x%lx)\n", utf_info.mypid, i, tnis[i],
-		   vcqhp[i], tinfo->vcqid[i]);
+	DEBUG(DLEVEL_INIFIN) {
+	    utf_printf("pid(%d) \t[%d]idx[%d]: vcqh(0x%lx) vcqid(0x%lx)\n", utf_info.mypid, i, tnis[i],
+		       vcqhp[i], tinfo->vcqid[i]);
+	}
     }
     tinfo->usd[0] = 1;	/* this is used primary including receiving */
     return (void*) tinfo;
@@ -494,7 +540,9 @@ int
 utf_cqselect_finalize()
 {
     int	rc;
-    utf_cqtab_show();
+    DEBUG(DLEVEL_INIFIN) {
+	utf_cqtab_show(stderr);
+    }
     if (utf_info.cqseltab) {
 	rc = utf_shm_finalize_internal(utf_info.cqselid, utf_info.cqseltab);
 	if (rc < 0) {
@@ -512,10 +560,14 @@ utf_fence()
     int	rc;
     char *errstr;
 
-    utf_printf("%s: begin\n", __func__);
+    DEBUG(DLEVEL_INIFIN) {
+	utf_printf("%s: begin\n", __func__);
+    }
     LIB_CALL(rc, PMIx_Fence(utf_info.pmix_wproc, 1, utf_info.pmix_info, 1),
 	     err, errstr, "PMIx_Fence");
-    utf_printf("%s: end\n", __func__);
+    DEBUG(DLEVEL_INIFIN) {
+	utf_printf("%s: end\n", __func__);
+    }
     return;
 err:
     fprintf(stderr, "%s\n", errstr);
@@ -527,14 +579,21 @@ utf_procmap_finalize()
     int	i;
     utf_cqselect_finalize();
     utf_free(utf_info.myfiaddr); utf_info.myfiaddr = NULL;
+    if (tab_vcqid) { /* do we really need this variable ? */
+	utf_free(tab_vcqid); tab_vcqid = NULL;
+    }
     utf_free(utf_info.vname); utf_info.vname = NULL;
     utf_free(utf_info.phys_node); utf_info.phys_node = NULL;
     for (i = 0; i < utf_info.ntni; i++) {
 	if (utf_info.vcqhs[i]) {
 	    int rc;
-	    utf_printf("%s: vcqhs[%d]: 0x%lx\t", __func__, i, utf_info.vcqhs[i]);
+	    DEBUG(DLEVEL_INIFIN) {
+		utf_printf("%s: vcqhs[%d]: 0x%lx\t", __func__, i, utf_info.vcqhs[i]);
+	    }
 	    rc = utofu_free_vcq(utf_info.vcqhs[i]);
+	    DEBUG(DLEVEL_INIFIN) {
 	    utf_printf("%s(%d)\n", rc == UTOFU_SUCCESS ? "SUCCESS" : "ERROR", rc);
+	    }
 	    utf_info.vcqhs[i] = 0;
 	}
     }
@@ -555,34 +614,34 @@ utf_vname_show(FILE *fp)
     }
 }
 
-void
-utf_tni_show()
+static void
+utf_tni_show(FILE *fp)
 {
     int	i;
-    utf_printf("TNI info\n");
+    fprintf(fp, "TNI info\n");
     for (i = 0; i < TOFU_NIC_SIZE; i++) {
-	utf_printf("\tTNI[%d]: put len(0x%lx) get len(0x%lx)\n",
-		   i, utf_info.cqseltab->snd_len[i], utf_info.cqseltab->rcv_len[i]);
+	fprintf(fp, "\tTNI[%d]: put len(0x%lx) get len(0x%lx)\n",
+		i, utf_info.cqseltab->snd_len[i], utf_info.cqseltab->rcv_len[i]);
     }
 }
 
 void
-utf_cqtab_show()
+utf_cqtab_show(FILE *fp)
 {
     int i;
     struct tni_info	*tinfo = &utf_info.cqseltab->node[utf_info.mynrnk];
     if (utf_info.mynrnk == 0) {
-	utf_tni_show();
+	utf_tni_show(fp);
     }
-    utf_printf("CQ table tinfo(%p) entries(%d) nrank(%d)\n", tinfo, tinfo->ntni, utf_info.mynrnk);
+    fprintf(fp, "CQ table tinfo(%p) entries(%d) nrank(%d)\n", tinfo, tinfo->ntni, utf_info.mynrnk);
     for (i = 0; i < tinfo->ntni; i++) {
-	utf_printf("\t[%d]idx[%d]: vcqh(0x%lx) vhcid(0x%lx) busy(%d)\n",
-		   i, tinfo->idx[i], tinfo->vcqhdl[i], tinfo->vcqid[i], tinfo->usd[i]);
+	fprintf(fp, "\t[%d]idx[%d]: vcqh(0x%lx) vhcid(0x%lx) busy(%d)\n",
+		i, tinfo->idx[i], tinfo->vcqhdl[i], tinfo->vcqid[i], tinfo->usd[i]);
     }
-    utf_printf("TNI left message\n");
+    fprintf(fp, "TNI left message\n");
     for (i = 0; i < tinfo->ntni; i++) {
-	utf_printf("\t[%d]: send rest(%ld) recv rest(%ld)\n",
-		   i, utf_info.cqseltab->snd_len[i], utf_info.cqseltab->rcv_len[i]);
+	fprintf(fp, "\t[%d]: send rest(%ld) recv rest(%ld)\n",
+		i, utf_info.cqseltab->snd_len[i], utf_info.cqseltab->rcv_len[i]);
     }
 }
 
@@ -598,6 +657,9 @@ PMIx_Resolve_nodes(const char *nspace, char **nodelist)
     size_t	sz;
     char	*lst, *ptr;
 
+    /* When this function is called, libfabric has not been initialized */
+    utf_dflag = utf_getenvint("UTF_DEBUG");
+    utf_printf("%s: called\n", __func__);
     utf_get_peers(NULL, &np, &tppn, &rnk);
     utf_printf("%s: jid=%d nprocs=%d\n", __func__, atoi(nspace), np);
     sz = NODE_NM_LEN*utf_info.nnodes + 2; /* two more */
@@ -615,7 +677,9 @@ PMIx_Resolve_nodes(const char *nspace, char **nodelist)
         ptr += NODE_NM_LEN;
     }
     *(ptr - 1) = 0;
-    utf_printf("\tlist=%s\n", lst);
+    DEBUG(DLEVEL_INIFIN) {
+	utf_printf("\tlist=%s\n", lst);
+    }
     *nodelist = lst;
     return PMIX_SUCCESS;
 }
@@ -638,17 +702,23 @@ PMIx_Resolve_peers(const char *nodename, const char *nspace,
     sscanf(nodename, NODE_NAME_FMT, &x, &y, &z, &a, &b, &c);
     pcoords.s.x = x; pcoords.s.y = y; pcoords.s.z = z;
     pcoords.s.a = a; pcoords.s.b = b; pcoords.s.c = c;
-    utf_printf("\t:\t%s\n\t", pcoords2string(pcoords, NULL, 0));
+    DEBUG(DLEVEL_INIFIN) {
+	utf_printf("\t:\t%s\n\t", pcoords2string(pcoords, NULL, 0));
+    }
     JTOFU_CALL(1, jtofu_query_ranks_from_phys_coords, utf_info.jobid,
-	       &pcoords, utf_info.myppn, nd_ranks, &nranks);
+	       &pcoords, utf_info.ppn, nd_ranks, &nranks);
     PMIX_PROC_CREATE(pr, nranks); /* pmix_proc_t has two members: nspace and rank */
     for (i = 0; i < nranks; i++) {
 	memset(&pr[i], 0, sizeof(pmix_proc_t));
 	strncpy(pr[i].nspace, nspace, PMIX_MAX_NSLEN);
 	pr[i].rank = nd_ranks[i];
-	fprintf(stderr, " rank(%d)", nd_ranks[i]);
+	DEBUG(DLEVEL_INIFIN) {
+	    fprintf(stderr, " rank(%d)", nd_ranks[i]);
+	}
     }
-    fprintf(stderr, "\n"); fflush(stderr);
+    DEBUG(DLEVEL_INIFIN) {
+	fprintf(stderr, "\n"); fflush(stderr);
+    }
     *procs = pr;
     *nprocs = nranks;
     return xc;

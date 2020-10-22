@@ -7,15 +7,16 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "testlib.h"
+#include <utf.h>
 
 int
 main(int argc, char** argv)
 {
 
     test_init(argc, argv);
-    /* debug option is set */
-    // fi_tofu_setdopt(0x3, 0x3);
-
+    if (vflag) {
+	utf_vname_show(stdout);
+    }
     VERBOSE("Hello\n");
     MPI_Finalize();
     if (myrank == 0) {

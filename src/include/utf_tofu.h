@@ -35,7 +35,8 @@ struct utf_info {
     int			myrank;
     int			mypid;
     int			nprocs;
-    int			myppn;
+    int			ppn;	/* ppn on the job level */
+    int			myppn;	/* ppn on the process-level. it may differ job-level ppn */
     int			mynrnk;
     utofu_vcq_id_t	vcqid;
     utofu_vcq_hdl_t	vcqh;
@@ -150,8 +151,10 @@ utf_tni_select(int ppn, int nrnk, utofu_tni_id_t *tni, utofu_cq_id_t *cq)
 		case 6: *cq = 10; break;
 		}
 	    } else { /* ppn >= 43 && ppn <= 48 */
-		if (nrnk <= 17) {
-		    *cq = (nrnk/6)*2;
+		if (nrnk <= 5) {
+		    *cq = 0;
+		} else if (nrnk <= 11) {
+		    *cq = 2;
 		} else if (nrnk <= 29) {
 		    *cq = (nrnk/6) + 2;
 		} else {

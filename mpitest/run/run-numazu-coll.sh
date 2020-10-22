@@ -6,13 +6,13 @@
 #PJM -o "results/%n.%j.out"
 #PJM -e "results/%n.%j.err"
 #
-#PJM -L "node=2:noncont"
-#	PJM -L "node=4:noncont"
+#	PJM -L "node=2:noncont"
+#PJM -L "node=4:noncont"
 #	PJM -L "node=8:noncont"
 #	PJM --mpi "max-proc-per-node=2"
-#	PJM --mpi "max-proc-per-node=4"
-#PJM --mpi "max-proc-per-node=1"
-#PJM -L "elapse=00:00:10"
+#PJM --mpi "max-proc-per-node=4"
+#	PJM --mpi "max-proc-per-node=1"
+#PJM -L "elapse=00:00:40"
 #PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-mck2_and_spack2,jobenv=linux"
 #	PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-spack2,jobenv=linux"
 #	PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-spack1,jobenv=linux"
@@ -31,7 +31,7 @@ export UTF_MSGMODE=1	# Rendezous
 #export UTF_TRANSMODE=0	# Chained
 export UTF_TRANSMODE=1	# Aggressive
 export TOFU_NAMED_AV=1
-export TOFULOG_DIR=./results
+###export TOFULOG_DIR=./results
 
 echo "TOFU_NAMED_AV = " $TOFU_NAMED_AV
 echo "UTF_MSGMODE   = " $UTF_MSGMODE "(0: Eager, 1: Rendezous)"
@@ -42,6 +42,20 @@ echo "UTF_TRANSMODE = " $UTF_TRANSMODE "(0: Chained, 1: Aggressive)"
 #export FI_LOG_LEVEL=Debug
 #export FI_LOG_PROV=tofu
 
+export UTF_MSGMODE=0	# Eager
+echo "TOFU_NAMED_AV = " $TOFU_NAMED_AV
+echo "UTF_MSGMODE   = " $UTF_MSGMODE "(0: Eager, 1: Rendezous)"
+echo "UTF_TRANSMODE = " $UTF_TRANSMODE "(0: Chained, 1: Aggressive)"
+
+export MPIR_CVAR_CH4_OFI_ENABLE_TAGGED=1	#
+# 1200000 * 2
+echo "MPIR_CVAR_CH4_OFI_ENABLE_TAGGED = " $MPIR_CVAR_CH4_OFI_ENABLE_TAGGED
+echo "time mpiexec ../bin/coll -v -V -s 2 -l 2400000 -i 2, reduce"
+time mpiexec -n 11 ../bin/coll -v -V -s 2 -l 2400000 -i 2		# reduce 1.774 sec
+
+exit
+
+
 #mpiexec ../bin/coll -v -l 16777216 -i 10	# all-to-all max 16MiB for 32 procs
 #						# 23 sec for 10 times
 ##mpiexec ../bin/coll -l 8388608		# 8MiB 6 sec
@@ -51,10 +65,7 @@ echo
 ldd ../bin/coll
 exit
 
-export UTF_MSGMODE=0	# Eager
-echo "TOFU_NAMED_AV = " $TOFU_NAMED_AV
-echo "UTF_MSGMODE   = " $UTF_MSGMODE "(0: Eager, 1: Rendezous)"
-echo "UTF_TRANSMODE = " $UTF_TRANSMODE "(0: Chained, 1: Aggressive)"
+#mpiexec ../bin/coll -v -l 16777216 -i 2	# all-to-all max 16MiB (1 GiB working memory) for 32 procs
 #mpiexec ../bin/coll -v -l 5120
 #mpiexec ../bin/coll -v -l 524288 -i 100	# 512KiB 7sec for 100 times 4 procs
 #mpiexec ../bin/coll -v -l 1048576 -i 100	# 1MiB

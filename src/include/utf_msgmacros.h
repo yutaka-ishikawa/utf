@@ -370,9 +370,9 @@ eager_copy_and_check(struct utf_recv_cntr *urp,
 
     cpysz = PKT_PYLDSZ(pkt);
     DEBUG(DLEVEL_PROTOCOL) {
-	utf_printf("%s: req->rsize(%ld) req->hdr.size(%ld) cpysz(%ld) fi_data(%ld) "
+	utf_printf("%s: req->rsize(%ld) req->hdr.size(%ld) cpysz(%ld) fi_data(%ld) buf(%p) "
 		   "EMSG_SIZE(msgp)=%ld\n",
-		   __func__, req->rsize, req->hdr.size, cpysz, req->fi_data, PKT_PYLDSZ(pkt));
+		   __func__, req->rsize, req->hdr.size, cpysz, req->fi_data, req->buf, PKT_PYLDSZ(pkt));
     }
     if (pkt->hdr.flgs == 0) { /* utf message */
 	memcpy(&req->buf[req->rsize], PKT_DATA(pkt), cpysz);
@@ -440,10 +440,10 @@ rget_start(struct utf_msgreq *req)
 	for (i = 0; i < req->rgetsender.nent; i++) {
 	    ssz += req->rgetsender.len[i];
 	}
-	utf_printf("%s: Receiving Rendezous reqsize(0x%lx) "
-		   "io_count(%d) sentsize(%ld) rvcqid(0x%lx) lcl_stadd(0x%lx) rmt_stadd(0x%lx) "
+	utf_printf("%s: Receiving Rendezous reqsize(0x%lx: %ld) "
+		   "io_count(%d) sender's size(%ld) rvcqid(0x%lx) lcl_stadd(0x%lx) rmt_stadd(0x%lx) "
 		   "sidx(%d)\n",
-		   __func__, req->rcvexpsz,
+		   __func__, req->rcvexpsz, req->rcvexpsz,
 		   req->rgetsender.nent, ssz,
 		   req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
 		   req->rgetsender.stadd[0], sidx);
@@ -564,7 +564,7 @@ utf_progress()
 
     if ((int64_t) utf_egr_rbuf.head.cntr < 0) {
 	utf_printf("%s: No more Eager Receiver Buffer in my rank\n", __func__);
-	utf_egrrbuf_show();
+	utf_egrrbuf_show(stderr);
 	abort();
     }
     /* here is peeking memory */

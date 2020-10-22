@@ -42,7 +42,7 @@ echo "UTF_TRANSMODE = " $UTF_TRANSMODE "(0: Chained, 1: Aggressive)"
 #export FI_LOG_LEVEL=Debug
 #export FI_LOG_PROV=tofu
 
-mpiexec ../bin/coll -l 4
+mpiexec ../bin/coll -l 4 -v
 #mpiexec ../bin/coll -l 512
 #mpiexec ../bin/coll -v -l 16777216 -i 10	# all-to-all max 16MiB for 32 procs
 #						# 23 sec for 10 times

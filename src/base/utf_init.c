@@ -136,9 +136,11 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
     utf_tmr_init();
     i = utf_getenvint("UTF_NOKEEP");
     utf_nokeep = i;
-    utf_printf("%s: utf_info.nprocs(%d) np(%d) utf_info.myrank(%d) rnk(%d) NO_KEEP(%d)\n",
-	       __func__, utf_info.nprocs, np, utf_info.myrank, rnk, utf_nokeep);
-    utf_mem_show();
+    DEBUG(DLEVEL_INIFIN) {
+	utf_printf("%s: utf_info.nprocs(%d) np(%d) utf_info.myrank(%d) rnk(%d) NO_KEEP(%d)\n",
+		   __func__, utf_info.nprocs, np, utf_info.myrank, rnk, utf_nokeep);
+	utf_mem_show(stderr);
+    }
     /**/
     utf_fence();
     if (rank) *rank = rnk;
@@ -157,7 +159,9 @@ utf_finalize(int wipe)
     } else {
 	utf_fence();
     }
-    utf_egrbuf_show();
+    DEBUG(DLEVEL_INIFIN) {
+	utf_egrbuf_show(stderr);
+    }
     utf_mem_finalize();
     utf_procmap_finalize();
     jtofu_finalize();

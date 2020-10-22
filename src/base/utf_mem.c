@@ -127,8 +127,10 @@ utf_mem_init()
     for (i = 0; i < COM_SBUF_SIZE; i++) {
 	utfslist_append(&utf_egr_sbuf_freelst, &utf_egr_sbuf[i].slst);
     }
-    utf_printf("%s: MEMORY utf_egr_sbuf[0] = %p utf_egr_sbuf[COM_SBUF_SIZE-1] = %p\n",
-	       __func__, &utf_egr_sbuf[0], &utf_egr_sbuf[COM_SBUF_SIZE-1]);
+    DEBUG(DLEVEL_INIFIN) {
+	utf_printf("%s: MEMORY utf_egr_sbuf[0] = %p utf_egr_sbuf[COM_SBUF_SIZE-1] = %p\n",
+		   __func__, &utf_egr_sbuf[0], &utf_egr_sbuf[COM_SBUF_SIZE-1]);
+    }
 
     UTOFU_CALL(1, utofu_reg_mem_with_stag, utf_info.vcqh, (void*) utf_egr_sbuf,
 	       sizeof(utf_egr_sbuf), STAG_SBUF, 0, &utf_egr_sbuf_stadd);
@@ -147,8 +149,10 @@ utf_mem_init()
 	utf_scntr[i].chn_next.rank = RANK_ALL1;
     }
     utf_sndctr_stadd_end = (uint64_t) utf_sndctr_stadd + sizeof(utf_scntr);
-    utf_printf("%s: MEMORY head(%p) utf_scntr[0] = %p utf_scntr[SND_CNTRL_MAX-1] = %p\n",
-	       __func__, utf_scntr_freelst.head, &utf_scntr[0], &utf_scntr[SND_CNTRL_MAX-1]);
+    DEBUG(DLEVEL_INIFIN) {
+	utf_printf("%s: MEMORY head(%p) utf_scntr[0] = %p utf_scntr[SND_CNTRL_MAX-1] = %p\n",
+		   __func__, utf_scntr_freelst.head, &utf_scntr[0], &utf_scntr[SND_CNTRL_MAX-1]);
+    }
     /**/
     for (i = 0; i < RCV_CNTRL_MAX; i++) {
 	utf_rcntr[i].state = R_NONE;
@@ -178,7 +182,9 @@ utf_mem_init()
     for (i = 0; i < MSGREQ_SEND_SZ; i++) {                                             
         utfslist_append(&utf_rndz_freelst, &utf_rndz_pool[i].slst);
 	utf_rndz_pool[i].mypos = i;
-	utf_printf("%s: utf_rndz_pool[%d]=%p mypos(%d)\n", __func__, i, &utf_rndz_pool[i], utf_rndz_pool[i].mypos);
+	DEBUG(DLEVEL_INIFIN) {
+	    utf_printf("%s: utf_rndz_pool[%d]=%p mypos(%d)\n", __func__, i, &utf_rndz_pool[i], utf_rndz_pool[i].mypos);
+	}
     } 
     utf_tcq_count = 0;
 
@@ -206,12 +212,18 @@ utf_malloc(size_t sz)
 	utf_printf("%s: cannot allocate memory size(%ld)\n", __func__, sz);
 	abort();
     }
+    DEBUG(DLEVEL_MEMORY) {
+	utf_printf("[MEMORY] %s: addr(%p) size(%lx)\n", __func__, ptr, sz);
+    }
     return ptr;
 }
 
 void
 utf_free(void *ptr)
 {
+    DEBUG(DLEVEL_MEMORY) {
+	utf_printf("[MEMORY] %s: addr(%p)\n", __func__, ptr);
+    }
     free(ptr);
 }
 
@@ -260,40 +272,39 @@ utf_rmacq_free(struct utf_rma_cq *cq)
 
 
 void
-utf_mem_show()
+utf_mem_show(FILE *fp)
 {
-    utf_printf("eager receive buffer addresses:\n"
-	       " utf_egr_rbuf : 0x%lx (stadd: 0x%lx)"
-	       " utf_egr_rbuf.rbuf[0] : 0x%lx (stadd: 0x%lx)"
-	       " utf_egr_rbuf.rbuf[%d*126] : 0x%lx (stadd: 0x%lx)"
-	       " utf_egr_rbuf.rbuf[%d*%d] : 0x%lx\n",
-	       &utf_egr_rbuf, utf_egr_rbuf_stadd,
-	       &utf_egr_rbuf.rbuf, utf_egr_rbuf_stadd,
-	       COM_RBUF_SIZE, &utf_egr_rbuf.rbuf[COM_RBUF_SIZE*126],
-	       utf_egr_rbuf_stadd + (uint64_t)&((struct utf_egr_rbuf*)0)->rbuf[COM_RBUF_SIZE*126],
-	       COM_RBUF_SIZE, RCV_CNTRL_MAX, &utf_egr_rbuf.rbuf[COM_RBUF_SIZE*RCV_CNTRL_MAX]);
-    {
-	int	i;
-	utf_printf("receiver control utf_rcntr: utf_rcntr_stadd(0x%lx)\n", utf_rcntr_stadd);
-	for (i = 0; i < 4; i++) {
-	    utf_printf("[%d]:0x%lx, ", 126 - i, &utf_rcntr[126 - i]);
-	}
-	utf_printf("\n");
+    int	i;
+
+    fprintf(fp, "eager receive buffer addresses:\n"
+	    " utf_egr_rbuf : %p (stadd: 0x%lx)"
+	    " utf_egr_rbuf.rbuf[0] : %p (stadd: 0x%lx)"
+	    " utf_egr_rbuf.rbuf[%d*126] : %p (stadd: 0x%lx)"
+	    " utf_egr_rbuf.rbuf[%d*%d] : %p\n",
+	    &utf_egr_rbuf, utf_egr_rbuf_stadd,
+	    &utf_egr_rbuf.rbuf, utf_egr_rbuf_stadd,
+	    COM_RBUF_SIZE, &utf_egr_rbuf.rbuf[COM_RBUF_SIZE*126],
+	    utf_egr_rbuf_stadd + (uint64_t)&((struct utf_egr_rbuf*)0)->rbuf[COM_RBUF_SIZE*126],
+	    COM_RBUF_SIZE, RCV_CNTRL_MAX, &utf_egr_rbuf.rbuf[COM_RBUF_SIZE*RCV_CNTRL_MAX]);
+    fprintf(fp, "receiver control utf_rcntr: utf_rcntr_stadd(0x%lx)\n", utf_rcntr_stadd);
+    for (i = 0; i < 4; i++) {
+	fprintf(fp, "[%d]:%p, ", 126 - i, &utf_rcntr[126 - i]);
     }
+    fprintf(fp, "\n");
 }
 
 
 void
-utf_egrrbuf_show()
+utf_egrrbuf_show(FILE *fp)
 {
     int	i;
-    utf_printf("PEERS(egr_rbuf):");
+    fprintf(fp, "PEERS(egr_rbuf):");
     for (i = 0; i < COM_PEERS; i++) {
 	struct utf_packet	*pkt = &utf_egr_rbuf.rbuf[COM_RBUF_SIZE*i];
 	if ((i % 8) == 0) fprintf(stderr, "\n\t");
-	fprintf(stderr, " SRC(%d)", pkt->hdr.src);
+	fprintf(fp, " SRC(%d)", pkt->hdr.src);
     }
-    fprintf(stderr, "\n");
+    fprintf(fp, "\n");
 }
 
 
@@ -326,10 +337,10 @@ utf_pkt_getinfo(struct utf_packet *pkt, int *mrkr, int *sidx)
 }
 
 void
-utf_egrbuf_show()
+utf_egrbuf_show(FILE *fp)
 {
-    utf_printf("EAGER RECEIVE BUFFER INFO\n");
-    utf_printf("\tCNTR = %d\n"
+    fprintf(fp, "EAGER RECEIVE BUFFER INFO\n");
+    fprintf(fp, "\tCNTR = %ld\n"
 	       "\t&utf_egr_buf[0] = %p\n"
 	       "\t&utf_rcntr[0] = %p\n",
 	       utf_egr_rbuf.head.cntr, &utf_egr_rbuf.rbuf[0], &utf_rcntr[0]);

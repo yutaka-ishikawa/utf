@@ -22,7 +22,9 @@
 #define DLEVEL_PROTO_AM		0x80	/* 128 */
 #define DLEVEL_ADHOC		0x100	/* 128 */
 #define DLEVEL_ERR		0x200
-#define DLEVEL_CHAIN2		0x400
+#define DLEVEL_INIFIN		0x400
+#define DLEVEL_MEMORY		0x800
+#define DLEVEL_COMM		0x1000
 #define DLEVEL_ALL		0xffff
 
 #define SHMEM_KEY_VAL_FMT	"/tmp/MPICH-shm"

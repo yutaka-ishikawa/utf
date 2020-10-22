@@ -21,7 +21,7 @@ utf_progress()
 
     if ((int64_t) utf_egr_rbuf.head.cntr < 0) {
 	utf_printf("%s: No more Eager Receiver Buffer in my rank\n", __func__);
-	utf_egrrbuf_show();
+	utf_egrrbuf_show(stderr);
 	abort();
     }
     /* here is peeking memory */

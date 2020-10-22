@@ -47,4 +47,11 @@ extern int	utf_printf(const char *fmt, ...);
     if (rc < 0) goto label;		\
 } while (0);
 
+/* for debugging */
+extern void	utf_mem_show(FILE*);
+extern void	utf_vname_show(FILE*);
+extern void	utf_cqtab_show(FILE*);
+extern void	utf_egrrbuf_show(FILE*);
+extern void	utf_egrbuf_show(FILE*);
+
 #endif /* ~UTF_H */

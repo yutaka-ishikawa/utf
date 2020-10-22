@@ -19,6 +19,11 @@ extern void	utf_mem_finalize();
 extern void	utf_procmap_finalize();
 extern void	*utf_cqselect_init(int ppn, int nrnk, int ntni, utofu_tni_id_t *tnis, utofu_vcq_hdl_t *vcqhp);
 extern int	utf_cqselect_finalize();
+extern void	utf_mem_show(FILE*);
+extern void	utf_vname_show(FILE*);
+extern void	utf_cqtab_show(FILE*);
+extern void	utf_egrrbuf_show(FILE*);
+extern void	utf_egrbuf_show(FILE*);
 
 /**/
 struct tofu_vname;

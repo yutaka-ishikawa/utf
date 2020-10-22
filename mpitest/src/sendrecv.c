@@ -16,11 +16,12 @@
 
 #define	ELAPSE		5
 #define	LENGTH		8
-#define BSIZE		(32*1024*1024)
+//#define BSIZE		(32*1024*1024)
 
 int	sender, receiver;
-int	s_array[BSIZE/sizeof (int)];
-int	r_array[BSIZE/sizeof (int)];
+//int	s_array[BSIZE/sizeof (int)];
+//int	r_array[BSIZE/sizeof (int)];
+int	*s_array, *r_array;
 int	errs;
 
 void
@@ -175,13 +176,14 @@ main(int argc, char **argv)
     }
 #endif
     errs = 0;
-    memset(s_array, 0, sizeof (s_array));
-    memset(r_array, 0, sizeof (r_array));
-
-    if (length > BSIZE) {
-	printf("Too large message size. force %d byte\n", BSIZE);
-	length = BSIZE;
+    s_array = malloc(length);
+    r_array = malloc(length);
+    if (s_array == NULL || r_array == NULL) {
+	printf("Cannot allocate buffer. Too large message size.\n");
+	exit(-1);
     }
+    memset(s_array, 0, length);
+    memset(r_array, 0, length);
 
     if (sender > nprocs || receiver > nprocs) {
 	printf("sender(%d) or receiver(%d) is out of range\n",

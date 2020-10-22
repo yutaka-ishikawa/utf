@@ -215,7 +215,8 @@ struct utf_msgreq {
 			rndz:1,		/* 40: set if rendezvous mode */
 			type:3,		/* 40: EXPECTED or UNEXPECTED or SENDREQ */
 			ptype:4,	/* 40: PKT_EAGER | PKT_RENDZ | PKT_WRITE | PKT_READ */
-			fistate:5;	/* 40: fabric-level status */
+			alloc:1,	/* 40: dynamically memory is allocated */
+			fistate:4;	/* 40: fabric-level status */
 	};
 	uint64_t	allflgs;
     };

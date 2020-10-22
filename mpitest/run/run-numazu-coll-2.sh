@@ -12,7 +12,7 @@
 #	PJM --mpi "max-proc-per-node=2"
 #PJM --mpi "max-proc-per-node=2"
 #	PJM --mpi "max-proc-per-node=1"
-#PJM -L "elapse=00:00:20"
+#PJM -L "elapse=00:00:10"
 #PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-mck2_and_spack2,jobenv=linux"
 #	PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-spack2,jobenv=linux"
 #	PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-spack1,jobenv=linux"
@@ -25,7 +25,7 @@ export MPICH_CH4_OFI_ENABLE_SCALABLE_ENDPOINTS=1
 ## CONF_TOFU_INJECTSIZE=1856 (MSG_EAGER_SIZE = 1878)
 
 #export UTF_DEBUG=12
-#export UTF_DEBUG=0xfffc
+export UTF_DEBUG=0xfffc
 
 export UTF_MSGMODE=1	# Rendezous
 #export UTF_TRANSMODE=0	# Chained

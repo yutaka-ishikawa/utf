@@ -27,8 +27,9 @@ export MPICH_CH4_OFI_ENABLE_SCALABLE_ENDPOINTS=1
 #export UTF_DEBUG=12
 #export UTF_DEBUG=0xfffc
 
-export UTF_MSGMODE=1	# Rendezous
-#export UTF_TRANSMODE=0	# Chained
+##export UTF_MSGMODE=1	# Rendezous
+export UTF_MSGMODE=0
+export UTF_TRANSMODE=0	# Chained
 export UTF_TRANSMODE=1	# Aggressive
 export TOFU_NAMED_AV=1
 #export TOFULOG_DIR=./results/coll-48
@@ -36,13 +37,24 @@ export TOFU_NAMED_AV=1
 echo "TOFU_NAMED_AV = " $TOFU_NAMED_AV
 echo "UTF_MSGMODE   = " $UTF_MSGMODE "(0: Eager, 1: Rendezous)"
 echo "UTF_TRANSMODE = " $UTF_TRANSMODE "(0: Chained, 1: Aggressive)"
+export MPIR_CVAR_CH4_OFI_ENABLE_MR_VIRT_ADDRESS=1
+export MPIR_CVAR_CH4_OFI_ENABLE_RMA=1
+export MPIR_CVAR_CH4_OFI_ENABLE_TAGGED=1
+export MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG=1
+#export MPIR_CVAR_CH4_OFI_EAGER_MAX_MSG_SIZE=16384
 
 #export PMIX_DEBUG=1
 #export UTF_DEBUG=0xffff		# debug all
 #export FI_LOG_LEVEL=Debug
 #export FI_LOG_PROV=tofu
 
-mpiexec ../bin/coll -l 4
+export MPIR_CVAR_CH4_OFI_ENABLE_TAGGED=0
+export UTF_DEBUG=0x1000	# COMM
+echo "UTF_MSGMODE    = " $UTF_MSGMODE
+echo "MPIR_CVAR_CH4_OFI_ENABLE_TAGGED = " $MPIR_CVAR_CH4_OFI_ENABLE_TAGGED
+
+#mpiexec -np 7 ../bin/coll -s 4 -l 40000 -i 10
+mpiexec -np 3 ../bin/coll -s 4 -l 1024 -i 10
 #mpiexec ../bin/coll -l 512
 #mpiexec ../bin/coll -v -l 16777216 -i 10	# all-to-all max 16MiB for 32 procs
 #						# 23 sec for 10 times
