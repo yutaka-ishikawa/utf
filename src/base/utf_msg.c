@@ -77,6 +77,7 @@ err:
     return rc;
 }
 
+//static void	/* [0] 0,   1.530,   1.530,   0.000,   0.000 */
 static inline void
 minfo_setup(struct utf_send_msginfo *minfo, int rank, uint64_t tag, uint64_t size,
 	    void *usrbuf, struct utf_egr_sbuf *sbufp,

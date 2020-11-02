@@ -1,6 +1,7 @@
 #ifndef UTF_H
 #define UTF_H
 
+#include <stdio.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -37,6 +38,7 @@ extern int	utf_rank(int *rank);
 extern int	utf_nprocs(int *psize);
 extern int	utf_intra_rank(int *rank);
 extern int	utf_intra_nprocs(int *psize);
+extern void	utf_vname_show(FILE*);
 extern void	utf_fence();
 
 extern int	utf_printf(const char *fmt, ...);

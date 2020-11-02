@@ -59,6 +59,7 @@ union tofu_coord {
 struct utf_info utf_info;
 utofu_vcq_id_t	*tab_vcqid; /* do we really need this variable ? */
 
+
 static uint32_t
 generate_hash_string(char *cp, int len)
 {
@@ -69,7 +70,6 @@ generate_hash_string(char *cp, int len)
     }
     return hval;
 }
-
 
 /*
  * utf_jtofuinit(int pmixclose)
@@ -109,7 +109,10 @@ utf_jtofuinit(int pmixclose)
     LIB_CALL(rc, PMIx_Get(utf_info.pmix_wproc, FJPMIX_RANKMAP, NULL, 0, &pval),
 	     err, errstr, "Cannot get FJPMIX_RANKMAP");
     utf_info.jobid = generate_hash_string(utf_info.pmix_proc->nspace, PMIX_MAX_NSLEN);
-    fprintf(stderr, "%s: rank(%d) nprocs(%d) pval->data.ptr(%p)\n", __func__, utf_info.myrank, utf_info.nprocs, pval->data.ptr); fflush(stderr);
+    DEBUG(DLEVEL_INIFIN) {
+	utf_printf("%s: rank(%d) nprocs(%d) pval->data.ptr(%p)\n",
+		   __func__, utf_info.myrank, utf_info.nprocs, pval->data.ptr); fflush(stderr);
+    }
     jtofu_initialize(utf_info.jobid, utf_info.myrank,  pval->data.ptr);
 
     if (pmixclose) {
@@ -230,6 +233,10 @@ utf_peers_init()
 		if (this_rank == utf_info.myrank) {
 		    utf_info.mynrnk = i;	/* rank within node */
 		    utf_info.myppn = nranks;	/* myrank on a node has nranks processes */
+		    utf_info.lrank = nd_ranks[0]; /* leader rank */
+		    DEBUG(DLEVEL_INIFIN) {
+			utf_printf("YI**** myrank = %d, mynrnk = %d lrank=%d\n", this_rank, i, nd_ranks[0]);
+		    }
 		}
 		assert(this_rank < utf_info.nprocs);
 		vnmp[this_rank].tniq[0] = ((tni << 4) & 0xf0) | (cq & 0x0f);
@@ -335,6 +342,9 @@ utf_get_peers(uint64_t **fi_addr, int *npp, int *ppnp, int *rnkp)
 
     if (notfirst == 0) {
 	notfirst = utf_peers_init();
+	DEBUG(DLEVEL_INIFIN) {
+	    utf_vname_show(stderr);
+	}
     }
     if (notfirst == -1) {
 	*fi_addr = NULL;
@@ -366,7 +376,8 @@ utf_shm_init_internal(size_t sz, char *mykey, char *type, int *idp)
 {
     int	rc = 0;
     char	*errstr;
-    int	lead_rank = (utf_info.myrank/utf_info.ppn)*utf_info.ppn;
+    //int	lead_rank = (utf_info.myrank/utf_info.ppn)*utf_info.ppn;
+    int	lead_rank = utf_info.lrank;
     key_t	key;
     int		shmid;
     char	path[PATH_MAX+1], pmkey[PATH_MAX+1];
@@ -383,14 +394,16 @@ utf_shm_init_internal(size_t sz, char *mykey, char *type, int *idp)
      * mykey="/tmp/MPICH-shm" and type ="-utf"
      */
     strcpy(pmkey, basename(mykey)); strcat(pmkey, type);
-    utf_printf("%s: utf_info.myrank(%d) lead_rank(%d) PMI_X key=%s\n", __func__, utf_info.myrank, lead_rank, pmkey);
+    DEBUG(DLEVEL_INIFIN) {
+	utf_printf("%s: utf_info.myrank(%d) lead_rank(%d) myppn(%d) PMI_X key=%s\n",
+		   __func__, utf_info.myrank, lead_rank, utf_info.myppn, pmkey);
+    }
     if (utf_info.myrank == lead_rank) {
 	pmix_value_t	pv;
 	volatile unsigned long	ul;
 	/* */
 	snprintf(path, PATH_MAX, "%s-%07d%s", mykey, getpid(), type);
 	key = ftok(path, 1);
-	utf_printf("%s: SHMEM PATH=%s key=0x%x\n", __func__, path, key);
 	SYS_CALL(shmid, shmget(key, sz, IPC_CREAT | 0666), errext, __func__);
 	addr = shmat(shmid, NULL, 0);
 	if (addr == (void*) -1) { perror(__func__); goto errext; }
@@ -402,7 +415,10 @@ utf_shm_init_internal(size_t sz, char *mykey, char *type, int *idp)
 	PMIx_Put(PMIX_LOCAL, pmkey, &pv);
 	LIB_CALL(rc, PMIx_Commit(), err, errstr, "PMIx_Commit");
 	/* wait for other processes' progress */
-	utf_printf("%s: utf_info.myppn = %d utf_info.nprocs = %d\n", __func__, utf_info.myppn, utf_info.nprocs);
+	DEBUG(DLEVEL_INIFIN) {
+	    utf_printf("%s: SHMEM PATH=%s key=0x%x, utf_info.myppn = %d utf_info.nprocs = %d\n",
+		       __func__, path, key, utf_info.myppn, utf_info.nprocs);
+	}
 	do {
 	    usleep(10);
 	    ul = atomic_load((atomic_ulong*)addr);
@@ -429,14 +445,17 @@ utf_shm_init_internal(size_t sz, char *mykey, char *type, int *idp)
 	    goto err;
 	}
 	key = ftok(pv->data.string, 1);
-	utf_printf("%s: key=0x%x\n", __func__, key);
+	DEBUG(DLEVEL_INIFIN) {
+	    utf_printf("%s: key=0x%x\n", __func__, key);
+	}
 	SYS_CALL(shmid, shmget(key, sz, 0), errext, __func__);
 	addr = shmat(shmid, NULL, 0);
 	if (addr == (void*) -1) { perror(__func__); fflush(stderr); goto errext; }
 	atomic_fetch_add((atomic_ulong*)addr, 1);
     }
-    utf_printf("%s: returns %d\n", __func__, shmid);
-
+    DEBUG(DLEVEL_INIFIN) {
+	utf_printf("%s: returns %d\n", __func__, shmid);
+    }
     *idp = shmid;
     return addr;
 err:
@@ -506,7 +525,11 @@ utf_cqselect_init(int ppn, int nrnk, int ntni, utofu_tni_id_t *tnis, utofu_vcq_h
     struct tni_info	*tinfo;
 
     sz = ((sizeof(struct cqsel_table) + psz - 1)/sz)*sz;
-    utf_printf("pid(%d) %s: nrnk(%d) ntni(%d) sz(%ld) sizeof(struct cqsel_table)=%ld\n", utf_info.mypid, __func__, nrnk, ntni, sz, sizeof(struct cqsel_table));
+
+    DEBUG(DLEVEL_INIFIN) {
+	utf_printf("pid(%d) %s: nrnk(%d) ntni(%d) sz(%ld) sizeof(struct cqsel_table)=%ld\n",
+		   utf_info.mypid, __func__, nrnk, ntni, sz, sizeof(struct cqsel_table));
+    }
 
     utf_info.cqseltab =
 	(struct cqsel_table*) utf_shm_init_internal(sz, SHMEM_KEY_VAL_FMT, SHMEM_UTF, &utf_info.cqselid);
@@ -533,6 +556,9 @@ utf_cqselect_init(int ppn, int nrnk, int ntni, utofu_tni_id_t *tnis, utofu_vcq_h
 	}
     }
     tinfo->usd[0] = 1;	/* this is used primary including receiving */
+    DEBUG(DLEVEL_INIFIN) {
+	utf_printf("pid(%d) %s: return\n", utf_info.mypid, __func__);
+    }
     return (void*) tinfo;
 }
 

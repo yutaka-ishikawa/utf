@@ -106,7 +106,12 @@ myinit()
     /* dry run */
     pingpong(0, 2, &st, &et);
     /* timer init */
-    mytmrinit();
+    {
+	char	*cp = getenv("UTF_TIMER");
+	if (cp && atoi(cp) == 1) {
+	    mytmrinit();
+	}
+    }
 }
 
 #define CLK2USEC(tm)	((double)(tm) / ((double)hz/(double)1000000))
@@ -158,6 +163,7 @@ main(int argc, char **argv)
     test_init(argc, argv);
     if (length > BSIZE || mlength > BSIZE) {
 	fprintf(stderr, "length must be no more than %d Byte\n", BSIZE);
+	exit(-1);
     }
     if (wflag) {
 	optstring = ", waitcmpl is used";

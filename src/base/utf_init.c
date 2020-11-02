@@ -125,7 +125,7 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
     /* debug flag */
     utf_dflag = utf_getenvint("UTF_DEBUG");
     if (utf_dflag > 0) {
-	utf_printf("%s: utf_dflag=%d\n", __func__, utf_dflag);
+	utf_printf("%s: utf_dflag=%d (0x%x)\n", __func__, utf_dflag, utf_dflag);
     }
     /* utf_info is setup  */
     /* stderr redirect will be on inside the utf_get_peers */

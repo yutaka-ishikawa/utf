@@ -38,6 +38,7 @@ struct utf_info {
     int			ppn;	/* ppn on the job level */
     int			myppn;	/* ppn on the process-level. it may differ job-level ppn */
     int			mynrnk;
+    int			lrank;	/* leader rank within node */
     utofu_vcq_id_t	vcqid;
     utofu_vcq_hdl_t	vcqh;
     utofu_tni_id_t	tniid;

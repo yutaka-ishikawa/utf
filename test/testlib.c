@@ -67,7 +67,7 @@ test_init(int argc, char **argv)
     //PMIx_Init(pmix_proc, NULL, 0);
     //PMIx_Finalize(NULL, 0);
     utf_init(argc, argv, &myrank, &nprocs, &nnp);
-    utf_printf("%s: myrank = %d\n", __func__, myrank);
+    //utf_printf("%s: myrank = %d\n", __func__, myrank);
 }
 
 void

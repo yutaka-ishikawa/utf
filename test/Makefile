@@ -8,9 +8,9 @@ LDFLAGS = -L../build/ -lutf -L/home/users/ea01/ea0103/mpich-tofu/lib -lpmix
 
 .PHONY: all clean
 
-PROGS := test_p2p test_memreg
+PROGS := test_p2p test_memreg test_mapping
 LIBS  := ../build/utf.so
-SRCS  := test_p2p.c testlib.c test_memreg.c
+SRCS  := test_p2p.c testlib.c test_memreg.c test_mapping.c
 OBJS  := $(SRCS:.c=.o)
 #OBJS  := $(SRCS:.c=.o) ../build/base/*.o
 
