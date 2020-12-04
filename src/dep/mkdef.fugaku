@@ -5,4 +5,10 @@ INCLUDES =  -I/opt/FJSVxos/devkit/aarch64/rfs/usr/include/FJSVtcs/ple
 #LDFLAGS = -ltofutop -ltofucom -L/opt/FJSVxos/devkit/aarch64/rfs/usr/lib/FJSVtcs/ple/lib64 -lpmix
 LDFLAGS = -ltofutop -ltofucom -L$(HOME)/riken-mpich -lpmix
 
+MPICC = mpicc
+
+FJMPICC = mpifccpx
+FJCFLAGS = 
+FJLDFLAGS = -ltofutop -ltofucom -lpmix
+
 INSTALL=install

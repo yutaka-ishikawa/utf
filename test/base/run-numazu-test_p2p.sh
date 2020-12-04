@@ -14,14 +14,12 @@
 #------- Program execution -------#
 export LD_LIBRARY_PATH=../build/:$LD_LIBRARY_PATH
 #
-# The stderr redirection is enabled if -D option is specified
-export TOFULOG_DIR=./results
+#export TOFULOG_DIR=./results
 
 echo "LD_LIBRARY_PATH=" $LD_LIBRARY_PATH
-mpiexec -np 2 ./test_p2p pingpong -i 10 -D	#  -D stderr redirection
-exit
 echo "******************************************************"
-mpiexec -np 2 ./test_p2p pingpong -i 10000 -D	#  -D stderr redirection
+mpiexec -np 2 ./test_p2p pingpong -i 1-l 1000
+#mpiexec -np 2 ./test_p2p pingpong -i 10000 -L 10000000 -D	#  -D stderr redirection
 echo "***************************"
 echo
 mpiexec -np 2 ./test_p2p pingping -i 10000 -D

@@ -1,18 +1,18 @@
 #!/bin/bash
 #------ pjsub option --------#
-#PJM -N "MPICH-COLL2" # jobname
+#PJM -N "MPICH-COLL9" # jobname
 #PJM -S		# output statistics
-#PJM --spath "results/coll-2/%n.%j.stat"
-#PJM -o "results/coll-2/%n.%j.out"
-#PJM -e "results/coll-2/%n.%j.err"
+#PJM --spath "results/coll-8/%n.%j.stat"
+#PJM -o "results/coll-9/%n.%j.out"
+#PJM -e "results/coll-9/%n.%j.err"
 #
 #	PJM -L "node=2:noncont"
 #PJM -L "node=1:noncont"
 #	PJM -L "node=8:noncont"
 #	PJM --mpi "max-proc-per-node=2"
-#PJM --mpi "max-proc-per-node=2"
+#PJM --mpi "max-proc-per-node=9"
 #	PJM --mpi "max-proc-per-node=1"
-#PJM -L "elapse=00:00:10"
+#PJM -L "elapse=00:00:20"
 #PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-mck2_and_spack2,jobenv=linux"
 #	PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-spack2,jobenv=linux"
 #	PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-spack1,jobenv=linux"
@@ -22,33 +22,27 @@
 export LD_LIBRARY_PATH=${HOME}/mpich-tofu/lib:$LD_LIBRARY_PATH
 export MPIR_CVAR_OFI_USE_PROVIDER=tofu
 export MPICH_CH4_OFI_ENABLE_SCALABLE_ENDPOINTS=1
-export MPIR_CVAR_CH4_OFI_ENABLE_MR_VIRT_ADDRESS=1
-export MPIR_CVAR_CH4_OFI_ENABLE_RMA=1
 ## CONF_TOFU_INJECTSIZE=1856 (MSG_EAGER_SIZE = 1878)
 
 #export UTF_DEBUG=12
 #export UTF_DEBUG=0xfffc
 
-#export UTF_MSGMODE=1	# Rendezous
-export UTF_TRANSMODE=0	# Chained
+export UTF_MSGMODE=1	# Rendezous
+#export UTF_TRANSMODE=0	# Chained
 export UTF_TRANSMODE=1	# Aggressive
 export TOFU_NAMED_AV=1
+#export TOFULOG_DIR=./results/coll-48
 
-export MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG=1
-export MPIR_CVAR_CH4_OFI_ENABLE_TAGGED=0
 echo "TOFU_NAMED_AV = " $TOFU_NAMED_AV
 echo "UTF_MSGMODE   = " $UTF_MSGMODE "(0: Eager, 1: Rendezous)"
 echo "UTF_TRANSMODE = " $UTF_TRANSMODE "(0: Chained, 1: Aggressive)"
-echo "MPIR_CVAR_CH4_OFI_ENABLE_TAGGED = " $MPIR_CVAR_CH4_OFI_ENABLE_TAGGED
 
 #export PMIX_DEBUG=1
 #export UTF_DEBUG=0xffff		# debug all
 #export FI_LOG_LEVEL=Debug
 #export FI_LOG_PROV=tofu
 
-# testing MPI_Reduce
-mpiexec ../bin/coll -s 2 -l 1 -i 1
-#mpiexec ../bin/coll -l 4
+mpiexec ../bin/coll -l 4
 #mpiexec ../bin/coll -l 512
 #mpiexec ../bin/coll -v -l 16777216 -i 10	# all-to-all max 16MiB for 32 procs
 #						# 23 sec for 10 times

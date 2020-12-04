@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 XXXXXXXXXXXXXXXXXXXXXXXX.
+ * Copyright (c) 2020 RIKEN, Japan.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -10,10 +10,11 @@
 /**
  * @file
  *
- * utf集団通信機能を実装するためのインターフェイス.
- *
- * uTofu が提供するバリアゲート機能を用いた
- * MPI_Barrier, MPI_Bcast, MPI_Reduce, and MPI_Allreduceを行う。
+ * Definitions of the interfaces for utf barrier communication.
+ * These perform high-speed collective communication by using
+ * the barrier gate functions that uTofu library provides.
+ * MPI_Barrier, MPI_Bcast, MPI_Reduce, or MPI_Allreduce can be
+ * implemented using these.
  */
 
 #ifndef UTF_BG_COLL_H
@@ -21,7 +22,8 @@
 
 #include <utofu.h>
 
-/** 復帰値 */
+#if 0
+/** Return values */
 enum utf_return_code {
      UTF_SUCCESS              = UTOFU_SUCCESS,
 
@@ -83,12 +85,13 @@ enum utf_return_code {
      UTF_ERR_RESOURCE_BUSY    = -1024,
      UTF_ERR_INTERNAL         = -1025
 };
+#endif
 
 /* UTF_IN_PLACE */
 #define UTF_IN_PLACE  (void *) -1
 
-/** リダクション演算の種別 */
-enum utf_reduce_op{
+/** Operations used in reduction */
+enum utf_reduce_op {
     UTF_REDUCE_OP_BARRIER = UTOFU_REDUCE_OP_BARRIER,
     UTF_REDUCE_OP_BAND    = UTOFU_REDUCE_OP_BAND,
     UTF_REDUCE_OP_BOR     = UTOFU_REDUCE_OP_BOR,
@@ -105,73 +108,82 @@ enum utf_reduce_op{
     UTF_REDUCE_OP_MINLOC
 };
 
-/** リダクション演算のデータ型 */
-enum utf_datatype{
-    /* 符号無整数 */
+/** Data type used in reduction */
+enum utf_datatype {
+    /* Unsigned integer */
     UTF_DATATYPE_UINT8_T         = 0x00000001,
     UTF_DATATYPE_UINT16_T        = 0x00000002,
     UTF_DATATYPE_UINT32_T        = 0x00000004,
     UTF_DATATYPE_UINT64_T        = 0x00000008,
-    /* 符号有整数 */
+    /* Signed integer */
     UTF_DATATYPE_INT8_T          = 0x00010001,
     UTF_DATATYPE_INT16_T         = 0x00010002,
     UTF_DATATYPE_INT32_T         = 0x00010004,
     UTF_DATATYPE_INT64_T         = 0x00010008,
-    /* 実数 */
+    /* Real number */
     UTF_DATATYPE_FLOAT16         = 0x01000002,
     UTF_DATATYPE_FLOAT           = 0x01000004,
     UTF_DATATYPE_DOUBLE          = 0x01000008,
-    /* 複素数 */
+    /* Complex number */
     UTF_DATATYPE_FLOAT16_COMPLEX = 0x02000004,
     UTF_DATATYPE_FLOAT_COMPLEX   = 0x02000008,
     UTF_DATATYPE_DOUBLE_COMPLEX  = 0x02000010,
-    /* MAXLOC, MINLOC*/
+    /* Specially for MPI_MAXLOC, MPI_MINLOC */
     UTF_DATATYPE_SHORT_INT       = 0x04010006,
     UTF_DATATYPE_2INT            = 0x04010008,
     UTF_DATATYPE_LONG_INT        = 0x0401000C
 };
 
-/** BG(バリアゲート情報)格納用 */
+/** Communication method used for intra-node communication */
+enum utf_intra_node_comm {
+    UTF_BG_TOFU, /* Tofu */
+    UTF_BG_SM    /* Shared memory */
+};
+
+/** For a barrier gate setting information */
 typedef uint64_t utf_bg_info_t;
 
-/** バリア回路(コミュニケータ)毎のVBGの設定情報へのポインタ */
+/** Pointer to the VBG group settings used
+    for each barrier network ( == for each communicator). */
 typedef void * utf_coll_group_t;
 
 
 /*
- ** バリアゲートを用いた基本機能
+ ** Basic functions using barrier gates
  */
-/* バリア回路を確保する */
-extern int utf_bg_alloc(utofu_vcq_id_t rankset[],
+/* Allocation of a barrier network */
+extern int utf_bg_alloc(uint32_t rankset[],
                         size_t len,
                         size_t my_index,
+                        int max_ppn,
+                        int comm_type,
                         utf_bg_info_t *bginfo);
 
-/* バリア回路を設定する */
-extern int utf_bg_init(utofu_vcq_id_t rankset[],
+/* Initialization of a barrier network  */
+extern int utf_bg_init(uint32_t rankset[],
                        size_t len,
                        size_t my_index,
                        utf_bg_info_t bginfo[],
                        utf_coll_group_t *group_struct);
 
-/* バリア回路を解放する */
+/* Free of a barrier network */
 extern int utf_bg_free(utf_coll_group_t group_struct);
 
 
 /*
- ** utf集団通信機能
+ ** Collective communication functions using barrier gates
  */
-/* barrier */
+/* Barrier */
 extern int utf_barrier(utf_coll_group_t group_struct);
 
-/* broadcast */
+/* Broadcast */
 extern int utf_broadcast(utf_coll_group_t group_struct,
                          void *buf,
                          size_t size,
                          void *desc,
                          int root);
 
-/* allreduce */
+/* Allreduce */
 extern int utf_allreduce(utf_coll_group_t group_struct,
                          const void *buf,
                          size_t count,
@@ -181,7 +193,7 @@ extern int utf_allreduce(utf_coll_group_t group_struct,
                          enum utf_datatype datatype,
                          enum utf_reduce_op op);
 
-/* reduce */
+/* Reduce */
 extern int utf_reduce(utf_coll_group_t,
                       const void *buf,
                       size_t count,
@@ -192,10 +204,10 @@ extern int utf_reduce(utf_coll_group_t,
                       enum utf_reduce_op op,
                       int root);
 
-/* poll barrier */
+/* Polling a barrier completion */
 extern int utf_poll_barrier(utf_coll_group_t group_struct);
 
-/* poll reduce */
+/* Polling a reduce completion */
 extern int utf_poll_reduce(utf_coll_group_t group_struct,
                            void **data);
 
