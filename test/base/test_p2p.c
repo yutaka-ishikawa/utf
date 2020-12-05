@@ -42,6 +42,7 @@ pingpong(int len, int iter, uint64_t *st, uint64_t *et)
 	    utf_tmr_begin(TMR_UTF_EXT1);
 	    UTF_CALL(err1, rc, utf_recv, rbuf, len, 0, 0, &r_reqid);
 	    UTF_CALL(err2, rc, utf_wait, r_reqid);
+	    utf_tmr_end(TMR_UTF_EXT1);
 	}
     }
     *et = tick_time();
@@ -126,7 +127,7 @@ show(int len, uint64_t tm0)
 	UTF_CALL(err1, rc, utf_recv, &tm1, sizeof(uint64_t), 1, 0, &reqid);
 	UTF_CALL(err3, rc, utf_wait, reqid);
 	hz = tick_helz(0);
-	myprintf("%d,%8.3f,%8.3f,%8.3f,%8.3f\n", len, CLK2USEC(tm0), CLK2USEC(tm1),
+	printf("%d,%8.3f,%8.3f,%8.3f,%8.3f\n", len, CLK2USEC(tm0), CLK2USEC(tm1),
 		 (float)len/CLK2USEC(tm0), (float)len/CLK2USEC(tm0));
     } else {
 	UTF_CALL(err2, rc, utf_send, &tm0, sizeof(uint64_t), 0, 0, &reqid);
@@ -146,7 +147,7 @@ main(int argc, char **argv)
 {
     uint64_t	st, et, tm;
     char	*progname, *optstring;
-    void	(*prog)();
+    void	(*prog)(int, int, uint64_t*, uint64_t*);
 
     iteration = ITER;	// default
     length = MSGSIZE;	// default
@@ -171,8 +172,8 @@ main(int argc, char **argv)
 	optstring = "";
     }
     if (!sflag && myrank == 0) {
-	myprintf("%s: length(%d) mlength(%d)\n", progname, length, mlength);
-	myprintf("%s: iteration=%d %s\n#length, usec, usec, MB/sec\n", progname, iteration, optstring);
+	printf("%s: length(%d) mlength(%d)\n", progname, length, mlength);
+	printf("%s: iteration=%d %s\n#length, usec, usec, MB/sec\n", progname, iteration, optstring);
     }
     myinit();
     /**/
@@ -194,6 +195,6 @@ main(int argc, char **argv)
     /* timer report */
     mytmrfinalize(progname);
     utf_finalize(1);
-    myprintf("Finish\n");
+    if (myrank == 0) printf("Finish\n");
     return 0;
 }

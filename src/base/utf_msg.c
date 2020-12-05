@@ -85,13 +85,16 @@ minfo_setup(struct utf_send_msginfo *minfo, int rank, uint64_t tag, uint64_t siz
 {
     minfo->msghdr.src  = utf_info.myrank;
     minfo->msghdr.tag  = tag;
+    minfo->msghdr.hall = 0;
     minfo->msghdr.size = size;
     minfo->msghdr.sidx = usp->mypos; /* 8 bit */
     minfo->mreq = req;
+    minfo->scntr = usp;
     sbufp->pkt.hdr.src  = rank;
     sbufp->pkt.hdr.tag  = tag;
     sbufp->pkt.hdr.hall = 0;	/* marker field is now 0 */
     sbufp->pkt.hdr.size = size;
+    req->allflgs = 0;
     if (size <= MSG_EAGER_PIGBACK_SZ) {
 	minfo->cntrtype = SNDCNTR_BUFFERED_EAGER_PIGBACK;
 	memcpy(sbufp->pkt.pyld.msgdata, usrbuf, size);
@@ -171,6 +174,7 @@ retry:
 	goto err2;
     }
     minfo_setup(minfo, utf_info.myrank, tag, size, buf, sbuf, usp, req);
+    usp->inflight++;
     ridx->reqid1 = utf_msgreq2idx(req);
     if (usp->state == S_NONE) {
 	utf_send_start(usp, minfo);

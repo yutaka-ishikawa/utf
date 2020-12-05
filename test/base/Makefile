@@ -8,10 +8,10 @@ LDFLAGS = -L../build/ -lutf -L/home/users/ea01/ea0103/mpich-tofu/lib -lpmix
 
 .PHONY: all clean
 
-PROGS := test_p2p test_memreg test_mapping test_vbg
+PROGS := test_p2p test_memreg test_mapping test_func
 MPI_PROGS := test_vbg
 LIBS  := ../build/utf.so
-SRCS  := test_p2p.c testlib.c test_memreg.c test_mapping.c test_vbg.c
+SRCS  := test_p2p.c testlib.c test_memreg.c test_mapping.c test_func.c
 OBJS  := $(SRCS:.c=.o)
 #OBJS  := $(SRCS:.c=.o) ../build/base/*.o
 
@@ -25,7 +25,7 @@ $(MPI_PROGS): $(OBJS)
 clean:
 	rm -f *.o
 run-clean:
-	rm -f core*
+	rm -f core* tofulog-* ping*-timing-*.txt
 depend:
 	makedepend  -I$(INCLUDES) $(SRCS) -f - >depend
 include depend

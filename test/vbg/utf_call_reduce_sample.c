@@ -5,7 +5,8 @@
 
 #include <utofu.h>
 #include <jtofu.h>
-#include "utf_bg.h"
+#include <utf.h>
+#include <utf_bg.h>
 
 
 #include <sys/times.h>

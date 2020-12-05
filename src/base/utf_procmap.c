@@ -121,8 +121,8 @@ utf_jtofuinit(int pmixclose)
     }
     return 0;
 err:
-    utf_printf("error at %s\n", errstr);
-    fprintf(stdout, "error at %s\n", errstr);
+    utf_printf("error (%d) at %s\n", rc, errstr);
+    fprintf(stdout, "error (%d)at %s\n", rc, errstr);
     return -1;
 }
 
@@ -587,7 +587,7 @@ utf_fence()
     char *errstr;
 
     DEBUG(DLEVEL_INIFIN) {
-	utf_printf("%s: begin\n", __func__);
+	utf_printf("%s: begin nprocs = %d\n", __func__, utf_info.nprocs);
     }
     LIB_CALL(rc, PMIx_Fence(utf_info.pmix_wproc, 1, utf_info.pmix_info, 1),
 	     err, errstr, "PMIx_Fence");
@@ -596,7 +596,7 @@ utf_fence()
     }
     return;
 err:
-    fprintf(stderr, "%s\n", errstr);
+    fprintf(stderr, "%s error code = %d\n", errstr, rc);
 }
 
 void
