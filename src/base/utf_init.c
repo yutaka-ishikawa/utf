@@ -152,7 +152,9 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
 void
 utf_finalize(int wipe)
 {
-    utf_printf("%s: wipe(%d)\n", __func__, wipe);
+    DEBUG(DLEVEL_INIFIN) {
+	utf_printf("%s: wipe(%d)\n", __func__, wipe);
+    }
     if (wipe) {
 	utf_req_wipe();
 	utf_fence();

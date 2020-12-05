@@ -1,6 +1,6 @@
 #!/bin/bash
 #------ pjsub option --------#
-#PJM -N "MPICH-COLL" # jobname
+#PJM -N "MPICH-COLL-MCK" # jobname
 #PJM -S		# output statistics
 #
 #PJM --spath "results/coll-4/%n.%j.stat"
@@ -53,7 +53,8 @@
 #PJM --mpi "max-proc-per-node=1"
 #	PJM -L "elapse=00:02:30"
 #PJM -L "elapse=00:00:30"
-#PJM -L "rscunit=rscunit_ft01,rscgrp=eap-llio,jobenv=linux2"
+#PJM -L "rscgrp=dvsys-mck2,jobenv=linux2"
+#	PJM -L "rscunit=rscunit_ft01,rscgrp=eap-llio,jobenv=linux2"
 #	PJM -L "rscunit=rscunit_ft01,rscgrp=eap-small,jobenv=linux"
 #	PJM -L "rscunit=rscunit_ft01,rscgrp=dvsys-mck1,jobenv=linux"
 #PJM -L proc-core=unlimited

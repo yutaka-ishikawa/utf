@@ -685,9 +685,9 @@ PMIx_Resolve_nodes(const char *nspace, char **nodelist)
 
     /* When this function is called, libfabric has not been initialized */
     utf_dflag = utf_getenvint("UTF_DEBUG");
-    utf_printf("%s: called\n", __func__);
+    DEBUG(DLEVEL_INIFIN) { utf_printf("%s: called\n", __func__); }
     utf_get_peers(NULL, &np, &tppn, &rnk);
-    utf_printf("%s: jid=%d nprocs=%d\n", __func__, atoi(nspace), np);
+    DEBUG(DLEVEL_INIFIN) { utf_printf("%s: jid=%d nprocs=%d\n", __func__, atoi(nspace), np); }
     sz = NODE_NM_LEN*utf_info.nnodes + 2; /* two more */
     lst = malloc(sz);
     if (lst == NULL) {
@@ -724,7 +724,7 @@ PMIx_Resolve_peers(const char *nodename, const char *nspace,
     /*
      * In case of 1 process per 1 node, srank is rank of node.
      */
-    utf_printf("%s: nodename=%s nspace=%s\n", __func__, nodename, nspace); fflush(stderr);
+    DEBUG(DLEVEL_INIFIN) { utf_printf("%s: nodename=%s nspace=%s\n", __func__, nodename, nspace); fflush(stderr); }
     sscanf(nodename, NODE_NAME_FMT, &x, &y, &z, &a, &b, &c);
     pcoords.s.x = x; pcoords.s.y = y; pcoords.s.z = z;
     pcoords.s.a = a; pcoords.s.b = b; pcoords.s.c = c;
