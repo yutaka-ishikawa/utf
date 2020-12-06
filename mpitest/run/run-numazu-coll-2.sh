@@ -18,36 +18,30 @@
 #	PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-spack1,jobenv=linux"
 #PJM -L proc-core=unlimited
 #------- Program execution -------#
-
+MPIOPT="-of results/coll-2/%n.%j.out -oferr results/coll-2/%n.%j.err"
 export LD_LIBRARY_PATH=${HOME}/mpich-tofu/lib:$LD_LIBRARY_PATH
 export MPIR_CVAR_OFI_USE_PROVIDER=tofu
 export MPICH_CH4_OFI_ENABLE_SCALABLE_ENDPOINTS=1
+export MPIR_CVAR_ALLTOALL_SHORT_MSG_SIZE=2147483647 # 32768 in default (integer value)  
+export MPIR_CVAR_CH4_OFI_ENABLE_ATOMICS=-1
 export MPIR_CVAR_CH4_OFI_ENABLE_MR_VIRT_ADDRESS=1
 export MPIR_CVAR_CH4_OFI_ENABLE_RMA=1
-## CONF_TOFU_INJECTSIZE=1856 (MSG_EAGER_SIZE = 1878)
-
-#export UTF_DEBUG=12
-#export UTF_DEBUG=0xfffc
-
-#export UTF_MSGMODE=1	# Rendezous
-export UTF_TRANSMODE=0	# Chained
+export MPIR_CVAR_CH4_OFI_ENABLE_TAGGED=0
+export MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG=1
+export UT_MSGMODE=0
 export UTF_TRANSMODE=1	# Aggressive
 export TOFU_NAMED_AV=1
 
-export MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG=1
-export MPIR_CVAR_CH4_OFI_ENABLE_TAGGED=0
 echo "TOFU_NAMED_AV = " $TOFU_NAMED_AV
 echo "UTF_MSGMODE   = " $UTF_MSGMODE "(0: Eager, 1: Rendezous)"
 echo "UTF_TRANSMODE = " $UTF_TRANSMODE "(0: Chained, 1: Aggressive)"
 echo "MPIR_CVAR_CH4_OFI_ENABLE_TAGGED = " $MPIR_CVAR_CH4_OFI_ENABLE_TAGGED
 
-#export PMIX_DEBUG=1
-#export UTF_DEBUG=0xffff		# debug all
-#export FI_LOG_LEVEL=Debug
-#export FI_LOG_PROV=tofu
-
 # testing MPI_Reduce
-mpiexec ../bin/coll -s 2 -l 1 -i 1
+mpiexec $MPIOPT ../bin/coll -l 512 -s 0xff
+#mpiexec $MPIOPT ../bin/coll -l 512 -s 0x1
+
+#mpiexec $MPIOPT ../bin/coll -s 2 -l 1 -i 1
 #mpiexec ../bin/coll -l 4
 #mpiexec ../bin/coll -l 512
 #mpiexec ../bin/coll -v -l 16777216 -i 10	# all-to-all max 16MiB for 32 procs
@@ -56,6 +50,17 @@ mpiexec ../bin/coll -s 2 -l 1 -i 1
 echo 
 echo
 exit
+
+#####################################################################################
+## CONF_TOFU_INJECTSIZE=1856 (MSG_EAGER_SIZE = 1878)
+#export UTF_DEBUG=12
+#export UTF_DEBUG=0xfffc
+##export UTF_MSGMODE=1	# Rendezous
+##export UTF_TRANSMODE=0	# Chained
+#export PMIX_DEBUG=1
+#export UTF_DEBUG=0xffff		# debug all
+#export FI_LOG_LEVEL=Debug
+#export FI_LOG_PROV=tofu
 
 ############################################################################
 export UTF_MSGMODE=0	# Eager
