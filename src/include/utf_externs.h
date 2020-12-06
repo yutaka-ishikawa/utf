@@ -24,6 +24,7 @@ extern void	utf_vname_show(FILE*);
 extern void	utf_cqtab_show(FILE*);
 extern void	utf_egrrbuf_show(FILE*);
 extern void	utf_egrbuf_show(FILE*);
+extern void	utf_statistics(FILE*);
 
 /**/
 struct tofu_vname;

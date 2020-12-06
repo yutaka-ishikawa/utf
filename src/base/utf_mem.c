@@ -353,3 +353,11 @@ utf_egrbuf_show(FILE *fp)
 	       "\t&utf_rcntr[0] = %p\n",
 	       utf_egr_rbuf.head.cntr, &utf_egr_rbuf.rbuf[0], &utf_rcntr[0]);
 }
+
+void
+utf_statistics(FILE *fp)
+{
+    if (utf_info.myrank == 0) {
+	fprintf(fp, "\tCNTR = %ld\n", utf_egr_rbuf.head.cntr); fflush(fp);
+    }
+}

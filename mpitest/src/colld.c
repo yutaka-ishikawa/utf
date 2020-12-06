@@ -10,23 +10,23 @@
 #include <utf.h>
 
 #define LEN_INIT	1
-int	*sendbuf;
-int	*recvbuf;
+double	*sendbuf;
+double	*recvbuf;
 
 #define MYPRINT	if (myrank == 0)
 
 int
-verify_reduce(int *sendbuf, int *recvbuf, int length)
+verify_reduce(double *sendbuf, double *recvbuf, int length)
 {
     int errs = 0;
     int	j, k;
     for (k = 0; k < length; k++) {
-	int	val = 0;
+	double	val = 0;
 	for (j = 0; j < nprocs; j++) {
-	    val += (j + k + 1);
+	    val += (double) (j + k + 1);
 	}
 	if (recvbuf[k] != val) {
-	    printf("sendbuf[%d] = %d, expect = %d\n", k, recvbuf[k], val);
+	    printf("sendbuf[%d] = %e, expect = %e\n", k, recvbuf[k], val);
 	    errs++;
 	}
     }
@@ -49,13 +49,13 @@ main(int argc, char** argv)
     if (vflag) {
 	utf_vname_show(stdout);
     }
-    MPI_Type_size(MPI_INT, &tsz);
+    MPI_Type_size(MPI_DOUBLE, &tsz);
     sz = length*nprocs*tsz;
     sendbuf = malloc(sz);
     recvbuf = malloc(sz);
     MYPRINT {
 	printf("sendbuf=%p recvbuf=%p\n"
-	       "MPI_INT SIZE: %d\n"
+	       "MPI_DOUBLE SIZE: %d\n"
 	       "length(%ld) byte(%ld) nprocs(%d) iteration(%d) sflag(0x%x)\n",
 	       sendbuf, recvbuf, tsz, length, sz, nprocs, iteration, sflag); fflush(stdout);
     }
@@ -64,9 +64,10 @@ main(int argc, char** argv)
 	exit(-1);
     }
     for (i = 0; i < length*nprocs; i++) {
-	sendbuf[i] = myrank + i + 1;
-	recvbuf[i] = -1;
+	sendbuf[i] = (double) (myrank + i + 1);
+	recvbuf[i] = (double) -1;
     }
+
     if (sflag & 0x1) {
 	for (i = 0; i < iteration; i++) {
 	    MYPRINT { MYVERBOSE("Start MPI_Barier %ldth\n", i); }

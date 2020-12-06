@@ -26,6 +26,7 @@
 #define DLEVEL_MEMORY		0x800
 #define DLEVEL_COMM		0x1000
 #define DLEVEL_WARN		0x2000
+#define DLEVEL_STATISTICS	0x4000
 #define DLEVEL_ALL		0xffff
 
 #define SHMEM_KEY_VAL_FMT	"/tmp/MPICH-shm"

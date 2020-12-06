@@ -10,11 +10,11 @@
 #PJM -L "node=384"
 #	PJM -L "node=128"
 #	PJM --mpi "max-proc-per-node=1"
-#	PJM --mpi "max-proc-per-node=4"
+#PJM --mpi "max-proc-per-node=4"
 #	PJM --mpi "max-proc-per-node=8"
 #	PJM --mpi "max-proc-per-node=16"
 #	PJM --mpi "max-proc-per-node=32"
-#PJM --mpi "max-proc-per-node=48"
+#	PJM --mpi "max-proc-per-node=48"
 #PJM -L "elapse=00:10:30"
 #PJM -L "rscunit=rscunit_ft01,rscgrp=eap-llio,jobenv=linux2"
 #	PJM -L "rscunit=rscunit_ft01,rscgrp=eap-small,jobenv=linux2"
@@ -30,12 +30,7 @@ MPIOPT="-of results/coll-1rack/%n.%j.out -oferr results/coll-1rack/%n.%j.err"
 
 ##export UTF_DEBUG=0x4000	# statistics
 
-mpiexec -n 18432 $MPIOPT ../bin/coll -l 1024 -s 0x2f	# See MPICH-COLL-1rack.3138355.out
-#mpiexec -n 18432 $MPIOPT ../bin/coll -l 512 -s 0x2f	# OK
-#mpiexec -n 18432 $MPIOPT ../bin/coll -l 10240 -s 0x1	# 720 MiB
-#mpiexec -n 18432 $MPIOPT ../bin/coll -l 10240 -s 0x2f	# 720 MiB
-#mpiexec -n 18432 $MPIOPT ../bin/coll -l 10240 -s 0x3f	# 720 MiB
-##mpiexec -n 18432 $MPIOPT ../bin/coll -l 10240 -s 0x3f	# 720 MiB
+mpiexec -n 1536 $MPIOPT ../bin/coll -l 1024 -s 0x2f	# See MPICH-COLL-1rack.3138355.out
 exit
 
 ##############################################################################################

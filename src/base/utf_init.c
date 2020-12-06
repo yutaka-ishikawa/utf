@@ -124,9 +124,11 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
     }
     /* debug flag */
     utf_dflag = utf_getenvint("UTF_DEBUG");
+#if 0
     if (utf_dflag > 0) {
 	utf_printf("%s: utf_dflag=%d (0x%x)\n", __func__, utf_dflag, utf_dflag);
     }
+#endif
     /* utf_info is setup  */
     /* stderr redirect will be on inside the utf_get_peers */
     utf_get_peers(NULL, &np, &tppn, &rnk);
@@ -163,6 +165,8 @@ utf_finalize(int wipe)
     }
     DEBUG(DLEVEL_INIFIN) {
 	utf_egrbuf_show(stderr);
+    } else if (utf_dflag & DLEVEL_STATISTICS) {
+	utf_statistics(stderr);
     }
     utf_mem_finalize();
     utf_procmap_finalize();
