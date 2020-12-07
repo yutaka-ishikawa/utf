@@ -1,24 +1,25 @@
 #!/bin/bash
 #------ pjsub option --------#
-#PJM -N "MPICH-COLL" # jobname
+#PJM -N "MPICH-COLL72" # jobname
 #PJM -S		# output statistics
 #
-#PJM --spath "results/coll-9rack/%n.%j.stat"
-#PJM -o "results/coll-9rack/%n.%j.out"
-#PJM -e "results/coll-9rack/%n.%j.err"
+#PJM --spath "results/coll-72rack/%n.%j.stat"
+#PJM -o "results/coll-72rack/%n.%j.out"
+#PJM -e "results/coll-72rack/%n.%j.err"
 #
-#PJM -L "node=3456"
+#PJM -L "node=27648"
 #	PJM -L "node=1152"
 #	PJM --mpi "max-proc-per-node=1"
+#PJM --mpi "max-proc-per-node=4"
 #	PJM --mpi "max-proc-per-node=32"
-#PJM --mpi "max-proc-per-node=48"
-#PJM -L "elapse=00:15:30"
-#PJM -L "rscunit=rscunit_ft01,rscgrp=eap-llio,jobenv=linux2"
+#	PJM --mpi "max-proc-per-node=48"
+#PJM -L "elapse=00:10:00"
+#PJM -L "rscunit=rscunit_ft01,rscgrp=eap-large,jobenv=linux2"
 #PJM -L proc-core=unlimited
 #------- Program execution -------#
 
-. ./mpich.env
-MPIOPT="-of results/coll-9rack/%n.%j.out -oferr results/coll-9rack/%n.%j.err"
+###. ./mpich.env
+MPIOPT="-of results/coll-72rack/%n.%j.out -oferr results/coll-72rack/%n.%j.err"
 
 #
 #   coll -s  0x1: Barrier, 0x2: Reduce, 0x4: Allreduce, 0x8: Gather, 0x10: Alltoall, 0x20: Scatter
@@ -28,21 +29,29 @@ MPIOPT="-of results/coll-9rack/%n.%j.out -oferr results/coll-9rack/%n.%j.err"
 #   coll -s  0x1: Barrier, 0x2: Reduce, 0x4: Allreduce, 0x8: Gather, 0x10: Alltoall, 0x20: Scatter
 #
 #
-echo  "checking collective except Alltoall"
-mpiexec -n 165888 $MPIOPT ../bin/colld -l 2 -s 0x3f	#
-mpiexec -n 165888 $MPIOPT ../bin/colld -l 1 -s 0x3f	# OK 5774.7 MiB
-#mpiexec -n 110592 $MPIOPT ../bin/colld -l 1 -s 0x11	# OK
-#mpiexec -n 110592 $MPIOPT ../bin/colld -l 1 -s 0x2f	# OK
-#mpiexec -n 110592 $MPIOPT ../bin/colld -l 1 -s 0x3	# OK
-#mpiexec -n 65536 $MPIOPT ../bin/colld -l 1 -s 0x3	# OK
-#mpiexec -n 110592 $MPIOPT ../bin/coll -l 2 -s 0x2f	# 
-#mpiexec -n 110592 $MPIOPT ../bin/colld -l 512 -s 0x2f	# ERROR due to lack of memory
-#mpiexec -n 131072 $MPIOPT ../bin/colld -l 512 -s 0x2f	# ERROR due to lack of memory
-#mpiexec -n 165888 $MPIOPT ../bin/colld -l 512 -s 0x2f	# ERRORdue to lack of memory
-#mpiexec -n 55296 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  3 min 00 sec
-#mpiexec -n 36864 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  2 min 13 sec
-#mpiexec -n 1152 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  57 sec
-#mpiexec -n 3456 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  sec
+#echo  "checking collective except Alltoall"
+echo "@@ CHECKING FJMPI"
+echo "checking Barrier"
+time mpiexec -n 110592 $MPIOPT ../bin/colld-f -l 1 -s 0x1	#
+echo "checking Reduce"
+time mpiexec -n 110592 $MPIOPT ../bin/colld-f -l 1 -s 0x2	#
+echo; echo; echo
+echo "checking Allreduce"
+time mpiexec -n 110592 $MPIOPT ../bin/colld-f -l 1 -s 0x4	#
+echo; echo; echo
+echo "checking Gather"
+time mpiexec -n 110592 $MPIOPT ../bin/colld-f -l 1 -s 0x8	#
+echo; echo; echo
+echo "checking Scatter"
+time mpiexec -n 110592 $MPIOPT ../bin/colld-f -l 1 -s 0x20	#
+echo; echo; echo
+echo "checking Alltoall"
+time mpiexec -n 110592 $MPIOPT ../bin/colld-f -l 1 -s 0x10	#
+
+#mpiexec -n 110592 $MPIOPT ../bin/colld -l 1 -s 0x4	# OK 3 sec 47 min with barrier
+#mpiexec -n 110592 $MPIOPT ../bin/colld -l 1 -s 0x1	# OK 2 sec 38 min
+#mpiexec -n 110592 $MPIOPT ../bin/colld -l 2 -s 0x3f	# TIMEOUT
+#mpiexec -n 110592 $MPIOPT ../bin/colld -l 512 -s 0x3f	#
 
 exit
 ###########################################################################

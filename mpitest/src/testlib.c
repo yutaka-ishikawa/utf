@@ -1,3 +1,4 @@
+
 #include <mpi.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -5,8 +6,14 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
+#ifndef FJMPI
 #include <utf_timer.h>
+#endif
 #include "testlib.h"
+
+#ifdef FJMPI
+#define myprintf	printf
+#endif
 
 extern int	myprintf(const char *fmt, ...);
 
@@ -88,6 +95,7 @@ test_init(int argc, char **argv)
     VERBOSE("Proc Size = %d myrank = %d\n", nprocs, myrank);
 }
 
+#ifndef FJMPI
 void
 mytmrinit()
 {
@@ -154,3 +162,4 @@ mytmrfinalize(char *pname)
     fprintf(fp, "#######################\n");
     if (fp != stdout) fclose(fp);
 }
+#endif /* ~FJMPI */

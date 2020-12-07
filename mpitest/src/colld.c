@@ -6,8 +6,11 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
 #include "testlib.h"
+#ifndef FJMPI
 #include <utf.h>
+#endif
 
 #define LEN_INIT	1
 double	*sendbuf;
@@ -26,7 +29,7 @@ verify_reduce(double *sendbuf, double *recvbuf, int length)
 	    val += (double) (j + k + 1);
 	}
 	if (recvbuf[k] != val) {
-	    printf("recvbuf[%d] = %e, expect = %e\n", k, recvbuf[k], val);
+	    printf("recvbuf[%d] = %e, expect = %e\n", k, recvbuf[k], val); fflush(stdout);
 	    errs++;
 	}
     }
@@ -46,9 +49,11 @@ main(int argc, char** argv)
     sflag = 0x10;	// Alltoall in default
     test_init(argc, argv);
 
+#ifndef FJMPI
     if (vflag) {
 	utf_vname_show(stdout);
     }
+#endif
     MPI_Type_size(MPI_DOUBLE, &tsz);
     sz = length*nprocs*tsz;
     sendbuf = malloc(sz);
@@ -60,7 +65,10 @@ main(int argc, char** argv)
 	       sendbuf, recvbuf, tsz, length, sz, nprocs, iteration, sflag); fflush(stdout);
     }
     if (sendbuf == NULL || recvbuf == NULL) {
-	MYPRINT {printf("Cannot allocate buffers: sz=%ldMiB * 2\n", (uint64_t)(((double)sz)/(1024.0*1024.0))); }
+	MYPRINT {
+	    printf("Cannot allocate buffers: sz=%ldMiB * 2\n", (uint64_t)(((double)sz)/(1024.0*1024.0)));
+	    fflush(stdout);
+	}
 	exit(-1);
     }
     for (i = 0; i < length*nprocs; i++) {
@@ -90,9 +98,9 @@ main(int argc, char** argv)
 	    }
 	}
 	if (errs) {
-	    printf("[%d] MPI_Reduce: Errors = %d\n", myrank, errs);
+	    printf("[%d] MPI_Reduce: Errors = %d\n", myrank, errs); fflush(stdout);
 	} else {
-	    MYPRINT { printf("MPI_Reduce: No errors\n"); }
+	    MYPRINT { printf("MPI_Reduce: No errors\n"); fflush(stdout); }
 	}
     }
     if (sflag & 0x4) {
@@ -109,9 +117,9 @@ main(int argc, char** argv)
 	    }
 	}
 	if (errs) {
-	    printf("[%d] MPI_Allreduce: Errors = %d\n", myrank, errs);
+	    printf("[%d] MPI_Allreduce: Errors = %d\n", myrank, errs); fflush(stdout);
 	} else {
-	    MYPRINT { printf("MPI_Allreduce: No errors\n"); }
+	    MYPRINT { printf("MPI_Allreduce: No errors\n"); fflush(stdout); }
 	}
     }
     if (sflag & 0x8) {
