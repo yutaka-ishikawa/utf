@@ -26,6 +26,8 @@ all: $(TARGET)
 install:
 	[ -d $(INSTDIR)/lib ] || mkdir $(INSTDIR)/lib
 	$(INSTALL) $(BUILDDIR)/libmpi_vbg.so $(INSTDIR)/lib
+	$(INSTALL) -m 0555 mpich_exec $(INSTDIR)/bin
+	$(INSTALL) -m 0666 mpich.env $(INSTDIR)/lib
 
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
