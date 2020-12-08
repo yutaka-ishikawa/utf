@@ -160,6 +160,7 @@ utf_rndz_done(int pos)
     --minfo->scntr->inflight;
     if (req->notify) req->notify(req, 1);
     if (req->reclaim) {
+	req->reclaim = 0;
 	utf_sendreq_free(req); /* req->state is reset to REQ_NONE */
     } else {
 	req->state = REQ_DONE;
@@ -349,6 +350,7 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 	    }
 	    if (req->notify) req->notify(req, 1);
 	    if (req->reclaim) {
+		req->reclaim = 0;
 		utf_sendreq_free(req); /* req->state is reset to REQ_NONE */
 	    } else {
 		req->state = REQ_DONE;
