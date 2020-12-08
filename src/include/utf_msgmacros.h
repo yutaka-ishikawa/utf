@@ -433,8 +433,7 @@ rget_start(struct utf_msgreq *req)
 	    abort();
 	}
     }
-//    DEBUG(DLEVEL_PROTO_RENDEZOUS) {
-    if (1) {
+    DEBUG(DLEVEL_PROTO_RENDEZOUS) {
 	int i;
 	size_t ssz = 0;
 	for (i = 0; i < req->rgetsender.nent; i++) {

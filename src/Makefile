@@ -13,7 +13,7 @@ SRC_VBGDIR  := ./vbg/
 INCDIR   := ./include
 BUILDDIR := ../build/
 INCLUDES += -I$(INCDIR)
-CFLAGS += -DUTF_DEBUG
+##CFLAGS += -DUTF_DEBUG
 TARGET   := $(BUILDDIR)/libutf.so
 
 PROGS = utf.so

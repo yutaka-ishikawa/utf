@@ -118,6 +118,7 @@ minfo_setup(struct utf_send_msginfo *minfo, int rank, uint64_t tag, uint64_t siz
 	    = minfo->rgetaddr.vcqid[0] = usp->svcqid;
 	sbufp->pkt.pyld.rndzdata.stadd[0]
 	    = minfo->rgetaddr.stadd[0] = utf_mem_reg(utf_info.vcqh, usrbuf, size);
+	sbufp->pkt.pyld.rndzdata.len[0] = size;
 	sbufp->pkt.pyld.rndzdata.nent = 1;
 	sbufp->pkt.hdr.pyldsz = MSG_RCNTRSZ;
 	sbufp->pkt.hdr.rndz = MSG_RENDEZOUS;
@@ -204,7 +205,8 @@ utf_recv(void *buf, size_t size, int src, int tag,  UTF_reqid *ridx)
 	req = utf_idx2msgreq(idx);
 	if (req->rndz) {  /* rendezvous message */
 	    req->buf = buf;
-	    req->rcvexpsz = size;
+	    //req->rcvexpsz = size; 2020/12/08
+	    req->usrreqsz = size;
 	    rget_start(req);
 	} else if (req->state == REQ_DONE) {
 	    cpsz = size < req->hdr.size ? size : req->hdr.size;
@@ -230,7 +232,8 @@ utf_recv(void *buf, size_t size, int src, int tag,  UTF_reqid *ridx)
 	req->hdr.src = src; req->hdr.tag = tag;
 	/* req->hdr.size = size; req->hdr.size will be set at the message arrival */
 	req->buf = buf;
-	req->rcvexpsz = size;
+	//req->rcvexpsz = size;  2020/12/08
+	req->usrreqsz = size;
 	req->ustatus = REQ_NONE; req->state = REQ_PRG_NORMAL;
 	req->type = REQ_RECV_EXPECTED;	req->rsize = 0;
 	utf_msglst_append(&utf_explst, req);
