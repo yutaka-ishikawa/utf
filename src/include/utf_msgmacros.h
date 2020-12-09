@@ -488,12 +488,6 @@ rget_continue(struct utf_msgreq *req)
 		   req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
 		   req->rgetsender.stadd[0], sidx);
     }
-    utf_printf("%s: Continueing Rendezous reqsize(0x%lx) "
-	       "rvcqid(0x%lx) lcl_stadd(0x%lx) rmt_stadd(0x%lx) "
-	       "sidx(%d)\n",
-	       __func__, req->rcvexpsz,
-	       req->rgetsender.vcqid[0], req->bufinfo.stadd[0],
-	       req->rgetsender.stadd[0], sidx);
     if (req->rgetsender.nent == 1) {
 	restsz = req->rcvexpsz - req->rsize;
 	transsz = (restsz > TOFU_RMA_MAXSZ) ? TOFU_RMA_MAXSZ : restsz;

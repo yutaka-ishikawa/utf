@@ -6,7 +6,7 @@
 
 #define PROG_PINGPING	"pingping"
 #define PROG_PINGPONG	"pingpong"
-#define BSIZE		(16*1024*1024)	// max
+#define BSIZE		(1024*1024*1024)	// max 1 GiB
 #define MSGSIZE		0	// default
 #define ITER		100	// default
 
@@ -117,18 +117,19 @@ myinit()
 
 #define CLK2USEC(tm)	((double)(tm) / ((double)hz/(double)1000000))
 void
-show(int len, uint64_t tm0)
+show(char *bname, int len, uint64_t tm0)
 {
     UTF_reqid	reqid;
     int	rc;
 
     if (myrank == 0) {
-	uint64_t	tm1, hz;
+	uint64_t	tm1, tm_max, hz;
 	UTF_CALL(err1, rc, utf_recv, &tm1, sizeof(uint64_t), 1, 0, &reqid);
 	UTF_CALL(err3, rc, utf_wait, reqid);
 	hz = tick_helz(0);
-	printf("%d,%8.3f,%8.3f,%8.3f,%8.3f\n", len, CLK2USEC(tm0), CLK2USEC(tm1),
-		 (float)len/CLK2USEC(tm0), (float)len/CLK2USEC(tm0));
+	tm_max = tm0 > tm1 ? tm0: tm1;
+	printf("@%s-utf, %d,%8.3f,%8.3f\n", 
+	       bname, len, CLK2USEC(tm_max), (float)len/CLK2USEC(tm_max));
     } else {
 	UTF_CALL(err2, rc, utf_send, &tm0, sizeof(uint64_t), 0, 0, &reqid);
 	UTF_CALL(err3, rc, utf_wait, reqid);
@@ -173,7 +174,7 @@ main(int argc, char **argv)
     }
     if (!sflag && myrank == 0) {
 	printf("%s: length(%d) mlength(%d)\n", progname, length, mlength);
-	printf("%s: iteration=%d %s\n#length, usec, usec, MB/sec\n", progname, iteration, optstring);
+	printf("%s: iteration=%d %s\n#name, length, usec, MB/sec\n", progname, iteration, optstring);
     }
     myinit();
     /**/
@@ -181,16 +182,16 @@ main(int argc, char **argv)
 	int	l;
 	prog(0, iteration, &st, &et);
 	tm = (et - st)/iteration;
-	show(0, tm);
-	for (l = 1; l <= mlength; l <<= 1) {
+	show(progname, 0, tm);
+	for (l = length; l <= mlength; l <<= 1) {
 	    prog(l, iteration, &st, &et);
 	    tm = (et - st)/iteration;
-	    show(l, tm);
+	    show(progname, l, tm);
 	}
     } else {
 	prog(length, iteration, &st, &et);
 	tm = (et - st)/iteration;
-	show(length, tm);
+	show(progname, length, tm);
     }
     /* timer report */
     mytmrfinalize(progname);

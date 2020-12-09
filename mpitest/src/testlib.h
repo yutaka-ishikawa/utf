@@ -7,6 +7,7 @@
     }				\
 } while(0)
 
+#if 0
 #define MYVERBOSE(...) do {	\
     if (Vflag) {		\
 	printf("[%d]: ", myrank);	\
@@ -15,6 +16,7 @@
 	fprintf(stderr, __VA_ARGS__); fflush(stdout); fflush(stderr);	\
     }				\
 } while(0)
+#endif
 
 extern int	vflag, Vflag, dflag, mflag, sflag, Mflag, pflag, wflag, myrank, nprocs, iteration;
 extern size_t	length, mlength;

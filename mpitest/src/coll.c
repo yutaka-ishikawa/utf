@@ -69,23 +69,24 @@ main(int argc, char** argv)
     }
     if (sflag & 0x1) {
 	for (i = 0; i < iteration; i++) {
-	    MYPRINT { MYVERBOSE("Start MPI_Barier %ldth\n", i); }
+	    MYPRINT { VERBOSE("Start MPI_Barier %ldth\n", i); }
 	    MPI_Barrier(MPI_COMM_WORLD);
-	    MYPRINT { MYVERBOSE("End of MPI_Barrier %ld\n", i); }
+	    MYPRINT { VERBOSE("End of MPI_Barrier %ld\n", i); }
 	}
     }
     if (sflag & 0x2) {
 	for (i = 0; i < iteration; i++) {
-	    MYPRINT { MYVERBOSE("Start MPI_Reduce %ldth\n", i); }
+	    int	j;
+	    MYPRINT { VERBOSE("Start MPI_Reduce %ldth\n", i); }
 	    MPI_Reduce(sendbuf, recvbuf, length, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
-	    MYPRINT { MYVERBOSE("End of MPI_Reduce %ld\n", i); }
+	    MYPRINT { VERBOSE("End of MPI_Reduce %ld\n", i); }
 	    if (myrank == 0) {
 		errs += verify_reduce(sendbuf, recvbuf, length);
 	    }
 	    /* reset value */
-	    for (i = 0; i < length*nprocs; i++) {
-		sendbuf[i] = myrank + i + 1;
-		recvbuf[i] = -1;
+	    for (j = 0; j < length*nprocs; i++) {
+		sendbuf[j] = myrank + j + 1;
+		recvbuf[j] = -1;
 	    }
 	}
 	if (errs) {
@@ -96,15 +97,16 @@ main(int argc, char** argv)
     }
     if (sflag & 0x4) {
 	for (i = 0; i < iteration; i++) {
-	    MYPRINT { MYVERBOSE("Start MPI_Allreduce %ldth\n", i); }
+	    int	j;
+	    MYPRINT { VERBOSE("Start MPI_Allreduce %ldth\n", i); }
 	    // MPI_Allreduce(MPI_IN_PLACE, sendbuf, length, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 	    MPI_Allreduce(sendbuf, recvbuf, length, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-	    MYPRINT { MYVERBOSE("End of MPI_Allreduce %ld\n", i); }
+	    MYPRINT { VERBOSE("End of MPI_Allreduce %ld\n", i); }
 	    errs += verify_reduce(sendbuf, recvbuf, length);
 	    /* reset value */
-	    for (i = 0; i < length*nprocs; i++) {
-		sendbuf[i] = myrank + i + 1;
-		recvbuf[i] = -1;
+	    for (j = 0; j < length*nprocs; j++) {
+		sendbuf[j] = myrank + j + 1;
+		recvbuf[j] = -1;
 	    }
 	}
 	if (errs) {
@@ -115,23 +117,23 @@ main(int argc, char** argv)
     }
     if (sflag & 0x8) {
 	for (i = 0; i < iteration; i++) {
-	    MYPRINT { MYVERBOSE("Start MPI_Gather %ldth\n", i); }
+	    MYPRINT { VERBOSE("Start MPI_Gather %ldth\n", i); }
 	    MPI_Gather(sendbuf, length, MPI_INT, recvbuf, length, MPI_INT, 0, MPI_COMM_WORLD);
-	    MYPRINT { MYVERBOSE("End of MPI_Gather %ldth\n", i); }
+	    MYPRINT { VERBOSE("End of MPI_Gather %ldth\n", i); }
 	}
     }
     if (sflag & 0x10) {
 	for (i = 0; i < iteration; i++) {
-	    MYVERBOSE("Start of Alltoall %ldth\n", i);
+	    VERBOSE("Start of Alltoall %ldth\n", i);
 	    MPI_Alltoall(sendbuf, length, MPI_INT, recvbuf, length, MPI_INT, MPI_COMM_WORLD);
-	    MYVERBOSE("End of Alltoall %ldth\n", i);
+	    VERBOSE("End of Alltoall %ldth\n", i);
 	}
     }
     if (sflag & 0x20) {
 	for (i = 0; i < iteration; i++) {
-	    MYPRINT { MYVERBOSE("Start MPI_Scatter %ldth\n", i); }
+	    MYPRINT { VERBOSE("Start MPI_Scatter %ldth\n", i); }
 	    MPI_Scatter(sendbuf, length, MPI_INT, recvbuf, length, MPI_INT, 0, MPI_COMM_WORLD);
-	    MYPRINT { MYVERBOSE("End of MPI_Scatter %ldth\n", i); }
+	    MYPRINT { VERBOSE("End of MPI_Scatter %ldth\n", i); }
 	}
     }
 

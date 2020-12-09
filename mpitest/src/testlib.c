@@ -44,7 +44,7 @@ test_init(int argc, char **argv)
 
     mypid = getpid();
 
-    while ((opt = getopt(argc, argv, "d:vVi:l:m:s:t:L:M:pw")) != -1) {
+    while ((opt = getopt(argc, argv, "d:vV:i:l:m:s:t:L:M:pw")) != -1) {
 	switch (opt) {
 	case 'd': /* debug */
 	    dflag = atoi(optarg);
@@ -54,8 +54,8 @@ test_init(int argc, char **argv)
 	case 'v': /* verbose */
 	    vflag = 1;
 	    break;
-	case 'V': /* verbose */
-	    Vflag = 1;
+	case 'V': /* verify */
+	    Vflag = atoi(optarg);
 	    break;
 	case 'i': /* iteration */
 	    iteration = atoi(optarg);
