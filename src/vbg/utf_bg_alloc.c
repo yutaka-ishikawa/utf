@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 XXXXXXXXXXXXXXXXXXXXXXXX.
+ * Copyright (C) 2020 RIKEN, Japan. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -13,63 +13,73 @@
  */
 
 /*
- * Include of head files
+ * Includes of header files
  */
 #include "utf_bg_alloc.h"
 
 /*
- * 外部変数の宣言
+ * Declares variables
  */
 static bool utf_bg_first_call=true;
-            /* 最初の呼び出しかどうかの判断
-             * 最初の呼び出しはMPI_COMM_WORLDに対してものと想定する。
-             * 最初の呼び出し時には、以下を行う。
-             * - mmap領域の作成
-             * - MPI_COMM_WORLDの始点ゲートを保存
+            /* Whether it is the first call to this function.
+             * Expects the first call to be to MPI_COMM_WORLD.
+             * The first call does the following:
+             * - Creates mmap buffer
+             * - Saves the start gate of the barrier network
+             *   for MPI_COMM_WORLD
              */
 bool utf_bg_intra_node_barrier_is_tofu=true;
-            /* 真:ノード内ハードバリア 偽:ノード内ソフトバリア */
+            /* Whether the barrier in the node is Tofu barrier or not
+             * true :  Tofu barrier
+             * false : Software barrier using shared memory
+             */
 utf_coll_group_detail_t *utf_bg_detail_info;
-            /* utf_bg_init,utf_barrier,utf_(all)reduce,向けのバリア情報 */
+            /* Information for one barrier network handing between functions */
 utf_coll_group_detail_t *utf_bg_detail_info_first_alloc;
-            /* utf_bg_alloc初回呼び出し時に作成されたMPI_COMM_WORLDバリア情報*/
-static int my_jobid=(-1);                      /* 自ジョブのジョブID */
+            /* Information about the barrier network created
+             * by the first utf_bg_alloc function call
+             */
+static int my_jobid=(-1);                      /* Own job ID */
 static char my_hostname[64];
 static int ppn_job;
 
-utf_bg_mmap_file_info_t utf_bg_mmap_file_info; /* mmap用ファイルの情報 */
+utf_bg_mmap_file_info_t utf_bg_mmap_file_info; /* Information about a mmap file */
 
 static unsigned long int utf_bg_alloc_flags = 0UL;
 static int max_intra_node_procs_for_hb = UTF_BG_ALLOC_MAX_PROC_IN_NODE_FOR_HB;
 utofu_tni_id_t utf_bg_next_tni_id;
 uint64_t utf_bg_alloc_count;
-            /* utf_bg_alloc呼び出し回数 == utf_bg_allocがUTF_SUCCESSで返った数 */
+            /* The number of times the utf_bg_alloc function was called, or
+             * the number of times the utf_bg_alloc function returned in UTF_SUCCESS
+             */
+
+size_t *utf_bg_alloc_intra_world_indexes=NULL; /* vpid list in my node */
 
 #if defined(DEBUGLOG)
-static size_t my_rankset_index; /* Rank of the process */
+static size_t my_rankset_index; /* Own process's rank */
 static int xonlyflag = 0;
 #endif
 #if defined(UTF_BG_UNIT_TEST)
 /*
- * 仮デバッグマクロ
- * UTF本体結合するまでのテスト用
+ * Temporary macros for debugging
+ * For testing until it will merge with other UTF functions
  */
 int mypid;
 int utf_dflag;
 #endif
 
 /*
- * 内部関数
- * 内部マクロ処理
+ * Internal functions
+ * Definitions of internal macros
  */
 
 /*
- * アクシステーブル
- * ノード内プロセス情報
- * の作成
+ * Creates the following
+ * - Data structures for each axis
+ * - Information about the processes in the node
  */
 
-/* Get the nodeid from rankset */
+/* Gets the node ID from rankset */
 #define GET_NODEID_FROM_RANKSET(nodeid,ranksetposition)               \
 {                                                                     \
     nodeid=0U;                                                        \
@@ -82,7 +92,7 @@ int utf_dflag;
              ((uint32_t)coords->s.y << UTF_BG_ALLOC_BITSFT_COORD_Y) | \
              ((uint32_t)coords->s.x << UTF_BG_ALLOC_BITSFT_COORD_X);  \
 }
-/* Get the nodeid from VBG ID */
+/* Gets the node ID from VBG ID */
 #define GET_NODEID_FROM_VCQ(nodeid,ranksetposition)                  \
 {                                                                    \
     nodeid = (uint32_t)( (ranksetposition & UTF_BG_ALLOC_MSK_6DADDR) \
@@ -91,40 +101,42 @@ int utf_dflag;
 
 
 
-/* Compare my 3D logical address to peer's 3D logical address */
+/* Compares own logical 3D address to peer's logical 3D address */
 #define COMPARE_LOGADDR(my,temp) \
 { \
     if (my.s.z == temp.s.z) {                                      \
         if (my.s.y == temp.s.y) {                                  \
             if (my.s.x == temp.s.x) {                              \
-                /* 自プロセスと同じノードを検出。 */               \
+                /* Detects the same node as own process */         \
                 nodeinfo[i].axis_kind = UTF_BG_ALLOC_AXIS_IN_NODE; \
             }                                                      \
             else {                                                 \
-                /* Xのみが異なる。 */                              \
+                /* On the same X axis */                           \
                 nodeinfo[i].axis_kind = UTF_BG_ALLOC_AXIS_ON_X;    \
             }                                                      \
         }                                                          \
         else if (my.s.x == temp.s.x) {                             \
-            /* Yのみが異なる。 */                                  \
+            /* On the same Y axis */                               \
             nodeinfo[i].axis_kind = UTF_BG_ALLOC_AXIS_ON_Y;        \
         }                                                          \
         else {                                                     \
-            /* 2つの軸が異なる。 */                                \
+            /* Not on the same axis           */                   \
+            /* because two axes are different */                   \
             nodeinfo[i].axis_kind = UTF_BG_ALLOC_AXIS_OFF_AXES;    \
         }                                                          \
     }                                                              \
     else if ( (my.s.y == temp.s.y) &&                              \
               (my.s.x == temp.s.x) ) {                             \
-        /* Zのみが異なる。 */                                      \
+        /* On the same Y axis */                                   \
         nodeinfo[i].axis_kind = UTF_BG_ALLOC_AXIS_ON_Z;            \
     }                                                              \
     else {                                                         \
-        /* 2つ以上の軸が異なる。 */                                \
+        /* Not on the same axis */                                 \
         nodeinfo[i].axis_kind = UTF_BG_ALLOC_AXIS_OFF_AXES;        \
     }                                                              \
-    /* 論理3次元アドレスの最大値、最小値を記録する。*/             \
-    /* iを再利用して良い。*/                                       \
+    /* Records maximum and minimum values */                       \
+    /* of logical 3D coordinates */                                \
+    /* (i is reusable) */                                          \
     for (i=(size_t)UTF_BG_ALLOC_AXIS_ON_X;                         \
          i<=(size_t)UTF_BG_ALLOC_AXIS_ON_Z;i++) {                  \
         /* a[0->X,1->Y,2->Z] */                                    \
@@ -146,10 +158,11 @@ int utf_dflag;
 }
 
 /*
- * 軸毎の軸に所属するノードの情報配列を物理6次元アドレス順に並び替える
+ * Sorts nodes, which are elements of the array for each axis,
+ * in physical 6D coordinate order
  *
- * node_a (IN) ノード情報
- * node_b (IN) ノード情報
+ * node_a (IN) Information about node_a
+ * node_b (IN) Information about node_a
  */
 static int sort_nodeinfo_by_phy_6d_addr(const void *node_a,const void *node_b)
 {
@@ -183,18 +196,19 @@ static int sort_nodeinfo_by_phy_6d_addr(const void *node_a,const void *node_b)
 }
 
 /*
- * ノード数、ノード内プロセス数情報、ノード内プロセスの中での自プロセスの位置
- * を計算する。
+ * Gets the number of nodes, the number of processes in the node, and
+ * the position of the own process in the node.
  *
- * rankset      (IN)  バリアに参加する全てのプロセスのVCQのIDの配列
- *   (IN)     len       Total number of the process.
- *   (IN)     my_index  Rank of the process.
- * my_nodeid    (IN)  自プロセスが存在するノードのID
- * oneppn       (OUT) ノード内プロセスが1か2以上かの情報
- * num_nodes_job(OUT) ノード数
- * target_index (OUT) ノード内プロセスの中での自プロセスの位置
+ * rankset      (IN)  An array of ranks in MPI_COMM_WORLD for the processes
+ *                    belonging to the barrier network to be created
+ * len          (IN)  Total number of the processes
+ * my_index     (IN)  Rank in the barrier network
+ * my_nodeid    (IN)  Node ID where the own process is located
+ * oneppn       (OUT) Whether the number of processes in the node is 1
+ * num_nodes_job(OUT) Number of nodes
+ * target_index (OUT) Index of own process in the node
  */
-static int check_ppn_make_nodenum_make_targer_index(
+static int check_ppn_make_nodenum_make_target_index(
                                                     uint32_t *rankset,
                                                     size_t len,
                                                     size_t my_index,
@@ -206,23 +220,22 @@ static int check_ppn_make_nodenum_make_targer_index(
 
     if (2 <= ppn_job) {
         /*
-         * ノード内プロセスの中での自プロセスの位置を計算
-         * "何番目"ではなくノード内プロセス配列の添え字になるように計算する。
+         * Gets the position of own process in the node.
+         * Calculates to be the index of the array of processes in the node.
          *
          * rankset
          * +-----------------------------------+
          * | a| a| b| b| c| c| d| d| e| e| f| f|
          * +-----------------------------------+
          *   0  1  2  3  4  5  6  7  8  9 10 11
-         *   0  1  0  1  0  1  0  1  0  1  0  1 ->target_idex
+         *   0  1  0  1  0  1  0  1  0  1  0  1 ->target_index
          * <--------------- len --------------->
-         *  my_index=5とすると、target_indexは1
-         *  ransetにおけるノード間で通信するプロセスのindexは
-         *  1,3,5(自分),7,9,11となる。
+         *  If my_index is 5, the indexes of the processes communicating
+         *  between the nodes are 1,3,5 (self), 7,9,11 (target_index is 1).
          *
          */
         /*
-         * ノード数の計算
+         * Gets the number of nodes.
          * rankset
          * +-----------------------------------+
          * | a| a| b| b| b| c| c| c| a| d| d| b|
@@ -233,7 +246,8 @@ static int check_ppn_make_nodenum_make_targer_index(
          * +-----------------------------------+
          * | a| b| c| d|-1|-1|-1|-1|-1|-1|-1|-1|
          * +-----------------------------------+
-         * <-ノード数-->
+         * <- number -->
+         *   of nodes
          * <--------------- len --------------->
          *
          * 160,000 x 4 x sizeof(uint32_t) = 2,560,000 -> 2.5MB
@@ -266,7 +280,7 @@ static int check_ppn_make_nodenum_make_targer_index(
                 if (save_nodeids[i] == temp_nodeid) { break; }
             }
             if (i == *num_nodes_job) {
-                /* 新しいノードを発見した */
+                /* It's a new node */
                 save_nodeids[*num_nodes_job] = temp_nodeid;
                 (*num_nodes_job)++;
             }
@@ -281,7 +295,7 @@ static int check_ppn_make_nodenum_make_targer_index(
     return UTF_SUCCESS;
 }
 
-/* Get the 6D physical coordinates from the nodeid */
+/* Gets the 6D physical coordinates from the nodeid */
 #define GET_PHY_6D_ADDR_FROM_NODEID(nodeid,addr)                               \
 {                                                                              \
     addr.s.x = (uint8_t)                                                       \
@@ -299,12 +313,13 @@ static int check_ppn_make_nodenum_make_targer_index(
 }
 
 /*
- * make each of nodes information which is belong to this axis
+ * Creates node information belonging to each axis
  * which is in "utf_bf_alloc_proc_info_t"
  *
- *   (IN)  rankset 
- *   (OUT) dst  A pointer to each of nodes information which is belong to axes
- *   (IN)  src  A pointer to the array of each of processes information.
+ *   (IN)  rankset An array of ranks in MPI_COMM_WORLD for the processes
+ *                 belonging to the barrier network to be created
+ *   (OUT) dst  A pointer to node information belonging to each axis
+ *   (IN)  src  A pointer to the array of each process information
  */
 static void set_axis_node_info(
                                uint32_t *rankset,
@@ -327,14 +342,16 @@ static void set_axis_node_info(
 }
 
 /*
- * make each of axes information
+ * Creates information for each axis
  *
- * rankset      (IN)  バリアに参加する全てのプロセスのVCQのIDの配列
- *   (IN)     len       Total number of the process.
- *   (IN)     my_index  Rank of the process.
- *   (OUT)    axisptr   A pointer to the array of each of axes information.
- * intrainfo    (OUT) ノード内プロセス情報領域アドレスを返すポインタ
- * errcase      (OUT) エラー情報
+ * rankset      (IN)  An array of ranks in MPI_COMM_WORLD for the processes
+ *                    belonging to the barrier network to be created
+ *   (IN)     len       Total number of the processes.
+ *   (IN)     my_index  Rank in the barrier network
+ *   (IN)     max_ppn   Maximum number of processes in the node.
+ *   (OUT)    axisptr   A pointer to an array of axis information.
+ * intrainfo    (OUT) Pointer to process information in the node
+ * errcase      (OUT) Error type
  *
  */
 int make_axes_and_intra_node_infos(
@@ -346,7 +363,7 @@ int make_axes_and_intra_node_infos(
                                    utf_bg_intra_node_detail_info_t **intrainfo,
                                    uint8_t *errcase)
 {
-    int rc;
+    int rc = UTF_SUCCESS;
     bool found,toomany,unmatch,oneppn=false,hexa;
     size_t i,s,target_index=0;
     size_t num_nodes_job=0,num_nodes=0,my_nodeinfo_index=0,procinfo_size,end_axis;
@@ -360,26 +377,36 @@ int make_axes_and_intra_node_infos(
 #endif
     utf_bg_intra_node_detail_info_t *intraptr;
 
-    /* 自プロセスのノードIDと3次元アドレスを求める */
+    /* Gets the node ID and logical 3D address of own process */
     GET_NODEID_FROM_RANKSET(my_nodeid,rankset[my_index]);
 
     /*
-     * calculate number of nodes.
-     * make each of nodes information.
+     * Calculates number of the nodes.
+     * Creates information for each node.
      */
 
-    /* ノード内プロセス数の最大値を問い合わせる */
+    /* Gets the maximum number of processes in a node */
     toomany = false;
     if (utf_bg_first_call) {
         ppn_job = max_ppn;
+        utf_bg_alloc_intra_world_indexes =
+            (size_t *)malloc(sizeof(size_t) * UTF_BG_MAX_PROC_IN_NODE);
+        if (NULL == utf_bg_alloc_intra_world_indexes) {
+             *intrainfo = NULL;
+             FREEAREA_AXES();
+             return UTF_ERR_OUT_OF_MEMORY;
+        }
+        for (i=0UL;i<UTF_BG_MAX_PROC_IN_NODE;i++) {
+            utf_bg_alloc_intra_world_indexes[i] = UTF_BG_ALLOC_INVALID_INDEX;
+        }
 #if defined(DEBUGLOG)
-        fprintf(stderr,"DEBUGLOG %s:%s:my_index=%zu: utf_bg_first_call=%d [UTF_BG_UNDER_MPICH_TOFU ver4.0] rankset is VPID version. ppn_job=%d \n"
+        fprintf(stderr,"DEBUGLOG %s:%s:my_index=%zu: utf_bg_first_call=%d [UTF_BG_UNDER_MPICH_TOFU ver8.0] rankset is VPID version. ppn_job=%d \n"
                 ,my_hostname,__func__,my_index
                 ,utf_bg_first_call,ppn_job
         );
 #endif
     }
-    rc = check_ppn_make_nodenum_make_targer_index(rankset,
+    rc = check_ppn_make_nodenum_make_target_index(rankset,
                                                   len,
                                                   my_index,
                                                   my_nodeid,
@@ -387,7 +414,7 @@ int make_axes_and_intra_node_infos(
                                                   &num_nodes_job,
                                                   &target_index);
 #if defined(DEBUGLOG)
-    fprintf(stderr,"DEBUGLOG %s:%s:my_index=%zu: check_ppn_make_nodenum_make_targer_index=%d oneppn=%d num_nodes_job=%zu target_index=%zu \n"
+    fprintf(stderr,"DEBUGLOG %s:%s:my_index=%zu: check_ppn_make_nodenum_make_target_index=%d oneppn=%d num_nodes_job=%zu target_index=%zu \n"
         ,my_hostname,__func__,my_index
         ,rc,oneppn,num_nodes_job,target_index
     );
@@ -398,7 +425,7 @@ int make_axes_and_intra_node_infos(
         return rc;
     }
 
-    /* ranksetの中の自プロセスと同じノードのプロセスのindex */
+    /* Indexes of processes on the same node as own process in rankset */
     my_node_indexes = (size_t *)malloc(sizeof(size_t) * ppn_job);
     if (NULL == my_node_indexes) {
         *intrainfo = NULL;
@@ -437,55 +464,64 @@ int make_axes_and_intra_node_infos(
         }
         assert(i < num_nodes_job);
         if (found) {
-            /* 同じノードが存在。*/
-            if ((size_t)UTF_BG_ALLOC_MAX_PROC_IN_NODE <= nodeinfo[i].size) {
-                /* 49ppn以上が指定された。*/
+            /* Nodes are the same. */
+            if ((size_t)UTF_BG_MAX_PROC_IN_NODE < nodeinfo[i].size) {
+                /* 49 or more was specified for the number of processes in the node */
                 *intrainfo = NULL;
                 FREEAREA_AXES();
                 return UTF_ERR_INTERNAL;
             }
-            /* ノードIDが自プロセスのノードIDと一致するか？ */
+            /* Whether the node ID is the same as that of own process */
             if (my_nodeid == nodeid) {
                 assert(nodeinfo[i].size < ppn_job);
                 my_node_indexes[nodeinfo[i].size] = s;
+                if (utf_bg_first_call) {
+                    utf_bg_alloc_intra_world_indexes[nodeinfo[i].size] =
+                        rankset[s];
+                }
             }
-            /* ノード間代表プロセスのindexの更新 */
+            /* Updates index of leader process in the node */
             if (nodeinfo[i].size == target_index) {
                 nodeinfo[i].manager_index = s;
             }
-            /* ノード内プロセス数の更新 */
+            /* Updates the number of processes in the node */
             nodeinfo[i].size++;
             if ((size_t)max_intra_node_procs_for_hb <
                 nodeinfo[i].size) {
-                /* 5ppn以上のノードを発見したため、記憶する。*/
+                /* Exceeded the maximum number of processes in a node. */
                 toomany = true;
             }
         }
         else {
-            /* 新しいノード。*/
+            /* Node that have not appeared so far */
             nodeinfo[i].nodeid = nodeid;
-            /* ノードIDが自プロセスのノードIDと一致するか？ */
+            /* Whether the node ID is the same as that of own process */
             if (my_nodeid == nodeid) {
                 my_nodeinfo_index = num_nodes;
                 assert(nodeinfo[i].size < ppn_job);
                 my_node_indexes[nodeinfo[i].size] = s;
+                if (utf_bg_first_call) {
+                    utf_bg_alloc_intra_world_indexes[nodeinfo[i].size] =
+                        rankset[s];
+                }
             }
-            /* ノード間代表プロセスのindexの更新 */
+            /* Updates index of leader process in the node */
             nodeinfo[i].manager_index = s;
-            /* ノード内プロセス数の更新 */
+            /* Updates the number of processes in the node */
             nodeinfo[i].size++;
             COMPARE_LOGADDR(utf_info.vname[rankset[my_index]].xyz,
                             utf_info.vname[rankset[s]].xyz);
             num_nodes++;
             assert(num_nodes <= num_nodes_job);
-        } /* 新しいノード。 */
-    } /* s */
+        }
+    }
 
 #if defined(DEBUGLOG)
     for (i=0UL;i<(size_t)ppn_job;i++) {
-        fprintf(stderr,"DEBUGLOG %s:%s:my_index=%zu:MYNODEINFO %zu/%zu my_node_indexes=%zu \n"
+        fprintf(stderr,"DEBUGLOG %s:%s:my_index=%zu:MYNODEINFO %zu/%zu my_node_indexes=%zu utf_bg_alloc_intra_world_indexes=%zu \n"
             ,my_hostname,__func__,my_index
             ,i,(size_t)ppn_job,my_node_indexes[i]
+            ,utf_bg_alloc_intra_world_indexes[i]
         );
     }
     for (i=0UL;i<num_nodes;i++) {
@@ -502,7 +538,7 @@ int make_axes_and_intra_node_infos(
 #endif
 
     /*
-     * make each of processes information.
+     * Creates information for each process.
      */
     intraptr = (utf_bg_intra_node_detail_info_t *)malloc(
        sizeof(utf_bg_intra_node_detail_info_t));
@@ -524,9 +560,19 @@ int make_axes_and_intra_node_infos(
     memset((void *)procinfo,0,sizeof(utf_bf_alloc_proc_info_t) * len);
     procinfo_size = 0UL;
 
-    /* UTF_BG_ALLOC_AXIS_IN_NODE,UTF_BG_ALLOC_AXIS_MYSELFの作成。*/
-    /* ノード内プロセス情報の作成。*/
+    /* Creates UTF_BG_ALLOC_AXIS_IN_NODE and UTF_BG_ALLOC_AXIS_MYSELF */
+    /* Creates process information in the node */
     intraptr->size = (size_t)nodeinfo[my_nodeinfo_index].size;
+    intraptr->vpids = (size_t *)malloc(sizeof(size_t) * intraptr->size);
+    if (NULL == intraptr->vpids) {
+        free(intraptr);
+        *intrainfo = NULL;
+        FREEAREA_AXES();
+        return UTF_ERR_OUT_OF_MEMORY;
+    }
+    for (i=0UL;i<(size_t)intraptr->size;i++) {
+        *((intraptr->vpids) + i) = UTF_BG_ALLOC_INVALID_INDEX;
+    }
     for (s=0UL;s<nodeinfo[my_nodeinfo_index].size;s++) {
         (procinfo + procinfo_size)->nodeid =
             nodeinfo[my_nodeinfo_index].nodeid;
@@ -539,11 +585,22 @@ int make_axes_and_intra_node_infos(
             intraptr->intra_index = s;
         }
         (procinfo + procinfo_size)->index = my_node_indexes[s];
+        *((intraptr->vpids) + s) = rankset[my_node_indexes[s]];
         procinfo_size++;
         assert(procinfo_size <= len);
     }
 
-    /* UTF_BG_ALLOC_AXIS_ON_X,Y,Z,UTF_BG_ALLOC_AXIS_NUM_AXESの作成。*/
+#if defined(DEBUGLOG)
+    for (i=0UL;i<(size_t)intraptr->size;i++) {
+        fprintf(stderr,"DEBUGLOG %s:%s:my_index=%zu:MYNODEINFO %zu/%zu my_node_indexes=%zu vpid=%zu \n"
+            ,my_hostname,__func__,my_index
+            ,i,(size_t)ppn_job,my_node_indexes[i],*((intraptr->vpids) + i)
+        );
+    }
+#endif
+
+    /* Creates UTF_BG_ALLOC_AXIS_ON_X, UTF_BG_ALLOC_AXIS_ON_Y,
+     * UTF_BG_ALLOC_AXIS_ON_Z and UTF_BG_ALLOC_AXIS_NUM_AXES */
 
     unmatch = false;
     for (i=0UL;i<num_nodes;i++) {
@@ -560,7 +617,7 @@ int make_axes_and_intra_node_infos(
             continue;
         }
 
-        /* ここでは、絶対にノード内プロセス数が一致しているはず。*/
+        /* In this line, the number of processes in the node must match. */
         (procinfo + procinfo_size)->nodeid      = nodeinfo[i].nodeid;
         (procinfo + procinfo_size)->axis_kind   = nodeinfo[i].axis_kind;
         (procinfo + procinfo_size)->index = nodeinfo[i].manager_index;
@@ -582,19 +639,18 @@ int make_axes_and_intra_node_infos(
     }
 #endif
 
-    rc = UTF_SUCCESS;
     if (unmatch) {
         *errcase |= UTF_BG_ALLOC_UNMATCH_PROC;
         rc = UTF_BG_ALLOC_ERR_UNMATCH_PROC_PER_NODE;
     }
     if ( (!utf_bg_intra_node_barrier_is_tofu) &&
          (num_nodes < (size_t)UTF_BG_ALLOC_REQUIRED_NODE) ) {
-        /* ノード内ソフトバリア時にノード数が足りない。*/
+        /* Not enough nodes for shared memory communication in the node. */
         *errcase |= UTF_BG_ALLOC_TOO_FEW_NODE;
         rc = UTF_BG_ALLOC_ERR_TOO_FEW_NODE;
     }
     if ((toomany) && (utf_bg_intra_node_barrier_is_tofu)) {
-        /* ノード内プロセス数過多。*/
+        /* Too many processes in the node */
         *errcase |= UTF_BG_ALLOC_TOO_MANY_PROC;
         rc = UTF_BG_ALLOC_ERR_TOO_MANY_PROC_IN_NODE;
     }
@@ -604,7 +660,7 @@ int make_axes_and_intra_node_infos(
         return rc;
     }
 
-    /* 各軸の長さを計算。*/
+    /* Gets the length of each axis */
     for (i=(size_t)UTF_BG_ALLOC_AXIS_ON_X;
          i<=(size_t)UTF_BG_ALLOC_AXIS_ON_Z;i++) {
         (axisptr + i)->size =
@@ -641,12 +697,12 @@ int make_axes_and_intra_node_infos(
     }
 
     /*
-     * 軸毎の所属ノード情報の作成
+     * Creates node information belonging to each axis
      */
     if (num_nodes == (axisptr + UTF_BG_ALLOC_AXIS_ON_X)->size *
                      (axisptr + UTF_BG_ALLOC_AXIS_ON_Y)->size *
                      (axisptr + UTF_BG_ALLOC_AXIS_ON_Z)->size) {
-        /* ノード割り当てが六面体*/
+        /* The shape consisting of all nodes is a hexahedron */
         end_axis = (size_t)UTF_BG_ALLOC_AXIS_NUM_AXES;
         hexa = true;
     }
@@ -666,7 +722,8 @@ int make_axes_and_intra_node_infos(
 #endif
 
     if (!hexa) {
-        /* 6面体割り当てではないのでノード間は、一つの軸(X)に纏める。*/
+        /* Since the topology shape of all nodes does not match a hexahedron,
+         * it is considered to be on one axis (X). */
 #if defined(DEBUGLOG)
         fprintf(stderr,"DEBUGLOG %s:%s:my_index=%zu: ISNOT HEXA X=%zu->%zu Y=%zu->0 Z=%zu->0 \n"
             ,my_hostname,__func__,my_index
@@ -701,7 +758,8 @@ int make_axes_and_intra_node_infos(
         if ( hexa && ((size_t)UTF_BG_ALLOC_AXIS_OFF_AXES == s) ) { continue; }
         if ((size_t)UTF_BG_ALLOC_AXIS_MYSELF != s) {
             if ( !hexa && (s != (size_t)UTF_BG_ALLOC_AXIS_IN_NODE) ) {
-                /* 6面体割り当てではないのでノード間は、一つの軸(X)に纏める。*/
+                /* Since the topology shape of all nodes does not match a hexahedron,
+                 * it is considered to be on one axis (X). */
                 s = (size_t)UTF_BG_ALLOC_AXIS_ON_X;
             }
             set_axis_node_info(
@@ -728,8 +786,8 @@ int make_axes_and_intra_node_infos(
     }
 
     /*
-     * ノード情報のソート
-     * ノード間軸(X,Y,Z)のみをソートする。
+     * Sorts node information
+     * Sorts for each axis (X, Y, and Z)
      */
     for (i=(size_t)UTF_BG_ALLOC_AXIS_ON_X;i<end_axis;i++) {
         qsort((axisptr + i)->nodeinfo,
@@ -738,7 +796,8 @@ int make_axes_and_intra_node_infos(
               sort_nodeinfo_by_phy_6d_addr);
     }
 
-    /* ソート済の軸毎の所属ノード情報から自プロセスの位置を見つける。*/
+    /* After sorting, gets the position of own process from the node information
+     * of each axis. */
     for (i=(size_t)UTF_BG_ALLOC_AXIS_IN_NODE;i<end_axis;i++) {
         for ((axisptr + i)->nodeinfo_index=0UL;
              (axisptr + i)->nodeinfo[(axisptr + i)->nodeinfo_index].index !=
@@ -790,23 +849,25 @@ int make_axes_and_intra_node_infos(
 }
 
 /*
- * バタフライネットワークの構築
+ * Builds a butterfly network
  */
 
-/* Freeing temporary data buffers */
+/* Frees temporary data buffers */
 #define FREEAREA_BUTTERFLY()              \
 {                                         \
   if (NULL != sender)  { free(sender); }  \
   if (NULL != reciver) { free(reciver); } \
 }
 
-/* Get peer process for my process on power of two */
+/* Gets the peer process of own process according to the rules
+ * of butterfly communication */
 #define GET_PAIR_OF_POWEROFTWO(index,on,gates,i,result)           \
 {                                                                 \
     result = ( (index - on) ^  (1 << (gates - i - 1)) ) + on ;    \
 }
 
-/* バタフライネットワークシーケンスの2冪部分の送受信プロセスを求める。 */
+/* Get the send / receive peer process of own process
+ * according to the rules of butterfly communication */
 #define SET_PAIR_POWEROFTWO(on_val)                               \
 for (i=0;i<axisptr->number_gates_of_poweroftwo;i++) {             \
     GET_PAIR_OF_POWEROFTWO(axisptr->nodeinfo_index,               \
@@ -819,7 +880,8 @@ for (i=0;i<axisptr->number_gates_of_poweroftwo;i++) {             \
     recvtable++;                                                  \
 }
 
-/* EARのバタフライネットワークシーケンスの送受信不要部分の作成 */
+/* Sets "No operation" for send / receive sequences
+ * whose butterfly network zone is "EAR" */
 #define SET_NOOP_FOR_EAR()                                        \
 for (i=0;i<(axisptr->number_gates_of_poweroftwo + 1);i++) {       \
     *sendtable = UTF_BG_ALLOC_INVALID_INDEX;                      \
@@ -831,11 +893,11 @@ for (i=0;i<(axisptr->number_gates_of_poweroftwo + 1);i++) {       \
 #if defined(DEBUGLOG)
 #define UTF_BG_ALLOC_INVALID_6DADDR ((uint8_t)0xff)
 /*
- * シーケンステーブルの内容を表示する。
+ * Prints the send / receive sequences of the butterfly network
  *
- * seqptr           (IN) シーケンステーブルへのポインタ
- * number_gates_max (IN) 最大ゲート数
- * print_opt        (IN) 最適化した状態での表示も行うか。
+ * seqptr           (IN) Pointer to the send / receive sequences
+ * number_gates_max (IN) Maximum number of gates
+ * print_opt        (IN) Whether to display the optimized result
  */
 static void print_sequence(utf_bf_alloc_butterfly_sequence_info_t *seqptr,
                            size_t number_gates_max,
@@ -945,17 +1007,20 @@ static void print_sequence(utf_bf_alloc_butterfly_sequence_info_t *seqptr,
 #endif
 
 /*
- * 自プロセスの該当ゾーンの識別
+ * Identifies the zone to which own process belongs
  *
- * nodeinfo_index (IN) 軸毎の情報テーブルのnodeinfo内の自プロセスのインデックス
- *  (IN)    axisptr   A pointer to the array of each of axes information.
+ * nodeinfo_index (IN) Index of own process in information for each axis (nodeinfo)
+ *  (IN)    axisptr    Pointer to an array of each axis information
  */
 /*
- * バタフライネットワークを組んだ時に
- *  - 2冪に入らないものを"耳"                      UTF_BG_ALLOC_POWEROFTWO_EAR
- *  - 2冪に入り、かつ、耳とも送受信するものを"頬"  UTF_BG_ALLOC_POWEROFTWO_CHEEK
- *  - 2冪に入り、かつ、耳との送受信もないものを"顔"UTF_BG_ALLOC_POWEROFTWO_FACE
- *  と表現する。
+ * To build a butterfly network, identifies zones by
+ * whether the node in in the range of powers of 2 from the center of each axis.
+ *  - UTF_BG_ALLOC_POWEROFTWO_EAR:
+ *    Zone "ear" is out of the above range.
+ *  - UTF_BG_ALLOC_POWEROFTWO_CHEEK:
+ *    Zone "cheek" is within the above range and communicate with zone "ear".
+ *  - UTF_BG_ALLOC_POWEROFTWO_FACE:
+ *    Zone "face" is within the above range and does not communicate with zone "ear".
  *
  *      +----------+
  *     +            +
@@ -992,10 +1057,10 @@ static int get_my_zone(utf_bg_alloc_axis_detail_info_t *axisptr,
 }
 
 /*
- *  シーケンステーブルの最適化を行う。
+ *  Optimizes the send/receive sequence.
  *
- *  seqptr           (OUT)    シーケンステーブルへのポインタ
- *  number_gates_max (IN/OUT) 最大ゲート数
+ *  seqptr           (OUT)    pointer to the send/receive sequence
+ *  number_gates_max (IN/OUT) Maximum number of gates
  */
 static void optimized_sequence(utf_bf_alloc_butterfly_sequence_info_t **seqptr,
                                size_t *number_gates_max)
@@ -1008,10 +1073,10 @@ static void optimized_sequence(utf_bf_alloc_butterfly_sequence_info_t **seqptr,
          (UTF_BG_ALLOC_INVALID_INDEX == (*seqptr + 1)->recvinfo.nodeinfo_index) )
     {
         /*
-         *  先頭の段に送受信がないため、
-         *  シーケンステーブルの先頭の段を消せる。
-         *  ただし、自分が、CHEEKの場合は、ローカルに繋ぐ始点ゲートの部分
-         *  になるため、消せない。
+         *  The first step in the sequence is deleted
+         *  because it does not send or receive.
+         *  However, if the zone of own process is "cheek", it is not deleted
+         *  because it is the start gate to the local VBG.
          */
         (*seqptr)++;
         (*number_gates_max)--;
@@ -1020,7 +1085,7 @@ static void optimized_sequence(utf_bf_alloc_butterfly_sequence_info_t **seqptr,
     /*
      *
      * step1
-     *   リストを作成する。シーケンステーブルのnextptrを設定する。
+     *   Creates a list structure. Sets the value to a nextptr.
      *
      * max_gates_number = 8 (2x3x2)
      *
@@ -1031,23 +1096,23 @@ static void optimized_sequence(utf_bf_alloc_butterfly_sequence_info_t **seqptr,
      *  2          -1          -1
      *  3          -1           1
      *  4           1          -1
-     *  5          -1          -1 ← ここまでがforでの最適化対象
+     *  5          -1          -1 ← Up to here is the optimization target
      *  6          -1           1
      *  7           1          -1
      *
      *  for(i=0;i<number_gates_max - 2;i++)
-     *    0->nextptr を 1にする。
-     *    1->nextptr を 3にする。→2は送受信ともに-1(NOP)のため
-     *    3->nextptr を 4にする。
-     *    4->nextptr を 6にする。→5は送受信ともに-1(NOP)のため
+     *    0->nextptr = 1
+     *    1->nextptr = 3  -> Both 2's send and receive are -1(NOP)
+     *    3->nextptr = 4
+     *    4->nextptr = 6  -> Both 5's send and receive are -1(NOP)
      *
-     * 7の送受信がともに-1であり、6の送信が-1の場合は、
-     *  - 6でシーケンスは終わるため
-     *    - 6->nextptr を NULLにする。
-     * そうでない場合は、
-     *  - 7までシーケンスは続くため、
-     *     - 6->nextptr を 7にする。
-     *     - 6->nextptr を NULLにする。
+     * If both 7's send / receive are -1 and 6's send is -1,
+     *  - Because the sequence ends at 6,
+     *    - 6-> nextptr = NULL.
+     * else,
+     *  - Because the sequence continues up to 7,
+     *     - 6->nextptr = 7
+     *     - 7->nextptr = NULL
      *
      *            recv         send
      *  -----------------------------------
@@ -1065,24 +1130,24 @@ static void optimized_sequence(utf_bf_alloc_butterfly_sequence_info_t **seqptr,
     for (i=0;i<(*number_gates_max - 2);i++) {
         if ( (UTF_BG_ALLOC_INVALID_INDEX == next->sendinfo.nodeinfo_index) &&
              (UTF_BG_ALLOC_INVALID_INDEX == next->recvinfo.nodeinfo_index) ) {
-            /* 送信も受信もないので、この段を読み飛ばす。 */
+            /* Skips this step, because both send and receive are NOP */
             next++;
             continue;
         }
-        curr->nextptr = next;  /* 今の段のnextptrを更新 */
+        curr->nextptr = next;  /* Updates nextptr of the current step */
         curr          = next;
         next++;
     }
 
-    /* 最後の2個分の段のチェック */
+    /* Checks the last two steps */
     if ( (UTF_BG_ALLOC_INVALID_INDEX == next->sendinfo.nodeinfo_index) &&
          (UTF_BG_ALLOC_INVALID_INDEX == next->recvinfo.nodeinfo_index) &&
          (UTF_BG_ALLOC_INVALID_INDEX == curr->sendinfo.nodeinfo_index) ) {
-        /* next →最後の段 , curr →今の段 */
-        curr->nextptr = NULL;  /* 今の段で終わらせる */
+        /* next ->last step , curr ->current step */
+        curr->nextptr = NULL;  /* Terminates in the current step */
     }
     else {
-        /* 最終段まで送受信が続く */
+        /* Send / receive continues until the final step */
         curr->nextptr = next;
         next->nextptr = NULL;
     }
@@ -1090,20 +1155,21 @@ static void optimized_sequence(utf_bf_alloc_butterfly_sequence_info_t **seqptr,
     /*
      *
      * step2
-     *   送受信位置を最適化する。
+     *   Optimizes the send/receive gates
      *
      *          recv       send    nextptr
      *    ----------------------------------
      *    0      1         -1        1
      *    1     -1          1        2
      *
-     *    2段の送受信シーケンスが
-     *    0 → recvが-1でない、sendが-1
-     *    1 → recvが-1,       sendが-1でない
-     *    場合、
-     *      a. 0段のsendを1の段のsendに書き換える。→0と1を0に統合する。
-     *      b. 0段のnextptrを1から1->nextptrに書き換える。
-     *         →1の段をリストから消す。
+     *    If the following conditions are met in any 2 steps send/receive sequence,
+     *     - First step -> recv != -1 and send == -1
+     *     - 2nd   step -> recv == -1 and send != -1
+     *
+     *      a. Writes the 2nd step's send to the first step's send.
+     *         ->Integrates the 2nd step into the first step.
+     *      b. Writes the 2nd step's nextptr to the first step's nextptr.
+     *         ->Deletes the second step from the list structure
      *
      *          recv       send    nextptr
      *    ----------------------------------
@@ -1131,11 +1197,11 @@ static void optimized_sequence(utf_bf_alloc_butterfly_sequence_info_t **seqptr,
 }
 
 /*
- * バタフライネットワークの送受信プロセスの情報を作成。
+ * Create information of send/receive processes in the butterfly network
  *
- * srinfo         (OUT)  受信元情報または送信先情報へのポインタ
- * nodeinfo_index (IN) 軸毎の情報テーブルのnodeinfo内の自プロセスのインデックス
- *  (IN)    axisptr   A pointer to the array of each of axes information.
+ * srinfo         (OUT)  Pointer to source or destination
+ * nodeinfo_index (IN)   Index of own process in nodeinfo for each axis
+ *  (IN)    axisptr      Pointer to the array of each axis information.
  */
 static void initialize_butterfly_proc_info(
                                       utf_bf_alloc_butterfly_proc_info_t *srinfo,
@@ -1166,20 +1232,18 @@ static void initialize_butterfly_proc_info(
 }
 
 /*
- * シーケンステーブルに初期値を設定する。
+ * Initializes the send/receive sequence.
  *
- * seqptr  (OUT) シーケンステーブルへのポインタ
- *  (IN)    axisptr   A pointer to the array of each of axes information.
- * sendtable (IN) 送信先プロセス配列
- * recvtable (IN) 受信元プロセス配列
- * tail_axis (IN) バタフライネットワークの末尾となる軸
+ * seqptr  (OUT) Pointer to the send/receive sequence
+ *  (IN)    axisptr   Pointer to the array of each axis information.
+ * sendtable (IN) Array of destination processes
+ * recvtable (IN) Array of source processes
  *
  */
 static int initialize_sequence(utf_bf_alloc_butterfly_sequence_info_t **seqptr,
                                utf_bg_alloc_axis_detail_info_t *axisptr,
                                size_t *sendtable,
-                               size_t *recvtable,
-                               bool   tail_axis)
+                               size_t *recvtable)
 {
     size_t i;
 
@@ -1193,9 +1257,9 @@ static int initialize_sequence(utf_bf_alloc_butterfly_sequence_info_t **seqptr,
      *
      *  number_gates_max = 4
      *
-     *  1. Initialize A.
-     *  2. for(i=0;i<axisptr->number_gates;i++)ループでB,C,Dの初期化を行う。
-     *  3. for(i=0;i<axisptr->number_gates;i++)ループ終了後、Eの初期化を行う。
+     *  1. Initializes A.
+     *  2. for(i=0;i<axisptr->number_gates;i++) initializes B, C, D in a loop.
+     *  3. for(i=0;i<axisptr->number_gates;i++) After the loop is completed, nitializes E.
      *
      */
 
@@ -1206,9 +1270,9 @@ static int initialize_sequence(utf_bf_alloc_butterfly_sequence_info_t **seqptr,
     (*seqptr)->nextptr                 = NULL;
 
     for (i=0;i<axisptr->number_gates;i++) {
-        /* Initialize send side infomation. */
+        /* Initialize send infomation. */
         initialize_butterfly_proc_info(&((*seqptr)->sendinfo),*sendtable,axisptr);
-        /* Initialize recvice side infomation. */
+        /* Initialize recvice infomation. */
         initialize_butterfly_proc_info(&((*seqptr + 1)->recvinfo),*recvtable,axisptr); 
         (*seqptr)->vbg_id = UTF_BG_ALLOC_VBG_ID_UNDECIDED;
         sendtable++;
@@ -1227,10 +1291,11 @@ static int initialize_sequence(utf_bf_alloc_butterfly_sequence_info_t **seqptr,
 }
 
 /*
- * バタフライネットワークシーケンス用の送受信プロセステーブルの作成
+ * Creating a sequence of send/receive processes for a butterfly network
  *
- * sendtable (OUT) 送信先プロセスを記録する配列
- * recvtable (OUT) 受信元プロセスを記録する配列
+ * axisptr   (IN)  Pointer to the array of each axis information.
+ * sendtable (OUT) Array of destination processes
+ * recvtable (OUT) Array of source processes
  *
  */
 static int make_sequence(utf_bg_alloc_axis_detail_info_t *axisptr,
@@ -1245,7 +1310,7 @@ static int make_sequence(utf_bg_alloc_axis_detail_info_t *axisptr,
     size_t i;
 
     if (!(axisptr->flag_poweroftwo)) {
-        /* 軸のノード数は、2冪ではない */
+        /* The number of nodes on the axis is not a power of 2 */
         if (axisptr->nodeinfo_index < axisptr->on_poweroftwo) {
             /* EAR(left) */
             *sendtable = axisptr->nodeinfo_index + axisptr->on_poweroftwo;
@@ -1301,7 +1366,7 @@ static int make_sequence(utf_bg_alloc_axis_detail_info_t *axisptr,
         }
     }
     else {
-        /* 軸のノード数は、2冪 */
+        /* The number of nodes on the axis is a power of 2. */
         assert(axisptr->number_gates_of_poweroftwo == axisptr->number_gates);
         SET_PAIR_POWEROFTWO(0);
     }
@@ -1343,14 +1408,14 @@ static int make_sequence(utf_bg_alloc_axis_detail_info_t *axisptr,
 }
 
 /*
- * バタフライネットワークを作成し、シーケンステーブルへのポインタと
- * 確保すべき中継ゲート数を返却する。
+ * Creates a butterfly network and returns a pointer to the sequence and
+ * the number of relay gates required.
  *
- *  (IN)    axisptr   A pointer to the array of each of axes information.
- * start_axis (IN)         バタフライネットワークの先頭となる軸
- * sequence   (OUT)        シーケンステーブル領域の先頭アドレス(領域解放用)
- * optimizedsequence (OUT) 最適化されたシーケンステーブルの先頭部分を指す
- * number_vbgs (OUT)       確保すべきVBGの数
+ * axisptr    (IN)         Pointer to the array of each axis information.
+ * start_axis (IN)         The first axis of the butterfly network
+ * sequence   (OUT)        Pointer to sequence data (for release)
+ * optimizedsequence (OUT) Pointer to optimized sequence
+ * number_vbgs (OUT)       Number of VBGs required
  *
  */
 static int make_butterfly_network(utf_bg_alloc_axis_detail_info_t *axisptr,
@@ -1366,34 +1431,35 @@ static int make_butterfly_network(utf_bg_alloc_axis_detail_info_t *axisptr,
 #endif
     size_t s;
     size_t number_gates_max=0UL;
-    size_t number_relay_gates_allaxis=0UL; /* 半欠けの数 */
+    size_t number_relay_gates_allaxis=0UL; /* Number of gates using just half */
     utf_bf_alloc_butterfly_sequence_info_t *sequenceptr,*sequence_head;
     size_t *sender,*reciver;
 
     /*
-     * バタフライネットワークを構築するのに必要な情報を作成する。
+     * Creates information to build a butterfly network
      */
 
     for (i=start_axis;i<UTF_BG_ALLOC_AXIS_NUM_AXES;i++) {
         if ((axisptr + i)->size <= 1) {
             /*
-             * 軸上には自ノードしかいない。
+             * There is just own node on the axis.
              */
             continue;
         }
 
-        /* バタフライネットワークに必要なゲート数 */
-        /* 軸の開始点+軸の終了点でnumber_gates1個、中継はnumber_gates1個ずつ。*/
-        /* 4ノード |) - (||) - (| → 2個 */
+        /* Add one number_gates at the start point of the axis and
+         * the end point of the axis, and one number_gates at the relay */
+        /* 4node |) - (||) - (| → 2 VBGs! */
         for ((axisptr + i)->number_gates=0UL,s=(axisptr + i)->size;
              1 < s;
              s >>= 1,(axisptr + i)->number_gates++);
         (axisptr + i)->number_gates_of_poweroftwo =
-            (axisptr + i)->number_gates; /* バタフライネットワーク構築で利用 */
+            (axisptr + i)->number_gates; /* For building a butterfly network */
 
         /*
-         * 中継ゲートの数
-         * number_relay_gatesに入る値はi必要数の2倍の数→ 半欠けの数
+         * Number of relay gates
+         * The number in number_relay_gates is twice the required number
+         * -> Number of gates using just half
          */
         (axisptr + i)->number_relay_gates[UTF_BG_ALLOC_POWEROFTWO_EAR] =
             (size_t)1 * 2;
@@ -1402,37 +1468,37 @@ static int make_butterfly_network(utf_bg_alloc_axis_detail_info_t *axisptr,
         (axisptr + i)->number_relay_gates[UTF_BG_ALLOC_POWEROFTWO_CHEEK] =
             ((axisptr + i)->number_gates + 1) * 2;
 
-        /* sizeとsize-1をビットANDして、先頭ビットが立っている場合は、2冪ではない。*/
+        /* If size & size-1 is true and the first bit is set, it is not a power of 2. */
         if ( (axisptr + i)->size & ((axisptr + i)->size - 1) ) {
             size_t w;
             /* int k; */
             /*
-             * 軸内のノード数は２冪ではない。
-             * 例 size=12
+             * The number of nodes in the axis is not a power of 2
+             * (ex.) size=12
              *   1100(12)      (axisptr + i)->size
              * & 1011(12-1=11) (axisptr + i)->size - 1
              * ------
-             *   1000          先頭ビットが立つので2冪ではない
+             *   1000          It is not a power of 2 because the first bit is set.
              */
             /*
-             * 2冪でないノード数からバタフライを行う場所を計算する。
-             * 例 size=12
+             * Since the number of nodes is not a power of 2, gets the range to perform butterfly.
+             * (ex.) size=12
              *
-             * A. 2冪レベルでのノード数を計算
+             * A. Gets a power of 2 that fits in the number of nodes.
              *     1 << number_gates_of_poweroftwo
              *     → 1 << 3 = 8 (1000)
              *
-             * B. バタフライ開始位置を計算する。
-             *    (size - A.の値) / 2
+             * B. Gets the start position of butterfly communication.
+             *    (size - value of A) / 2
              *    → (12 - 8) / 2 = 2
-             *       (12 - 8)がバタフライに参加しないプロセス数
-             *       2で割っているのは、参加しないノードは
-             *       バタフライの両端に作るため
+             *       (12-8) is the number of processes that do not join butterfly.
+             *       Divides by 2 because the nodes that do not participate are
+             *       at both ends of the butterfly
              *
-             * C. バタフライを超えた位置を計算する。
-             *    B.の値(バタフライ先頭位置) + A.の値
+             * C. Gets the end position of butterfly communication.
+             *    B(the start position of butterfly) + A
              *    2 + 8 = 10
-             *    10がバタフライを超えた位置、-1した9までがバタフライを行う
+             *    10 is the end position of butterfly. Up to (10-1=9) join butterfly.
              *
              *   0 1 2 3 4 5 6 7 8 9 10 11
              *       B               C
@@ -1443,13 +1509,15 @@ static int make_butterfly_network(utf_bg_alloc_axis_detail_info_t *axisptr,
             (axisptr + i)->on_poweroftwo = ((axisptr + i)->size - w) / 2;
             (axisptr + i)->off_poweroftwo = (axisptr + i)->on_poweroftwo + w;
             /*
-             * number_gatesは、後に作成するシーケンステーブルは、
-             * 最大の値になるCHEEKの条件で作成するため、
-             * バタフライ前後にEARからの送受信部分を加算(+2)した値とする。
+             * Gets number_gates.
+             * Because number_gates is the number in the zone (CHEEK)
+             * where the sequences are maximized, number_gates is increased
+             * by the number of send/receive sequences (+2)
+             * to and from the zone (EAR) before and after the butterfly.
              *
-             *    例 size=12のバタフライシーケンス
-             *       2冪レベルでのnumber_gates(number_gates_of_poweroftwo) == 3
-             *       3に+2する。
+             *    (ex.) Butterfly sequences when size = 12
+             *       From a power of 2 -> number_gates(number_gates_of_poweroftwo) == 3
+             *       +2 to 3.
 *              <---------- (axisptr+x)->number_gates ---------------------->
 *                         0           1           2          3            4
 *              +-----------+-----------+-----------+-----------+-----------+
@@ -1471,12 +1539,12 @@ static int make_butterfly_network(utf_bg_alloc_axis_detail_info_t *axisptr,
         }
         else {
             /*
-             * 軸内のノード数は２冪
-             * 例 size=8
+             * The number of nodes in the axis is a power of 2.
+             * (ex.) size=8
              *   1000(8)     (axisptr + i)->size
              * & 0111(8-1=7) (axisptr + i)->size - 1
              * ------
-             *   0000     すべてのビットがOFFなので2冪
+             *   0000     Since all bits are OFF, it is a power of 2.
              */
             (axisptr + i)->on_poweroftwo = 0;
             (axisptr + i)->off_poweroftwo = (axisptr + i)->size;
@@ -1485,9 +1553,9 @@ static int make_butterfly_network(utf_bg_alloc_axis_detail_info_t *axisptr,
 
         if (!number_gates_max) {
             /*
-             * 最初に見つかった２ノード以上存在する軸
-             * なので、始点ゲート分を減らす
-             * FACEまたはEARのケースのみ。 |)だから消せる。
+             * Since the axis has the first multiple nodes,
+             * reduces the number for the start gate.
+             * Only when the zone is FACE or EAR. |)So it can be reduced.
              */
             (axisptr + i)->number_relay_gates[UTF_BG_ALLOC_POWEROFTWO_EAR]--;
             (axisptr + i)->number_relay_gates[UTF_BG_ALLOC_POWEROFTWO_FACE]--;
@@ -1500,9 +1568,9 @@ static int make_butterfly_network(utf_bg_alloc_axis_detail_info_t *axisptr,
     }
 
     /*
-     * 最後に見つかった２ノード以上存在する軸
-     * なので、終点ゲート分を減らす
-     * FACEまたはEARのケースのみ。 (|だから消せる。
+     * Since the axis has the last multiple nodes,
+     * reduces the number for the end gate.
+     * Only when the zone is FACE or EAR. |)So it can be reduced.
      */
     (axisptr + tail_axis)->number_relay_gates[UTF_BG_ALLOC_POWEROFTWO_EAR]--;
     (axisptr + tail_axis)->number_relay_gates[UTF_BG_ALLOC_POWEROFTWO_FACE]--;
@@ -1591,7 +1659,7 @@ static int make_butterfly_network(utf_bg_alloc_axis_detail_info_t *axisptr,
     }
 #endif
 
-    /* バタフライネットワーク作成 */
+    /* Builds a butterfly network */
     sequence_head =
     sequenceptr = (utf_bf_alloc_butterfly_sequence_info_t *)malloc(
         sizeof(utf_bf_alloc_butterfly_sequence_info_t) * number_gates_max);
@@ -1613,7 +1681,7 @@ static int make_butterfly_network(utf_bg_alloc_axis_detail_info_t *axisptr,
             sizeof(size_t) * (axisptr + i)->number_gates);
         if ( (NULL == sender) || (NULL == reciver) ) {
             FREEAREA_BUTTERFLY();
-            free(sequenceptr);
+            free(sequence_head);
             *sequence = NULL;
             *optimizedsequence = NULL;
             *number_vbgs = 0UL;
@@ -1629,7 +1697,7 @@ static int make_butterfly_network(utf_bg_alloc_axis_detail_info_t *axisptr,
         rc = make_sequence((axisptr + i),sender,reciver);
         if (rc != UTF_SUCCESS) {
             FREEAREA_BUTTERFLY();
-            free(sequenceptr);
+            free(sequence_head);
             *sequence = NULL;
             *optimizedsequence = NULL;
             *number_vbgs = 0UL;
@@ -1643,7 +1711,7 @@ static int make_butterfly_network(utf_bg_alloc_axis_detail_info_t *axisptr,
     );
 #endif
         initialize_sequence(&sequenceptr,
-                            (axisptr + i),sender,reciver,(i == tail_axis));
+                            (axisptr + i),sender,reciver);
 
         FREEAREA_BUTTERFLY();
     }
@@ -1660,11 +1728,11 @@ static int make_butterfly_network(utf_bg_alloc_axis_detail_info_t *axisptr,
     print_sequence(sequenceptr,number_gates_max,true);
 #endif
 
-    *sequence = sequence_head;        /* 領域解放用先頭アドレス */
-    *optimizedsequence = sequenceptr; /* 最適化された領域の先頭を指す */
+    *sequence = sequence_head;        /* Pointer to freeing memory */
+    *optimizedsequence = sequenceptr; /* Pointer to the optimized part */
 
     /*
-     * utofu_alloc_vbgに使用するVBGの数を計算する。
+     * Gets the number of VBGs used by the utofu_alloc_vbg function
      */
     for (*number_vbgs=0UL;
          sequenceptr->nextptr!=NULL;
@@ -1675,9 +1743,9 @@ static int make_butterfly_network(utf_bg_alloc_axis_detail_info_t *axisptr,
 }
 
 /*
- * mmap領域の確保
+ * Gets a shared memory
  *
- * intra_node_info (IN) ノード内プロセス情報
+ * intra_node_info (IN) Process information in the node
  */
 int make_mmap_file(
                    uint32_t vpid,
@@ -1688,18 +1756,17 @@ int make_mmap_file(
     size_t namelen=0UL;
 
     /*
-     * 最大ノード内プロセス数 == MPI_COMM_WORLD(utf_bg_first_call == true)
-     * のノード内プロセス数を代入
+     * Maximum number of processes in the node == MPI_COMM_WORLD(utf_bg_first_call == true)
      */
     utf_bg_mmap_file_info.width = intra_node_info->size;
 
-    /* mmapファイルのサイズを計算 */
+    /* Gets the size of the shared memory file */
     if (utf_bg_intra_node_barrier_is_tofu) {
         utf_bg_mmap_file_info.size = UTF_BG_MMAP_HEADER_SIZE;
     }
     else {
         utf_bg_mmap_file_info.size =
-            /* 先頭のTNI,BGID情報 */
+            /* TNI and BGID information at the beginning */
             UTF_BG_MMAP_HEADER_SIZE
             +
             /* BUFFER + SEQ */
@@ -1725,10 +1792,10 @@ int make_mmap_file(
         return UTF_SUCCESS;
     }
 
-    /* mmapファイルを作成するディレクトリ名を求める */
+    /* Gets the directory name to create the shared memory file */
     namelen += strlen(dirname);
 
-    /* mmapファイル名の生成 */
+    /* Generates shared memory file name */
     sprintf(filename_temp,"/utf_bg_mmap_file-%08x-%08x-%08x-%08x"
         ,my_jobid
         ,utf_info.vname[vpid].xyz.s.x
@@ -1749,7 +1816,7 @@ int make_mmap_file(
     if (UTF_BG_INTRA_NODE_MANAGER == intra_node_info->state) {
         void *mmaparea=NULL;
         ssize_t wrc;
-        /* ファイルの作成 */
+        /* Creates a file */
         utf_bg_mmap_file_info.fd = open(utf_bg_mmap_file_info.file_name,
                                         O_RDWR|O_CREAT, 0666);
         if (-1 == utf_bg_mmap_file_info.fd) {
@@ -1810,16 +1877,16 @@ int make_mmap_file(
 }
 
 /*
- * ゲートの確保
+ * Allocates gates
  */
 
 /*
- * utofuインターフェースを使用し、VBGを確保する。
+ * Allocates VBGs using the utofu function.
  *
- * start_tni   (IN)  VBGの確保を試みる最初のTNI
- * num_vbg     (IN)  VBG数(始点+中継)
- * vbg_ids     (OUT) VBGIDを格納する配列へのポインタ
- * my_tni      (OUT) VBGの確保に成功したTNI
+ * start_tni   (IN)  The first TNI to try to allocate VBGs
+ * num_vbg     (IN)  Number of VBGs (start gates + relay gates)
+ * vbg_ids     (OUT) Pointer to an array of VBG
+ * my_tni      (OUT) TNI succeeded in allocating VBGs
  *
  */
 static int alloc_vbg(utofu_tni_id_t my_tni,
@@ -1846,13 +1913,14 @@ static int allocate_vbg_core(utofu_tni_id_t start_tni,
         rc = alloc_vbg(*my_tni,num_vbg,vbg_ids);
         UTOFU_ERRCHECK_EXIT_IF(0,rc)
         if (UTOFU_ERR_FULL != rc) {
-            /* UTOFU_SUCCESSまたは、致命的なエラー */
+            /* UTOFU_SUCCESS or a fatal error */
             break;
         }
 
         /*
-         * UTOFU_ERR_FULLが返却された場合、utofuライブラリ内は実際には
-         * 1つのVBGも確保していないので、ここでの解放処理は必要ない。
+         * If UTOFU_ERR_FULL is returned,
+         * then no VBG is actually allocated in the utofu library,
+         * so there is no need to free them.
          */
 
         *my_tni = (*my_tni + 1) % UTF_BG_NUM_TNI; 
@@ -1870,8 +1938,8 @@ static int allocate_vbg_core(utofu_tni_id_t start_tni,
 }
 
 /*
- * dst remoteの情報の作成
- * rmt_src_dst_seqsのdst(dst == send)を設定
+ * Creates the information for dst remote
+ * Sets dst(dst == send) in rmt_src_dst_seqs
  */
 #define SET_DST_REMOTE(tempseq,i) \
 { \
@@ -1886,8 +1954,8 @@ static int allocate_vbg_core(utofu_tni_id_t start_tni,
 }
 
 /*
- * src remoteの情報の作成
- * rmt_src_dst_seqsのsrc(src == recv)を設定
+ * Creates the information for src remote
+ * Sets src(src == recv) in rmt_src_dst_seqs
  */
 #define SET_SRC_REMOTE(tempseq,i) \
 { \
@@ -1901,18 +1969,19 @@ static int allocate_vbg_core(utofu_tni_id_t start_tni,
     } \
 }
 
-/* VBGからBGIDを抜粋 */
+/* Gets BGID from VBG */
 #define GET_BGID_FROM_VBGID(vbgid,id)                                  \
 {                                                                      \
     id = (utofu_bg_id_t)(vbgid & UTF_BG_ALLOC_MSK_BGID);               \
 }
 
 /*
- * VBGの確保
+ * Allocates VBGs
  *
- * number_vbgs     (IN) 必要なVBGの数
- * intra_node_info (IN) ノード内プロセス情報
- * sequenceptr     (IN) シーケンステーブルへのポインタ
+ * number_vbgs     (IN) Number of VBGs required
+ * intra_node_info (IN) Process information in the node
+ * sequenceptr     (IN) Pointer to sequences
+ * my_tni          (OUT)TNI succeeded in allocating VBGs
  */
 static int allocate_vbg(size_t number_vbgs,
                         utf_bg_intra_node_detail_info_t *intra_node_info,
@@ -1924,10 +1993,10 @@ static int allocate_vbg(size_t number_vbgs,
     utf_bf_alloc_butterfly_sequence_info_t *tempseq;
     utofu_tni_id_t start_tni;
 
-    /* 確保ゲート数の決定 */
+    /* Decides the number of gates to allocate */
     utf_bg_detail_info->num_vbg = number_vbgs;
 
-    /* 領域確保 */
+    /* Allocates memory */
     utf_bg_detail_info->vbg_ids = (utofu_vbg_id_t *)malloc
         (sizeof(utofu_vbg_id_t) * utf_bg_detail_info->num_vbg);
     if (NULL == utf_bg_detail_info->vbg_ids) {
@@ -1955,12 +2024,12 @@ static int allocate_vbg(size_t number_vbgs,
     memset((void *)utf_bg_detail_info->rmt_src_dst_seqs,0,
          sizeof(utf_rmt_src_dst_index_t) * utf_bg_detail_info->num_vbg);
 
-    /* TNIの決定 */
+    /* Determines the using TNI */
     if (utf_bg_first_call) {
         start_tni = 0;
     }
     else {
-        /* mmap領域から先頭を読み込む */
+        /* Reads from the beginning of shared memory */
         assert(utf_bg_mmap_file_info.mmaparea);
         start_tni = utf_bg_mmap_file_info.mmaparea->next_tni_id;
 #if defined(DEBUGLOG)
@@ -1970,7 +2039,7 @@ static int allocate_vbg(size_t number_vbgs,
         );
 #endif
     }
-    /* 次のTNI番号を計算 */
+    /* Gets the next TNI number */
     utf_bg_next_tni_id = ( start_tni + ((utf_bg_intra_node_barrier_is_tofu) ? intra_node_info->size : 1) ) % UTF_BG_NUM_TNI;
     start_tni = (start_tni + intra_node_info->intra_index) % UTF_BG_NUM_TNI;
 
@@ -1979,7 +2048,7 @@ static int allocate_vbg(size_t number_vbgs,
                            utf_bg_detail_info->vbg_ids,
                            my_tni);
     if (UTF_SUCCESS != rc) {
-        /* UTF_SUCCESS以外ならば復帰してしまう。 */
+        /* Returns except UTF_SUCCESS. */
         free(utf_bg_detail_info->rmt_src_dst_seqs);
         utf_bg_detail_info->rmt_src_dst_seqs = NULL;
         free(utf_bg_detail_info->vbg_settings);
@@ -1991,24 +2060,24 @@ static int allocate_vbg(size_t number_vbgs,
     }
 
     /*
-     * ゲート確保できた場合、rmt_src_dst_seqsを作成し、復帰
+     * If the gate can be allocated, creates rmt_src_dst_seqs and returns.
      */
 
     tempseq = sequenceptr;
     i = 0UL;
     while (tempseq) {
         if (tempseq == sequenceptr) {
-            /* 始点ゲート位置 */
+            /* Start gate */
             tempseq->vbg_id = utf_bg_detail_info->vbg_ids[0];
             SET_DST_REMOTE(tempseq,0);
         }
         else if (NULL == tempseq->nextptr) {
-            /* 始点ゲート終点位置 */
+            /* Start/end gate */
             tempseq->vbg_id = utf_bg_detail_info->vbg_ids[0];
             SET_SRC_REMOTE(tempseq,0);
         }
         else {
-            /* 中継ゲート位置 */
+            /* Relay gate */
             tempseq->vbg_id = utf_bg_detail_info->vbg_ids[i];
             SET_SRC_REMOTE(tempseq,i);
             SET_DST_REMOTE(tempseq,i);
@@ -2018,35 +2087,43 @@ static int allocate_vbg(size_t number_vbgs,
     }
     assert((i - 1)==utf_bg_detail_info->num_vbg);
 
-    if (utf_bg_first_call) {
-        /* MPI_COMM_WORLDの始点ゲート */
-        utf_bg_mmap_file_info.first_vbg_id = utf_bg_detail_info->vbg_ids[0];
-    }
-
     if (UTF_BG_INTRA_NODE_MANAGER == intra_node_info->state) {
         utofu_bg_id_t temp_start_bg;
+        int j=0;
+        utf_bg_manager_tnibg_info volatile *info =
+            &utf_bg_mmap_file_info.mmaparea->manager_info[0];
 
         assert(utf_bg_mmap_file_info.mmaparea);
-        if (utf_bg_first_call) {
-            utf_bg_mmap_file_info.mmaparea->first_vbg_id =
-                utf_bg_mmap_file_info.first_vbg_id;
-        }
         GET_BGID_FROM_VBGID(utf_bg_detail_info->vbg_ids[0],temp_start_bg); 
-        utf_bg_mmap_file_info.mmaparea->manager_start_bg_id = temp_start_bg;
-        utf_bg_mmap_file_info.mmaparea->manager_tni_id = *my_tni;
+        for (i=0UL;i<intra_node_info->size;i++) {
+            for (j=0;j<ppn_job;j++) {
+                if (intra_node_info->vpids[i] ==
+                    utf_bg_alloc_intra_world_indexes[j]) {
+                    info[j].tni       = *my_tni;
+                    info[j].start_bg  = temp_start_bg;
+                }
+            }
+        }
         msync((void *)utf_bg_mmap_file_info.mmaparea,
               (size_t)UTF_BG_MMAP_HEADER_SIZE,MS_SYNC);
 #if defined(DEBUGLOG)
-        fprintf(stderr,"DEBUGLOG %s:%s:my_rankset_index=%zu: mmap: first_vbg_id=%016lx manager_start_bg_id=%u/%u(%016lx) manager_tni_id=%u/%u next_tni_id=%u \n"
-            ,my_hostname,__func__,my_rankset_index
-            ,utf_bg_mmap_file_info.mmaparea->first_vbg_id
-            ,utf_bg_mmap_file_info.mmaparea->manager_start_bg_id
-            ,temp_start_bg
-            ,utf_bg_detail_info->vbg_ids[0]
-            ,utf_bg_mmap_file_info.mmaparea->manager_tni_id
-            ,*my_tni
-            ,utf_bg_mmap_file_info.mmaparea->next_tni_id
-        );
+        for (i=0UL;i<intra_node_info->size;i++) {
+            for (j=0;j<ppn_job;j++) {
+                if (intra_node_info->vpids[i] ==
+                    utf_bg_alloc_intra_world_indexes[j]) {
+                    fprintf(stderr,"DEBUGLOG %s:%s:my_rankset_index=%zu: mmap: intranode=%zu/%zu vpid=%zu world_indexes=%d/%d vpid=%zu j=%d -> manager_tni=%u/%u manager_start_bg=%u/%u(%016lx) next_tni_id=%u \n"
+                        ,my_hostname,__func__,my_rankset_index
+                        ,i,intra_node_info->size,intra_node_info->vpids[i]
+                        ,j,ppn_job,utf_bg_alloc_intra_world_indexes[j]
+                        ,j
+                        ,info[j].tni,*my_tni
+                        ,info[j].start_bg,temp_start_bg
+                        ,utf_bg_detail_info->vbg_ids[0]
+                        ,utf_bg_mmap_file_info.mmaparea->next_tni_id
+                    );
+                }
+            }
+        }
 #endif
     }
 
@@ -2082,42 +2159,45 @@ static int allocate_vbg(size_t number_vbgs,
 }
 
 /*
- * EARの場合のシーケンスは先頭の段のsendinfo.nodeinfo_indexの次から
- * 最後の段のrecvinfo.nodeinfo_indexの手前までがUTF_BG_ALLOC_VBG_ID_UNNECESSARY
- * で埋まっている。
+ * In the case of zone (EAR),
+ * the sequences are filled with UTF_BG_ALLOC_VBG_ID_UNNECESSARY
+ * from the end of sendinfo.nodeinfo_index in the first row
+ * to the front of recvinfo.nodeinfo_index in the last row.
  *
  *              recv           send             nextptr
  *    ---------------------------------------------------
  *    0          -1             1                 4
  *    1          UNNECESSARY    UNNECESSARY
  *    2          UNNECESSARY    UNNECESSARY
- *    3          UNNECESSARY★  UNNECESSARY☆
+ *    3          UNNECESSARY @1 UNNECESSARY @2
  *    4          1              -1                NULL
  *
- *  EARは、dst_lcl_vbg,src_lcl_vbgを繋がない。→UTOFU_VBG_ID_NULLを設定
+ *  Does not connect dst_lcl_vbg and src_lcl_vbg in the zone (EAR).->Sets UTOFU_VBG_ID_NULL
  *
- *  dst_lcl_vbg_idをUTOFU_VBG_ID_NULLに設定する条件も
- *  src_lcl_vbg_idをUTOFU_VBG_ID_NULLに設定する条件も
- *  最終段の一つ前の段の情報を見る。(上記の例で3の場所)
+ *  For both of the following conditions,
+ *  ckecks the information in the row immediately before the last row.
+ *  (3rd row in the above example)
+ *   - Set dst_lcl_vbg_id to UTOFU_VBG_ID_NULL.
+ *   - Set src_lcl_vbg_id to UTOFU_VBG_ID_NULL.
  *
- *  dst_lcl_vbg_idをUTOFU_VBG_ID_NULLに設定する条件
+ *  Conditions to set dst_lcl_vbg_id to UTOFU_VBG_ID_NULL
  *    0->sendinfo.nodeinfo_index != -1 &&
- *    3->sendinfo.nodeinfo_index == UNNECESSARY ☆
- *    3は、(0->nextptr - 1)でたどる。
+ *    3->sendinfo.nodeinfo_index == UNNECESSARY @2
+ *    3 is traced by(0->nextptr - 1).
  *
- *  src_lcl_vbg_idをUTOFU_VBG_ID_NULLに設定する条件
+ *  Conditions to set src_lcl_vbg_id to UTOFU_VBG_ID_NULL
  *    4->recvinfo.nodeinfo_index != -1 &&
- *    3->recvinfo.nodeinfo_inde == UNNECESSARY ★
- *    3は、(4 - 1)でたどる。
+ *    3->recvinfo.nodeinfo_inde == UNNECESSARY @1
+ *    3 is traced by(4 - 1).
  *
  */
-/* 出力シグナルの送信先となるローカルVBGのIDの設定 */
+/* Sets a sequence of a local VBG for the destination of the output signal */
 #define SET_DST_LOCAL(tempseq,i)                                          \
 {                                                                         \
     if ( (UTF_BG_ALLOC_VBG_ID_NOOPARATION != tempseq->sendinfo.vbg_id) && \
          (UTF_BG_ALLOC_VBG_ID_UNNECESSARY ==                              \
           (tempseq->nextptr - 1)->sendinfo.vbg_id) ) {                    \
-        /* EARのため、dst-localは繋がない */                              \
+        /* Since it is in the zone EAR, dst-local is not connected */     \
         utf_bg_detail_info->vbg_settings[i].dst_lcl_vbg_id =              \
             UTOFU_VBG_ID_NULL;                                            \
     }                                                                     \
@@ -2127,13 +2207,13 @@ static int allocate_vbg(size_t number_vbgs,
     }                                                                     \
 }
 
-/* 入力シグナルの送信元となるローカルVBGのIDの設定 */
+/* Sets a sequence of a local VBG for the source of the input signal */
 #define SET_SRC_LOCAL(tempseq,i)                                          \
 {                                                                         \
     if ( (UTF_BG_ALLOC_VBG_ID_NOOPARATION != tempseq->recvinfo.vbg_id) && \
          (UTF_BG_ALLOC_VBG_ID_UNNECESSARY ==                              \
           (tempseq - 1)->recvinfo.vbg_id) ) {                             \
-        /* EARのため、src-localは繋がない */                              \
+        /* Since it is in the zone EAR, src-local is not connected */     \
         utf_bg_detail_info->vbg_settings[i].src_lcl_vbg_id =              \
             UTOFU_VBG_ID_NULL;                                            \
     }                                                                     \
@@ -2144,9 +2224,9 @@ static int allocate_vbg(size_t number_vbgs,
 }
 
 /*
- * ローカルVBGの設定
+ * Sets sequences of local VBGs
  *
- * sequenceptr     (IN) シーケンステーブルへのポインタ
+ * sequenceptr     (IN) Pointer to sequences
  */
 static void set_local_vbg(utf_bf_alloc_butterfly_sequence_info_t *sequenceptr)
 {
@@ -2157,16 +2237,16 @@ static void set_local_vbg(utf_bf_alloc_butterfly_sequence_info_t *sequenceptr)
 
     while (tempseq) {
         if (tempseq == sequenceptr) {
-            /* 始点ゲート位置 */
+            /* start gate */
             utf_bg_detail_info->vbg_settings[0].vbg_id = tempseq->vbg_id;
             SET_DST_LOCAL(tempseq,0);
         }
         else if (NULL == tempseq->nextptr) {
-            /* 始点ゲート終点位置 */
+            /* start/end gate */
             SET_SRC_LOCAL(tempseq,0);
         }
         else {
-            /* 中継ゲート位置 */
+            /* relay gate */
             utf_bg_detail_info->vbg_settings[i].vbg_id = tempseq->vbg_id;
             SET_DST_LOCAL(tempseq,i);
             SET_SRC_LOCAL(tempseq,i);
@@ -2195,17 +2275,18 @@ static void set_local_vbg(utf_bf_alloc_butterfly_sequence_info_t *sequenceptr)
 }
 
 /*
- * bginfoの作成
+ * Creates bginfo
  */
 
-/* VBGからTNIを抜粋 */
+/* Gets TNI from VBG */
 #define GET_TNI_FROM_VBGID(vbgid,tni)                                  \
 {                                                                      \
     tni = (utofu_tni_id_t)                                             \
         ((vbgid & UTF_BG_ALLOC_MSK_TNI) >> UTF_BG_BITSFT_BGINFO_TNI);  \
 }
 
-/* シーケンステーブル内の物理6次元アドレスとrankset内の6次元アドレスとの比較 */
+/* Compares the physical 6D address in the sequence
+ * with the 6D address in the rankset */
 #define CHECK_PHY_6D_ADDR_SEQ(found,seq,temp) \
 {                                             \
     found =                                   \
@@ -2217,13 +2298,14 @@ static void set_local_vbg(utf_bf_alloc_butterfly_sequence_info_t *sequenceptr)
       (seq.phy_6d_addr->s.c == temp.s.c) );   \
 }
 
-/* ゲートを確保できなかったため、bginfoにバリア通信使用不可ビットを設定する。*/
+/* If gates cannot be allocated,
+ * sets a bit in bginfo to indicate that barrier communication is not available. */
 #define SET_DISABLE_BGINFO(bginfoposition)                           \
 {                                                                    \
     bginfoposition = ((uint64_t)1 << UTF_BG_BITSFT_BGINFO_DISABLE);  \
 }
 
-/* ゲートを確保できたため、bginfoに情報を設定する。 */
+/* If gates are allocated, sets information in bginfo. */
 #define SET_ENABLE_BGINFO(bginfoposition,                                   \
                          mytni,                                             \
                          coordc,                                            \
@@ -2247,14 +2329,14 @@ static void set_local_vbg(utf_bf_alloc_butterfly_sequence_info_t *sequenceptr)
 }
 
 /*
- * bginfoの作成
+ * Creates bginfo
  *
- * my_tni      (IN)     VBGを確保したTNI番号
- * sequenceptr (IN)     シーケンステーブルへのポインタ
- * rankset     (IN)     バリアに参加する全てのプロセスのVCQのIDの配列
- *   (IN)     my_index  Rank of the process.
- *   (IN/OUT) bginfo    A pointer to the array of the VBG information of
- *                      the process.
+ * my_tni      (IN)     TNI of allocated VBGs
+ * sequenceptr (IN)     Pointer to sequences
+ * rankset     (IN)     An array of VCQs used by all processes in the barrier network
+ *   (IN)     my_index  Own rank.
+ *   (IN/OUT) bginfo    Pointer to the array of the VBG information of
+ *                      the processes.
  *
  */
 int make_bginfo(utofu_tni_id_t my_tni,
@@ -2267,10 +2349,10 @@ int make_bginfo(utofu_tni_id_t my_tni,
     uint32_t temp_nodeid,my_nodeid;
     utofu_tni_id_t temp_tni;
 
-    /* ローカルVBGをつなぐ */
+    /* Connects local VBGs */
     set_local_vbg(sequenceptr);
 
-    /* 自プロセスのノードIDと6次元アドレスを作成 */
+    /* Gets the node ID andthe 6D address of own process */
     GET_NODEID_FROM_RANKSET(my_nodeid,rankset[my_index]);
 
     sendseq = sequenceptr;
@@ -2286,9 +2368,8 @@ int make_bginfo(utofu_tni_id_t my_tni,
             recvseq = sequenceptr;
             while (recvseq) {
                 /*
-                 * シーケンステーブルの受信情報から
-                 * sendseq->sendinfo.indexと同じindex
-                 * を検索する。
+                 * Searchs for the same index as sendseq-> sendinfo.index
+                 * from the receive information of the sequences.
                  */
                 /*
                  *  sequence table
@@ -2301,22 +2382,22 @@ int make_bginfo(utofu_tni_id_t my_tni,
                  *
                  *  1.
                  *     dst_rmt == 1
-                 *       - 1へのsrc-VBGは6
-                 *       - src_rmtが1のものを探す。
-                 *       - src_rmtが1のVBGは18
-                 *         - 1へのdst-VBGは18
+                 *       - src-VBG to 1 is 6.
+                 *       - Searchs for src_rmt is 1.
+                 *       - If src_rmt is 1, VBG is 18.
+                 *         - dst-VBG to 1 is 18.
                  *  2.
                  *     dst_rmt == 3
-                 *       - 3へのsrc-VBGは18
-                 *       - src_rmtが3のものを探す。
-                 *       - src_rmtが3のVBGは19
-                 *         - 3へのdst-VBGは19
+                 *       - src-VBG to 3 is 18.
+                 *       - Searchs for src_rmt is 3.
+                 *       - If src_rmt is 3, VBG is 19.
+                 *         - dst-VBG to 3 is 19.
                  *  3.
                  *     dst_rmt == 7
-                 *       - 7へのsrc-VBGは19
-                 *       - src_rmtが7のものを探す。
-                 *       - src_rmtが7のVBGは6
-                 *         - 7へのdst-VBGは6
+                 *       - src-VBG to 7 is 19.
+                 *       - Searchs for src_rmt is 7.
+                 *       - If src_rmt is 7, VBG is 6.
+                 *         - dst-VBG to 7 is 6.
                  */
                 if (sendseq->sendinfo.index == recvseq->recvinfo.index) {
                     found = true;
@@ -2333,8 +2414,9 @@ int make_bginfo(utofu_tni_id_t my_tni,
 
             /* sanity check */
             /*
-             * sendseq->sendinfo.phy_6d_addrが
-             * rankset[sendseq->sendinfo.index]の6daddrと一致しているか？
+             * Whether the physical 6D addresses are the same
+             * in sendseq-> sendinfo.phy_6d_addr and
+             * rankset [sendseq-> sendinfo.index]?
              */
             CHECK_PHY_6D_ADDR_SEQ(found,sendseq->sendinfo,
                 utf_info.vname[rankset[sendseq->sendinfo.index]].xyzabc);
@@ -2343,8 +2425,9 @@ int make_bginfo(utofu_tni_id_t my_tni,
                 return UTF_ERR_INTERNAL;
             }
             /*
-             * recvseq->recvinfo.phy_6d_addrが
-             * rankset[sendseq->sendinfo.index]の6daddrと一致しているか？
+             * Whether the physical 6D addresses are the same
+             * in recvseq->recvinfo.phy_6d_addr and
+             *rankset[sendseq->sendinfo.index]?
              */
             CHECK_PHY_6D_ADDR_SEQ(found,recvseq->recvinfo,
                 utf_info.vname[rankset[recvseq->recvinfo.index]].xyzabc);
@@ -2355,26 +2438,32 @@ int make_bginfo(utofu_tni_id_t my_tni,
 
             bginfo[sendseq->sendinfo.index] = (utf_bg_info_t)0;
                 /* sanity check */
-                /* sendseq->vbg_id内の6daddrが自分の6daddrと一致しているか？ */
+                /* Whether the physical 6D addresses are the same
+                 * in sendseq->vbg_id and own?
+                 */
                 GET_NODEID_FROM_VCQ(temp_nodeid,sendseq->vbg_id);
                 if (temp_nodeid != my_nodeid) {
                     /* internal error */
                     return UTF_ERR_INTERNAL;
                 }
-                /* recvseq->vbg_id内の6daddrが自分の6daddrと一致しているか？ */
+                /* Whether the physical 6D addresses are the same
+                 * in recvseq->vbg_id and own?
+                 */
                 GET_NODEID_FROM_VCQ(temp_nodeid,recvseq->vbg_id);
                 if (temp_nodeid != my_nodeid) {
                     /* internal error */
                     return UTF_ERR_INTERNAL;
                 }
 
-                /* sendseq->vbg_id内のtniが引数のtniと一致しているか？ */
+                /* Whether tni in sendseq->vbg_id is the same as
+                 * the argument tni? */
                 GET_TNI_FROM_VBGID(sendseq->vbg_id,temp_tni);
                 if (temp_tni != my_tni) {
                     /* internal error */
                     return UTF_ERR_INTERNAL;
                 }
-                /* recvseq->vbg_id内のtniが引数のtniと一致しているか？ */
+                /* Whether tni in recvseq->vbg_id is the same as
+                 * the argument tni? */
                 GET_TNI_FROM_VBGID(recvseq->vbg_id,temp_tni);
                 if (temp_tni != my_tni) {
                     /* internal error */
@@ -2416,25 +2505,28 @@ int make_bginfo(utofu_tni_id_t my_tni,
 }
 
 /*
- * utf_bg_alloc:  Allocation of a barrier network
+ * utf_bg_alloc:  Allocates VBGs for a barrier network
  * @param
- *   (IN)     rankset[] バリアに参加する全てのプロセスのVCQのIDの配列。
- *   (IN)     len       Total number of the process.
- *   (IN)     my_index  Rank of the process.
- *   (IN/OUT) bginfo    A pointer to the array of the VBG information of
- *                      the process.
+ *   (IN)     rankset[] An array of ranks in MPI_COMM_WORLD for the processes
+ *                      belonging to the barrier network to be created
+ *   (IN)     len       Total number of the processes.
+ *   (IN)     my_index  Own rank.
+ *   (IN)     max_ppn   Maximum number of processes in the node.
+ *   (IN)     comm_type Communication method used for intra-node communication.
+ *   (IN/OUT) bginfo    Pointer to the array of the VBG information of
+ *                      the processes.
  * @return
  *   UTF_SUCCESS
  *   UTF_ERR_????
  */
 
-/* 形状不具合のため
- *   bginfoにバリア通信使用不可ビットを設定する。
- *   bginfoに形状不具合種別を設定する。
- *   errcase 1: ノード内プロセス数の条件が合わない。
- *   errcase 2: 全ノードでノード内プロセス数が一致しない。
- *   errcase 3: 1と2の両方
- *   errcase 4: ノード数不足
+/* If the shape of the nodes does not fit the barrier communication,
+ * sets the barrier communication disabled bit and
+ * shape defect type in bginfo.
+ *   errcase 1: The number of processes in the node does not meet the required conditions.
+ *   errcase 2: The number of processes in the node of all nodes does not match.
+ *   errcase 3: Both 1 and 2 above
+ *   errcase 4: Not enough nodes
  */
 #define SET_DISABLE_ALL(errcase)                                           \
 {                                                                          \
@@ -2445,7 +2537,7 @@ int make_bginfo(utofu_tni_id_t my_tni,
     }                                                                      \
 }
 
-/* Initializing bginfo */
+/* Initializes bginfo */
 #define INITIALIZE_BGINFO()                                                \
 {                                                                          \
     for (i=0UL;i<len;i++) {                                                \
@@ -2453,7 +2545,7 @@ int make_bginfo(utofu_tni_id_t my_tni,
     }                                                                      \
 }
 
-/* Freeing data buffers */
+/* Frees data buffers */
 #define FREE_ALLOC()                                       \
 {                                                          \
     if (utf_bg_detail_info) { free(utf_bg_detail_info); }  \
@@ -2472,7 +2564,7 @@ int make_bginfo(utofu_tni_id_t my_tni,
 
 #if (!defined(TOFUGIJI))
 /*
- * ジョブID作成関数
+ * Function to get the job ID
  */
 static inline uint32_t hash_str(const char *str)
 {
@@ -2494,8 +2586,7 @@ static inline uint32_t hash_str(const char *str)
 }
 #endif
 
-int utf_bg_alloc(
-                 uint32_t rankset[],
+int utf_bg_alloc(uint32_t rankset[],
                  size_t len,
                  size_t my_index,
                  int max_ppn,
@@ -2514,23 +2605,20 @@ int utf_bg_alloc(
     utofu_tni_id_t my_tni=UTF_BG_MIN_TNI_NUMBER;
 
     /*
-     * Check the arguments
+     * Checks the arguments
      */
-    if (NULL == (void *)rankset) {
-        rc = UTF_ERR_INVALID_POINTER;
-        return rc;
+    if ( (NULL == (void *)rankset) ||
+         (NULL == (void *)bginfo)
+       ) {
+        return UTF_ERR_INVALID_POINTER;
     }
-    if (0UL == len) {
-        rc = UTF_ERR_INVALID_NUMBER;
-        return rc;
-    }
-    if (len <= my_index) {
-        rc = UTF_ERR_INVALID_NUMBER;
-        return rc;
-    }
-    if ( (UTF_BG_ALLOC_MAX_PROC_IN_NODE < max_ppn) || (max_ppn <= 0) ) {
-        rc = UTF_ERR_INVALID_NUMBER;
-        return rc;
+    if ( (0UL == len)                              ||
+         (len <= my_index)                         ||
+         (UTF_BG_MAX_PROC_IN_NODE < max_ppn) ||
+         (max_ppn <= 0)                            ||
+         ((UTF_BG_TOFU != comm_type)&&(UTF_BG_SM != comm_type))
+       ) {
+        return UTF_ERR_INVALID_NUMBER;
     }
     switch (comm_type) {
         case UTF_BG_TOFU:
@@ -2548,78 +2636,66 @@ int utf_bg_alloc(
                 }
             }
             break;
-        default:
-            rc = UTF_ERR_INVALID_NUMBER;
-            return rc;
-    }
-    if (NULL == (void *)bginfo) {
-        rc = UTF_ERR_INVALID_POINTER;
-        return rc;
     }
 
 #if defined(DEBUGLOG)
     my_rankset_index = my_index;
 #endif
     /*
-     * 環境変数の確認
-     * 最初の呼び出し時に行えば良いと考える。
+     * Checks environment variables.
+     * Only on the first function call.
      */
     if (utf_bg_first_call) {
-        utf_bg_intra_node_barrier_is_tofu = (UTF_BG_TOFU == comm_type) ?
-            true : false;
+        utf_bg_intra_node_barrier_is_tofu = (UTF_BG_TOFU == comm_type);
         memset((void *)&utf_bg_mmap_file_info,
                0,sizeof(utf_bg_mmap_file_info_t));
         if (NULL != (tempval=getenv("UTF_BG_DISABLE_UTF_SHM"))) {
             utf_bg_mmap_file_info.disable_utf_shm = true;
-        }
-        if (true == utf_bg_mmap_file_info.disable_utf_shm) {
-            if (NULL != (tempval=getenv("PJM_JOBID"))) {
-                my_jobid = atoi(tempval);
+            /* Get the jobid for making filename. */
 #if (!defined(TOFUGIJI))
-                {
-                    pmix_proc_t myproc;
+            if ( NULL != getenv("PJM_JOBID") ) {
+                pmix_proc_t myproc;
 
-                    memset((void *)&myproc,0,sizeof(pmix_proc_t));
-                    if (PMIX_SUCCESS !=  PMIx_Init(&myproc,NULL,0)) {
-                        return UTF_ERR_INTERNAL;
-                    }
-                    my_jobid = (int)hash_str((const char *)myproc.nspace);
-                    if (PMIX_SUCCESS != PMIx_Finalize(NULL, 0)) {
-                        return UTF_ERR_INTERNAL;
-                    }
+                memset((void *)&myproc,0,sizeof(pmix_proc_t));
+                if (PMIX_SUCCESS !=  PMIx_Init(&myproc,NULL,0)) {
+                    return UTF_ERR_INTERNAL;
                 }
-#else
-                /* internal error */
-                rc = UTF_ERR_INTERNAL;
-                return rc;
-#endif
+                my_jobid = (int)hash_str((const char *)myproc.nspace);
+                if (PMIX_SUCCESS != PMIx_Finalize(NULL, 0)) {
+                    return UTF_ERR_INTERNAL;
+                }
             }
             else {
-#if defined(TOFUGIJI)
-                if (NULL != (tempval=getenv("UTOFU_WORLD_ID"))) {
-                    my_jobid = atoi(tempval);
-                }
-                else if (NULL != (tempval=getenv("OMPI_MCA_ess_base_jobid"))) {
-                    my_jobid = atoi(tempval);
-                }
-                else if (NULL != (tempval=getenv("OMPI_MCA_orte_ess_jobid"))) {
-                    my_jobid = atoi(tempval);
-                }
-                else {
-#endif
-                    /* internal error */
-                    rc = UTF_ERR_INTERNAL;
-                    return rc;
-#if defined(TOFUGIJI)
-                }
-#endif
+                /* internal error */
+                return UTF_ERR_INTERNAL;
             }
-        } /* false == utf_bg_mmap_file_info.disable_utf_shm */
+#else
+            if (NULL != (tempval=getenv("UTOFU_WORLD_ID"))) {
+                my_jobid = atoi(tempval);
+            }
+            else if (NULL != (tempval=getenv("OMPI_MCA_ess_base_jobid"))) {
+                my_jobid = atoi(tempval);
+            }
+            else if (NULL != (tempval=getenv("OMPI_MCA_orte_ess_jobid"))) {
+                my_jobid = atoi(tempval);
+            }
+            else {
+                /* internal error */
+                return UTF_ERR_INTERNAL;
+            }
+#endif
+        }
         if (NULL != (tempval=getenv("UTF_BG_ENABLE_THREAD_SAFE"))) {
             utf_bg_alloc_flags = UTOFU_VBG_FLAG_THREAD_SAFE;
         }
         if (NULL != (tempval=getenv("UTF_BG_MAX_INTRA_NODE_PROCS_FOR_HB"))) {
             max_intra_node_procs_for_hb = atoi(tempval);
+            if ( (UTF_BG_MAX_PROC_IN_NODE < max_intra_node_procs_for_hb)
+                 ||
+                 (max_intra_node_procs_for_hb <= 0) ) {
+                max_intra_node_procs_for_hb = 
+                    UTF_BG_ALLOC_MAX_PROC_IN_NODE_FOR_HB;
+            }
         }
 #if defined(DEBUGLOG)
         if (NULL != (tempval=getenv("XONLY"))) {
@@ -2628,8 +2704,8 @@ int utf_bg_alloc(
 #endif
 #if defined(UTF_BG_UNIT_TEST)
         /*
-         * 仮デバッグマクロ
-         * UTF本体結合するまでのテスト用
+         * Temporary macro for debugging.
+         * For testing until merged with other UTF functions.
          */
         if (NULL != (tempval=getenv("UTF_DEBUG"))) {
             if (!strncmp(tempval, "0x", 2)) {
@@ -2662,8 +2738,8 @@ int utf_bg_alloc(
 #if defined(DEBUGLOG)
 #if defined(UTF_BG_UNIT_TEST)
 /*
- * 仮デバッグマクロ
- * UTF本体結合するまでのテスト用
+ * Temporary macro for debugging.
+ * For testing until merged with other UTF functions.
  */
     fprintf(stderr,"DEBUGLOG %s:%s:my_index=%zu: mypid=%d utf_dflag=%x \n"
         ,my_hostname,__func__,my_index
@@ -2685,33 +2761,7 @@ int utf_bg_alloc(
 #endif
 
     /*
-     * プロセス数の確認
-     */
-    if (len < (size_t)4) {
-        errcase |= UTF_BG_ALLOC_TOO_FEW_NODE;
-        SET_DISABLE_ALL(errcase);
-        SETINFO_CASE_SUCCESS();
-        return rc;
-    }
-
-    /*
-     * 最初のutf_bg_alloc呼び出しによるMPI_COMM_WORLD用のVBG確保に
-     * 失敗したため、以降のutf_bg_initはUTF_ERR_RESOURCE_BUSYで復帰させる。
-     */
-    if ( (!utf_bg_first_call) &&
-         (utf_bg_mmap_file_info.first_alloc_is_failed) ) {
-#if defined(DEBUGLOG)
-        fprintf(stderr,"DEBUGLOG %s:%s:my_index=%zu: utf barrier communication is invalid \n"
-            ,my_hostname,__func__,my_index
-        );
-#endif
-        SET_DISABLE_ALL(errcase);
-        utf_bg_alloc_count++;
-        return rc;
-    }
-
-    /*
-     * アクシステーブル
+     * Information for each axis
      */
     memset((void *)(&axes_info[0]),0,
         sizeof(utf_bg_alloc_axis_detail_info_t) * UTF_BG_ALLOC_AXIS_NUM_AXES);
@@ -2744,7 +2794,7 @@ int utf_bg_alloc(
     }
 
     /*
-     * mmap領域の確保
+     * Gets shared memory
      */
     if (utf_bg_first_call) {
         int rcmmap;
@@ -2753,7 +2803,7 @@ int utf_bg_alloc(
                                 rankset[my_index],
                                 intra_node_info);
 #if defined(DEBUGLOG)
-        fprintf(stderr,"DEBUGLOG %s:%s:my_index=%zu: make_mmap_file=%d disable_utf_shm=%d file_name=%s size=%zu width=%zu fd=%d mmaparea=%p first_vbg_id=%016lx \n"
+        fprintf(stderr,"DEBUGLOG %s:%s:my_index=%zu: make_mmap_file=%d disable_utf_shm=%d file_name=%s size=%zu width=%zu fd=%d mmaparea=%p \n"
             ,my_hostname,__func__,my_index
             ,rcmmap
             ,utf_bg_mmap_file_info.disable_utf_shm
@@ -2762,13 +2812,41 @@ int utf_bg_alloc(
             ,utf_bg_mmap_file_info.width
             ,utf_bg_mmap_file_info.fd
             ,utf_bg_mmap_file_info.mmaparea
-            ,utf_bg_mmap_file_info.first_vbg_id
         );
 #endif
         if (UTF_SUCCESS != rcmmap) {
             FREE_ALLOC();
             return rcmmap;
         }
+    }
+
+    /*
+     * If the first call to the utf_bg_alloc function fails
+     * to allocate VBGs for MPI_COMM_WORLD,
+     * the utf_bg_init function will always return with the return value
+     * UTF_ERR_RESOURCE_BUSY thereafter.
+     */
+    if ( (!utf_bg_first_call) &&
+         (utf_bg_mmap_file_info.first_alloc_is_failed) ) {
+#if defined(DEBUGLOG)
+        fprintf(stderr,"DEBUGLOG %s:%s:my_index=%zu: utf barrier communication is invalid \n"
+            ,my_hostname,__func__,my_index
+        );
+#endif
+        SET_DISABLE_ALL(errcase);
+        utf_bg_alloc_count++;
+        return UTF_SUCCESS;
+    }
+
+    /*
+     * Checks the number of processes
+     */
+    if (len < 4UL) {
+        utf_bg_detail_info->intra_node_info = intra_node_info;
+        errcase |= UTF_BG_ALLOC_TOO_FEW_NODE;
+        SET_DISABLE_ALL(errcase);
+        SETINFO_CASE_SUCCESS();
+        return UTF_SUCCESS;
     }
 
     if ( (max_intra_node_procs_for_hb < max_ppn) &&
@@ -2780,7 +2858,7 @@ int utf_bg_alloc(
     }
 
     /*
-     * アクシステーブル作成の合否(rc)判定
+     * Whether the information for each axis was created successfully?
      */
     if (UTF_SUCCESS != rc) {
         /*
@@ -2796,9 +2874,9 @@ int utf_bg_alloc(
     if ( (UTF_BG_INTRA_NODE_WORKER == intra_node_info->state) &&
          (!utf_bg_intra_node_barrier_is_tofu) ) {
         /*
-         * ノード内ソフトバリアのため、UTF_BG_INTRA_NODE_WORKERは
-         * ゲートを組む必要がない。
-         * 必要な情報をセットして、復帰する。
+         * If shared memory communication is specified in the node,
+         * UTF_BG_INTRA_NODE_WORKER does not need to set a barrier gate.
+         * Sets just the necessary information and returns.
          */
         INITIALIZE_BGINFO();
         SETINFO_CASE_SUCCESS();
@@ -2806,12 +2884,12 @@ int utf_bg_alloc(
     }
 
     /*
-     * バタフライネットワークの構築
+     * Builds a butterfly network
      */
     rc = make_butterfly_network(&axes_info[0],start_axis,
-                                &sequenceptr, /* 領域解放用先頭アドレス */
+                                &sequenceptr, /* Pointer to freeing memory */
                                 &optimizedsequence,
-                                        /* 最適化された領域の先頭を指す */
+                                        /*  Pointer to the optimized part */
                                 &number_vbgs
                            );
 #if defined(DEBUGLOG)
@@ -2826,13 +2904,13 @@ int utf_bg_alloc(
     }
 
     /*
-     * ゲート確保
+     * Allocates gates
      */
     rc = allocate_vbg(number_vbgs,intra_node_info,optimizedsequence,&my_tni);
 #if defined(DEBUGLOG)
-    fprintf(stderr,"DEBUGLOG %s:%s:my_index=%zu: allocate_vbg=%d first_vbg_id=%016lx my_tni=%d \n"
+    fprintf(stderr,"DEBUGLOG %s:%s:my_index=%zu: allocate_vbg=%d my_tni=%d \n"
         ,my_hostname,__func__,my_index
-        ,rc,utf_bg_mmap_file_info.first_vbg_id,my_tni
+        ,rc,my_tni
     );
 #endif
     if ( (UTF_SUCCESS != rc) && (UTF_ERR_FULL != rc) ) {
@@ -2852,7 +2930,7 @@ int utf_bg_alloc(
 #endif
 
     /*
-     * bginfo作成
+     * Creates bginfo
      */
     INITIALIZE_BGINFO();
     if (UTF_SUCCESS ==rc) {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 XXXXXXXXXXXXXXXXXXXXXXXX.
+ * Copyright (C) 2020 RIKEN, Japan. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -14,7 +14,7 @@
 
 
 /*
- * Include of header files
+ * Includes of header files
  */
 #include "utf_bg_internal.h"
 #include <sys/types.h>
@@ -27,7 +27,7 @@
  */
 
 /*
- * プロセス毎の軸種別
+ * The axis that the process is on.
  */
 #define UTF_BG_ALLOC_AXIS_OFF_AXES (-1)
 #define UTF_BG_ALLOC_AXIS_IN_NODE    0
@@ -37,15 +37,15 @@
 #define UTF_BG_ALLOC_AXIS_NUM_AXES   4
 #define UTF_BG_ALLOC_AXIS_MYSELF     5
 
-/* TNI番号取り出し用マスク値 */
+/* Bit mask for TNI */
 #define UTF_BG_ALLOC_MSK_TNI         0xE000000000000000
-/* VBGからbgid取り出し用マスク値 */
+/* Bit mask for BG ID */
 #define UTF_BG_ALLOC_MSK_BGID        0x000000000000003F
-/* bginfo初期値 */
+/* Initial value of bginfo */
 #define UTF_BG_ALLOC_INIT_BGINFO     0x000000000000FFFF
-/* ノードID作成 */
+/* To get node ID */
 #define UTF_BG_ALLOC_MSK_6DADDR      0x0FFFFFFF00000000
-/* 6次元アドレス生成用マスク値 */
+/* Bit mask for 6D coordinate */
 #define UTF_BG_ALLOC_MSK_6DADDR_X            0x000000FF
 #define UTF_BG_ALLOC_MSK_6DADDR_Y            0x0000FF00
 #define UTF_BG_ALLOC_MSK_6DADDR_Z            0x00FF0000
@@ -59,101 +59,105 @@
 #define UTF_BG_ALLOC_BITSFT_COORD_B                  25
 #define UTF_BG_ALLOC_BITSFT_COORD_C                  27
 
-/* ノード内ソフトバリア使用時に必要なノード数 */
+/* The minimum number of nodes using utf barrier communication */
 #define UTF_BG_ALLOC_REQUIRED_NODE           4
-/* ノード内プロセス最大数 */
-#define UTF_BG_ALLOC_MAX_PROC_IN_NODE        48
-/* ノード内ハードバリア使用時のノード内プロセス数 */
-#define UTF_BG_ALLOC_MAX_PROC_IN_NODE_FOR_HB UTF_BG_ALLOC_MAX_PROC_IN_NODE
-/* 無効なインデックス値 */
+/* Using Tofu barrier, the maximum number of processes in the node */
+#define UTF_BG_ALLOC_MAX_PROC_IN_NODE_FOR_HB UTF_BG_MAX_PROC_IN_NODE
+/* Invalid index */
 #define UTF_BG_ALLOC_INVALID_INDEX           ((size_t)-1)
-/* 無効なノードID */
+/* Invalid node ID */
 #define UTF_BG_ALLOC_INVALID_NODEID          (-1)
 
-/* バタフライネットワーク内の自プロセスの位置 */
+/* Location of own process in a butterfly network */
 #define UTF_BG_ALLOC_NODE_ZONES            3
-#define UTF_BG_ALLOC_POWEROFTWO_EAR        0 /* 耳 */
-#define UTF_BG_ALLOC_POWEROFTWO_CHEEK      1 /* 頬 */
-#define UTF_BG_ALLOC_POWEROFTWO_FACE       2 /* 顔 */
+#define UTF_BG_ALLOC_POWEROFTWO_EAR        0                   /* Ears   */
+#define UTF_BG_ALLOC_POWEROFTWO_CHEEK      1                   /* Cheeks */
+#define UTF_BG_ALLOC_POWEROFTWO_FACE       2                   /* Face   */
 
-/* ノード内プロセス数、ノード数が正しくない場合の内部エラーコード */
+/* Internal error code when the number of processes in the node or
+ * the number of nodes is incorrect */
 #define UTF_BG_ALLOC_TOO_MANY_PROC  ((uint8_t)0x01)
 #define UTF_BG_ALLOC_UNMATCH_PROC   ((uint8_t)0x02)
 #define UTF_BG_ALLOC_TOO_FEW_NODE   ((uint8_t)0x04)
 
-/* VBG情報 */
-#define UTF_BG_ALLOC_VBG_ID_UNNECESSARY ((utofu_vbg_id_t)-3) /* 不必要VBGID */
-#define UTF_BG_ALLOC_VBG_ID_UNDECIDED   ((utofu_vbg_id_t)-2) /* 未確定VBGID */
+/* Information about VBG */
+#define UTF_BG_ALLOC_VBG_ID_UNNECESSARY ((utofu_vbg_id_t)-3)
+                                                      /* Unnecessary VBG */
+#define UTF_BG_ALLOC_VBG_ID_UNDECIDED   ((utofu_vbg_id_t)-2)
+                                                      /* Undecided   VBG */
 #define UTF_BG_ALLOC_VBG_ID_NOOPARATION UTOFU_VBG_ID_NULL
 
-/* utf_bg_alloc.cでのみの内部エラー */
+/* Internal error used just in utf_bg_alloc.c */
 #define UTF_BG_ALLOC_ERR_UNMATCH_PROC_PER_NODE   -2048
 #define UTF_BG_ALLOC_ERR_TOO_MANY_PROC_IN_NODE   -2049
 #define UTF_BG_ALLOC_ERR_TOO_FEW_NODE            -2050
-
-/* utf_bg_internal.hに移すべきマクロ */
 
 /*
  * Structure definitions
  */
 
-/* バタフライネットワーク通信ノード情報 */
+/* Node information about butterfly network communication */
 typedef struct {
-    utofu_vbg_id_t vbg_id;                                      /* VBGID */
-    size_t  nodeinfo_index;
-                                /* nodeinfo内の自プロセスのインデックス  */
-    size_t index;                        /* rankset,bginfoのインデックス */
-    union jtofu_phys_coords *phy_6d_addr; /* 物理6次元アドレス  */
+    utofu_vbg_id_t vbg_id;                                     /* VBG ID */
+    size_t  nodeinfo_index;  /* Index of own process in node information */
+    size_t index;                         /* Index of rankset and bginfo */
+    union jtofu_phys_coords *phy_6d_addr;     /* Physical 6D coordinates */
 } utf_bf_alloc_butterfly_proc_info_t;
 
-/* バタフライネットワーク情報 */
+/* Information about butterfly network communication */
 struct utf_bf_alloc_butterfly_sequence_info_t {
-    utofu_vbg_id_t vbg_id;                           /* VBGID */
-    utf_bf_alloc_butterfly_proc_info_t     recvinfo; /* 受信元情報 */
-    utf_bf_alloc_butterfly_proc_info_t     sendinfo; /* 送信先情報 */
+    utofu_vbg_id_t vbg_id;                                     /* VBG ID */
+    utf_bf_alloc_butterfly_proc_info_t     recvinfo;           /* Source */
+    utf_bf_alloc_butterfly_proc_info_t     sendinfo;      /* Destination */
     struct utf_bf_alloc_butterfly_sequence_info_t *nextptr;
 };
 typedef struct utf_bf_alloc_butterfly_sequence_info_t
         utf_bf_alloc_butterfly_sequence_info_t;
 
-/* each of nodes information which is belong to axes */
+/* Node information belonging to each axis */
 typedef struct {
-    size_t   index;                     /* rankset,bginfoのインデックス */
-    union jtofu_log_coords  log_3d_addr; /* 論理3次元アドレス  */
-    union jtofu_phys_coords phy_6d_addr; /* 物理6次元アドレス  */
+    size_t   index;                       /* Index of rankset and bginfo */
+    union jtofu_log_coords  log_3d_addr;       /* Logical 3D coordinates */
+    union jtofu_phys_coords phy_6d_addr;      /* Physical 6D coordinates */
 } utf_bg_alloc_axis_node_info_t;
 
-/* each of axes information */
+/* Axis information */
 typedef struct {
-    uint32_t biggest;        /* 論理アドレスの最大値 */
-    uint32_t smallest;       /* 論理アドレスの最小値 */
-    size_t size;             /* 軸の長さ */
-    size_t number_gates_of_poweroftwo; /* 2冪レベルでの必要なゲート数*/
-    bool flag_poweroftwo;    /* ノード数が2冪か？ */
-    size_t number_gates;     /* バタフライネットワークを組むのに必要なゲート数*/
+    uint32_t biggest;            /* Maximum value of Logical coordinates */
+    uint32_t smallest;           /* Minimum value of Logical coordinates */
+    size_t size;                                         /* Axial length */
+    size_t number_gates_of_poweroftwo;
+                     /* Number of gates used in conversion to power of 2 */
+    bool flag_poweroftwo;
+                        /* Whether the number of nodes is a power of 2? */
+    size_t number_gates;
+               /* Number of gates needed to complete a butterfly network */
     size_t number_relay_gates[UTF_BG_ALLOC_NODE_ZONES];
-                             /* ゾーン別に見た中継ゲートの数 */
-    size_t on_poweroftwo;    /* バタフライネットワークにおける2冪開始位置 */
-    size_t off_poweroftwo;   /* バタフライネットワークにおける2冪から外れた位置*/
-    size_t nodeinfo_index;   /* nodeinfo内の自プロセスのインデックス */
+           /* Number of relay gates for each zone in a butterfly network */
+    size_t on_poweroftwo; /* Starting position of a true power of 2      *
+                                            range in a butterfly network */
+    size_t off_poweroftwo; /* End position of a true power of 2 range    *
+                                                  in a butterfly network */
+    size_t nodeinfo_index;   /* Index of own process in node information */
     utf_bg_alloc_axis_node_info_t *nodeinfo;
-                   /* each of nodes information which is belong to this axis */
+                              /* Node information belonging to each axis */
 
 } utf_bg_alloc_axis_detail_info_t;
 
-/* each of nodes information */
+/* Node information */
 typedef struct {
-    /* ノードID 物理6次元アドレスを基に作成 */
-    uint32_t nodeid;
-    int8_t   size;           /* ノード内プロセス数 */
-    int8_t   axis_kind;      /* 自プロセスのノードから見た軸種別 */
-    size_t   manager_index;  /* ノード間代表プロセスのインデックス */
+    
+    uint32_t nodeid;     /* Node ID derived from physical 6D coordinates */
+    int8_t   size;                    /* Number of processes in the node */
+    int8_t   axis_kind; /* The axis on which the target node is based on *
+                                               the position of own node. */
+    size_t   manager_index;   /* Index of the leader process in the node */
 } utf_bf_alloc_node_info_t;
 
-/* each of processes information */
+/* Process information */
 typedef struct {
     uint32_t nodeid;
-    int8_t axis_kind;       /* 自プロセスのノードから見た軸種別 */
-    size_t index;           /* 通信相手プロセスのインデックス */
+    int8_t axis_kind;   /* The axis on which the target node is based on */
+    size_t index;               /* Index of communication peer processes */
 } utf_bf_alloc_proc_info_t;
 

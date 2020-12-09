@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 XXXXXXXXXXXXXXXXXXXXXXXX.
+ * Copyright (C) 2020 RIKEN, Japan. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -51,7 +51,6 @@ void utf_bg_end_drawing(void) {
  * @return none
  */
 static void draw_barrier_network(struct utofu_vbg_setting *vbg_val,
-                                 uint32_t rankset[],
                                  size_t my_index) {
     utf_bg_vbg_info_t vbg, sl_vbg, sr_vbg, dl_vbg, dr_vbg;
     utf_rmt_src_dst_index_t *rindex;
@@ -76,12 +75,11 @@ static void draw_barrier_network(struct utofu_vbg_setting *vbg_val,
 
     rrow = utf_bg_detail_info->num_vbg - 1;
     rindex = utf_bg_detail_info->rmt_src_dst_seqs;
-    npos = rankset[my_index];
+    npos = my_index;
 #if defined(DEBUGLOG)
     fprintf(stderr,
-            "draw_barrier_network:my_index=%zu: num vbg=%zu "
-            "utf_bg_alloc_count=%zu size=%zu npos=%zu\n",
-            my_index, utf_bg_detail_info->num_vbg, utf_bg_alloc_count,
+            "%s: my_index=%zu num vbg=%zu utf_bg_alloc_count=%zu size=%zu npos=%zu\n",
+            __func__, my_index, utf_bg_detail_info->num_vbg, utf_bg_alloc_count,
             utf_bg_detail_info->intra_node_info->size, npos);
     fflush(stderr);
 #endif /* DEBUGLOG */
@@ -198,7 +196,8 @@ static void draw_barrier_network(struct utofu_vbg_setting *vbg_val,
 /**
  * Call the uTofu function utofu_set_vbg() to set up the barrier network.
 
- * @param[in] rankset       An array of the VCQ ID of the process.
+ * @param[in] rankset       An array of ranks in MPI_COMM_WORLD for the processes
+                            belonging to the barrier network
  * @param[in] len           Total number of the process.
  * @param[in] my_index      Rank of the process.
  * @param[in] bginfo        A pointer to the array of the VBG information of
@@ -225,7 +224,7 @@ int utf_bg_init(
     size_t src_idx, dst_idx;
 
     DEBUG(DLEVEL_PROTO_VBG) {
-        utf_printf("%s:rankset=%p len=%zu my_index=%zu bginfo=%p group_struct=%p\n",
+        utf_printf("%s: rankset=%p len=%zu my_index=%zu bginfo=%p group_struct=%p\n",
                    __func__, rankset, len, my_index, bginfo, group_struct);
     }
 
@@ -246,6 +245,14 @@ int utf_bg_init(
         rc = UTF_ERR_INVALID_POINTER;
         return rc;
     }
+    if (NULL == utf_bg_detail_info->intra_node_info) {
+        /* The required resource have not been created at utf_bg_alloc(). */
+        DEBUG(DLEVEL_PROTO_VBG) {
+            utf_printf("%s: utf_bg_detail_info->intra_node_info == NULL: my_index=%zu\n",
+                       __func__, my_index);
+        }
+        return UTF_ERR_INTERNAL;
+    }
 
     if (utf_bg_detail_info_first_alloc == utf_bg_detail_info) {
         /* The worker process in a node opens the mmap files and calls mmap(). */
@@ -253,54 +260,55 @@ int utf_bg_init(
                 utf_bg_detail_info->intra_node_info->state) {
             if (!utf_bg_mmap_file_info.disable_utf_shm) {
 #if defined(TOFUGIJI)
-                if (0 != utf_shm_init(utf_bg_mmap_file_info.size,
-                                      (void **)(&utf_bg_mmap_file_info.mmaparea))) {
-#if defined(DEBUGLOG)
-                    fprintf(stderr,
-                    "%s:utf_shm_init() FAILED:my_index=%zu size=%zu\n",
-                    __func__, my_index, utf_bg_mmap_file_info.size);
-#endif /* DEBUGLOG */
+                if (0 != (wrc = utf_shm_init(utf_bg_mmap_file_info.size,
+                                             (void **)(&utf_bg_mmap_file_info.mmaparea)))) {
+                    utf_printf("%s: utf_shm_init() FAILED: my_index=%zu size=%zu wrc=%d\n",
+                               __func__, my_index, utf_bg_mmap_file_info.size, wrc);
                     return UTF_ERR_INTERNAL;
                 }
 #else
 #if defined(DEBUGLOG)
-                    fprintf(stderr,
-                    "%s:utf_shm_init() was executed already at utf_bg_alloc :my_index=%zu size=%zu\n",
-                    __func__, my_index, utf_bg_mmap_file_info.size);
+                fprintf(stderr,
+                        "%s: utf_shm_init() was already executed at utf_bg_alloc:"
+                        " my_index=%zu size=%zu\n",
+                        __func__, my_index, utf_bg_mmap_file_info.size);
 #endif /* DEBUGLOG */
 #endif
             } else {
                 utf_bg_mmap_file_info.fd = open(utf_bg_mmap_file_info.file_name,
                                                 O_RDWR, 0666);
                 if (-1 == utf_bg_mmap_file_info.fd) {
-#if defined(DEBUGLOG)
-                    fprintf(stderr,
-                    "%s:open() FAILED:my_index=%zu file_name=%s errno=%d\n",
-                    __func__, my_index, utf_bg_mmap_file_info.file_name, errno);
-#endif /* DEBUGLOG */
+                    utf_printf("%s: open() FAILED: my_index=%zu file_name=%s errno=%d\n",
+                               __func__, my_index, utf_bg_mmap_file_info.file_name, errno);
                     free(utf_bg_mmap_file_info.file_name);
                     utf_bg_mmap_file_info.file_name = NULL;
                     return UTF_ERR_INTERNAL;
                 }
      
                 utf_bg_mmap_file_info.mmaparea = mmap(0,
-                                                  utf_bg_mmap_file_info.size,
-                                                  PROT_READ | PROT_WRITE,
-                                                  MAP_SHARED,
-                                                  utf_bg_mmap_file_info.fd, 0);
+                                                      utf_bg_mmap_file_info.size,
+                                                      PROT_READ | PROT_WRITE,
+                                                      MAP_SHARED,
+                                                      utf_bg_mmap_file_info.fd, 0);
                 if (MAP_FAILED == utf_bg_mmap_file_info.mmaparea) {
-#if defined(DEBUGLOG)
-                    fprintf(stderr,
-                    "%s:mmap() FAILED:my_index=%zu size=%zu fd=%d errno=%d\n",
-                    __func__, my_index, utf_bg_mmap_file_info.size,
-                    utf_bg_mmap_file_info.fd, errno);
-#endif /* DEBUGLOG */
+                    utf_printf("%s: mmap() FAILED: my_index=%zu size=%zu fd=%d errno=%d\n",
+                               __func__, my_index, utf_bg_mmap_file_info.size,
+                               utf_bg_mmap_file_info.fd, errno);
+                    close(utf_bg_mmap_file_info.fd);
                     free(utf_bg_mmap_file_info.file_name);
                     utf_bg_mmap_file_info.file_name = NULL;
                     return UTF_ERR_OUT_OF_MEMORY;
                 }
             }
         }
+    }
+    if (NULL == utf_bg_mmap_file_info.mmaparea) {
+        /* The required resource have not been created. */
+        DEBUG(DLEVEL_PROTO_VBG) {
+            utf_printf("%s: utf_bg_mmap_file_info.mmaparea == NULL: my_index=%zu\n",
+                       __func__, my_index);
+        }
+        return UTF_ERR_INTERNAL;
     }
 
     /* Check the availability of the barreir network. */
@@ -310,8 +318,10 @@ int utf_bg_init(
                Only post-processing is perfomed. */
             rc = UTF_ERR_RESOURCE_BUSY;
 
+            /* Notify that there is a process that could not allocate VBG
+               at the first utf_bg_alloc(). */
             if(utf_bg_detail_info_first_alloc == utf_bg_detail_info) {
-                utf_bg_mmap_file_info.first_alloc_is_failed = 1;
+                utf_bg_mmap_file_info.first_alloc_is_failed = true;
             }
 
             /* Set the group_struct.
@@ -319,8 +329,8 @@ int utf_bg_init(
             *group_struct = (utf_coll_group_t)utf_bg_detail_info;
 
             DEBUG(DLEVEL_PROTO_VBG) {
-                utf_printf("%s:RESOURCE BUSY:my_index=%zu bginfo[%zu]\n",
-                           __func__, my_index, i);
+                utf_printf("%s: RESOURCE BUSY: my_index=%zu bginfo[%zu]=0x%lx\n",
+                           __func__, my_index, i, bginfo[i]);
             }
             goto init_end;
         }
@@ -364,20 +374,19 @@ int utf_bg_init(
 
         DEBUG(DLEVEL_PROTO_VBG) {
             for (i = 0; i < utf_bg_detail_info->num_vbg; i++) {
-                utf_printf(
-                    "%s:my_index=%zu: num vbg=%zu/%zu vbg_id=%016lx "
-                    "src_lcl_vbg_id=%016lx src_rmt_vbg_id=%016lx "
-                    "dst_lcl_vbg_id=%016lx dst_rmt_vbg_id=%016lx\n",
-                    __func__, my_index, i, utf_bg_detail_info->num_vbg,
-                    settings[i].vbg_id,
-                    settings[i].src_lcl_vbg_id, settings[i].src_rmt_vbg_id,
-                    settings[i].dst_lcl_vbg_id, settings[i].dst_rmt_vbg_id);
+                utf_printf("%s: my_index=%zu: num vbg=%zu/%zu vbg_id=%016lx "
+                           "src_lcl_vbg_id=%016lx src_rmt_vbg_id=%016lx "
+                           "dst_lcl_vbg_id=%016lx dst_rmt_vbg_id=%016lx\n",
+                           __func__, my_index, i, utf_bg_detail_info->num_vbg,
+                           settings[i].vbg_id,
+                           settings[i].src_lcl_vbg_id, settings[i].src_rmt_vbg_id,
+                           settings[i].dst_lcl_vbg_id, settings[i].dst_rmt_vbg_id);
             }
         }
 
 #if defined(UTF_INTERNAL_DEBUG)
         /* for internal debug */
-        draw_barrier_network(settings, rankset, my_index);
+        draw_barrier_network(settings, my_index);
 #endif /* UTF_INTERNAL_DEBUG */
 
         /* Call utofu_set_vbg(). */
@@ -388,7 +397,7 @@ int utf_bg_init(
             /* Cannot continue the processing.
                Only post-processing is performed. */
             DEBUG(DLEVEL_PROTO_VBG) {
-                utf_printf("%s:utofu_set_vbg() error: rc=%d\n", __func__, rc);
+                utf_printf("%s: Call utofu_set_vbg: rc=%d\n", __func__, rc);
             }
             goto init_end;
         }
@@ -403,24 +412,12 @@ int utf_bg_init(
        soft barrier. */
 #if defined(DEBUGLOG)
     fprintf(stderr,
-            "%s:shared memory processing:my_index=%zu state=% ld first_call=%p/%p "
+            "%s: Shared memory processing: my_index=%zu state=% ld first_call=%p/%p "
             "is_tofu=%u mmaparea=%p\n",
             __func__, my_index, (long)utf_bg_detail_info->intra_node_info->state,
             utf_bg_detail_info_first_alloc, utf_bg_detail_info, 
             utf_bg_intra_node_barrier_is_tofu, utf_bg_mmap_file_info.mmaparea);
 #endif /* DEBUGLOG */
-    if (utf_bg_detail_info_first_alloc == utf_bg_detail_info) {
-        /* The worker process in a node opens the mmap files and calls mmap(). */
-        if (UTF_BG_INTRA_NODE_WORKER ==
-                utf_bg_detail_info->intra_node_info->state) {
-            /* In case of soft barrier, the worker process refers to the first
-               VBG ID set by the manager process in utf_bg_alloc().  */
-            if (!utf_bg_intra_node_barrier_is_tofu) {
-                utf_bg_mmap_file_info.first_vbg_id =
-                   utf_bg_mmap_file_info.mmaparea->first_vbg_id;
-            }
-        }
-    }
 
     /* The manager process in a node sets the next TNI ID. */
     if (UTF_BG_INTRA_NODE_MANAGER ==
@@ -429,7 +426,7 @@ int utf_bg_init(
         msync((void *)utf_bg_mmap_file_info.mmaparea,
               (size_t)UTF_BG_MMAP_HEADER_SIZE, MS_SYNC);
 #if defined(DEBUGLOG)
-        fprintf(stderr, "%s:my_index=%zu next_tni_id=%u\n", __func__,
+        fprintf(stderr, "%s: my_index=%zu next_tni_id=%u\n", __func__,
                 my_index, utf_bg_mmap_file_info.mmaparea->next_tni_id);
 #endif /* DEBUGLOG */
     }
@@ -439,24 +436,39 @@ int utf_bg_init(
     if (!utf_bg_intra_node_barrier_is_tofu &&
         2 <= utf_bg_detail_info->intra_node_info->size) {
         char *target_tni;
+        
+        /* Get the index for manager's TNI/BG */
+        for (i=0UL; i<UTF_BG_MAX_PROC_IN_NODE; i++) {
+            if (rankset[my_index] == utf_bg_alloc_intra_world_indexes[i]) {
+                break;
+            }
+        }
+        if (i >= UTF_BG_MAX_PROC_IN_NODE) {
+            DEBUG(DLEVEL_PROTO_VBG) {
+                utf_printf("%s: index could not found: my_index=%zu\n", __func__, my_index);
+            }
+            return UTF_ERR_INTERNAL;
+        }
+
         /* Get the target TNI buffer address. */
         target_tni = (char *)(utf_bg_mmap_file_info.mmaparea) +
                      UTF_BG_MMAP_HEADER_SIZE +
                      (UTF_BG_MMAP_TNI_INF_SIZE *
-                      utf_bg_mmap_file_info.mmaparea->manager_tni_id);
+                      utf_bg_mmap_file_info.mmaparea->manager_info[i].tni);
         /* Get and save the target gate buffer address. */
         utf_bg_detail_info->intra_node_info->mmap_buf = (uint64_t *)
            (target_tni + UTF_BG_MMAP_GATE_INF_SIZE *
-                         utf_bg_mmap_file_info.mmaparea->manager_start_bg_id);
+                         utf_bg_mmap_file_info.mmaparea->manager_info[i].start_bg);
 
 #if defined(DEBUGLOG)
         fprintf(stderr, 
-            "%s:my_index=%zu manager_tni_id=%u manager_start_bg_id=%u mmap_buf=%p(%+ld)\n",
+            "%s: my_index=%zu manager_index=%zu manager_tni_id=%u manager_start_bg_id=%u mmap_buf=%p(%+ld)\n",
             __func__, my_index,
-            utf_bg_mmap_file_info.mmaparea->manager_tni_id,
-            utf_bg_mmap_file_info.mmaparea->manager_start_bg_id,
+            i, 
+            utf_bg_mmap_file_info.mmaparea->manager_info[i].tni,
+            utf_bg_mmap_file_info.mmaparea->manager_info[i].start_bg,
             utf_bg_detail_info->intra_node_info->mmap_buf,
-            ((char *)utf_bg_detail_info->intra_node_info->mmap_buf-
+            ((char *)utf_bg_detail_info->intra_node_info->mmap_buf -
              (char *)utf_bg_mmap_file_info.mmaparea));
 #endif /* DEBUGLOG */
     }
@@ -466,12 +478,11 @@ int utf_bg_init(
         /*  need size = data size(8) * max element number(6) * in/out(2) = 96 */
         /* (Allocate lager than need size.) */
         if (0 != (wrc = posix_memalign(&(poll_info.utf_bg_poll_idata),
-                                       UTF_BG_CACHE_LINE_SIZE, 512))) {
-#if defined(DEBUGLOG)
-            fprintf(stderr, "%s:my_index=%zu posix_memalign() FAILED rc=%d\n",
-                    __func__, my_index, wrc);
-#endif /* DEBUGLOG */
+                                       UTF_BG_CACHE_LINE_SIZE, UTF_BG_CACHE_LINE_SIZE*2))) {
+            utf_printf("%s: posix_memalign() FAILED: my_index=%zu wrc=%d\n",
+                       __func__, my_index, wrc);
             if (utf_bg_mmap_file_info.file_name) {
+                close(utf_bg_mmap_file_info.fd);
                 free(utf_bg_mmap_file_info.file_name);
                 utf_bg_mmap_file_info.file_name = NULL;
             }
@@ -480,8 +491,8 @@ int utf_bg_init(
         poll_info.utf_bg_poll_odata =
             (char *)poll_info.utf_bg_poll_idata + UTF_BG_CACHE_LINE_SIZE;
 #if defined(DEBUGLOG)
-        fprintf(stderr, "%s:my_index=%zu poll_idata=%p\n",
-                __func__, my_index, poll_info.utf_bg_poll_idata);
+        fprintf(stderr, "%s: my_index=%zu poll_idata=%p, poll_odata=%p\n",
+                __func__, my_index, poll_info.utf_bg_poll_idata, poll_info.utf_bg_poll_odata);
 #endif /* DEBUGLOG */
     }
 
@@ -490,7 +501,7 @@ int utf_bg_init(
 
 init_end:
     DEBUG(DLEVEL_PROTO_VBG) {
-        utf_printf("%s:my_index=%zu rc=%d, *group_struct=%p\n",
+        utf_printf("%s: my_index=%zu rc=%d, *group_struct=%p\n",
                    __func__, my_index, rc, *group_struct);
     }
 

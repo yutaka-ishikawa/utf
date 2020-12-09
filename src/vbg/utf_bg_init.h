@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 XXXXXXXXXXXXXXXXXXXXXXXX.
+ * Copyright (C) 2020 RIKEN, Japan. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -142,7 +142,6 @@ typedef struct {
  */
 #if defined(UTF_INTERNAL_DEBUG)
 static void draw_barrier_network(struct utofu_vbg_setting *vbg_val,
-                                 uint32_t rankset[],
                                  size_t my_index);
 #endif /* UTF_INTERNAL_DEBUG */
 
