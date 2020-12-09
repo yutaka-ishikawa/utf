@@ -23,8 +23,12 @@
 #endif
 #include "utf_conf.h"
 #include "utf_tofu.h"
+#include "utf_debug.h"
+#include "utf.h"
+extern int	utf_shm_init(size_t, void **);
+extern int	utf_shm_finalize();
+#include "utf_errmacros.h"
 #include "utf_bg.h"
-
 /*
  * Macro definitions
  */
