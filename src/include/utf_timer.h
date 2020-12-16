@@ -24,7 +24,14 @@
 #define TMR_UTF_SEND_LATENCY	16
 #define TMR_UTF_EXT1		17
 #define TMR_UTF_EXT2		18
-#define TMR_EVT_MAX		19
+#define TMR_FI_TSEND		19
+#define TMR_FI_SEND		20
+#define TMR_FI_TRECV		21
+#define TMR_FI_RECV		22
+#define TMR_FI_READ		23
+#define TMR_FI_WRITE		24
+#define TMR_FI_CQREAD		25
+#define TMR_EVT_MAX		26
 #define TMR_COUNT_MAX		1000
 #define TMR_SYM_LEN		20
 
@@ -65,6 +72,8 @@ utf_tmr_end(int evt)
 extern void	utf_tmr_init();
 extern void	utf_tmr_show(FILE *);
 extern void	utf_tmr_start();
+extern void	utf_tmr_suspend();
+extern void	utf_tmr_resume();
 
 struct utf_timer {
     char	sym[TMR_SYM_LEN];
