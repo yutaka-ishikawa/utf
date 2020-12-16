@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 XXXXXXXXXXXXXXXXXXXXXXXX.
+ * Copyright (C) 2020 RIKEN, Japan. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -8,7 +8,7 @@
  */
 
 /*
- * ヘッダファイルの読み込み
+ * Includes header files
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,7 +30,7 @@ extern int	utf_shm_finalize();
 #include "utf_errmacros.h"
 #include "utf_bg.h"
 /*
- * マクロの定義
+ * Macro definitions
  */
 #define UTF_BG_BGINFO_INVALID_BGID      ((utofu_bg_id_t)(0x00ff))
 #define UTF_BG_BGINFO_INVALID_INDEX     ((size_t)-1)
@@ -59,6 +59,9 @@ extern int	utf_shm_finalize();
 #define UTF_BG_MIN_START_BG_NUMBER            0
 #define UTF_BG_MAX_START_BG_NUMBER           15
 
+/* The maximum number of processes in the node */
+#define UTF_BG_MAX_PROC_IN_NODE              48
+
 #define UTF_BG_NUM_TNI       (UTF_BG_MAX_TNI_NUMBER - UTF_BG_MIN_TNI_NUMBER + 1)
 #define UTF_BG_NUM_START_BG  (UTF_BG_MAX_START_BG_NUMBER - UTF_BG_MIN_START_BG_NUMBER + 1)
 
@@ -82,179 +85,187 @@ extern int	utf_shm_finalize();
     (UTF_BG_MMAP_GATE_INF_SIZE * UTF_BG_NUM_START_BG)
 
 /*
- * 構造体宣言
+ * Structure definitions
  */
 
 /*
- * utf_bg_allocの引数情報
+ * The arguments for utf_bg_alloc function
  */
 typedef struct {
-    /* utf_alloc_bgに渡されたranksetのアドレス    */
+    /* Pointer to an array of ranks numbered within MPI_COMM_WORLD
+     * for all processes in this barrier network (=communicator)   */
     uint32_t       *rankset;
-    /* utf_alloc_bgに渡されたlenの値              */
+    /* The total number of processes in this barrier network       */
     size_t         len;
-   /* utf_alloc_bgに渡されたmy_indexの値          */
+    /* Rank number of own process in this barrier network          */
     size_t         my_index;
 } utf_bg_alloc_argument_info_t;
 
 /*
- * ノード内プロセス情報
+ * Information about processes in the own node
  */
 typedef struct {
-    /* 自プロセスがノード内マネージャーかワーカーか */
+    /* Whether own process is the leader in the node or not. */
     size_t   state;
-    /* ノード内プロセス数*/
+    /* Number of processes in the node */
     size_t   size;
-    /* 自プロセスのノード内インデックス*/
+    /* Index of own process in the node */
     size_t   intra_index;
-    /* シーケンス番号 */
+    /* list of vpids in the node */
+    size_t *vpids;
+    /* Number of processing sequence */
     uint64_t curr_seq;
-    /* 自プロセスのノード内共有メモリ通信領域の先頭アドレス */
+    /* Pointer to memory shared by own node */
     volatile uint64_t *mmap_buf;
 } utf_bg_intra_node_detail_info_t;
 
 /*
- * mmapの先頭領域に格納される情報
+ * Manager's tni/bg info.
+ */
+typedef struct {
+    /* TNI to which BGs acquired by the leader process in the node belong */
+    volatile utofu_tni_id_t tni;
+    /* Start BG acquired by the leader process in the node */
+    volatile utofu_bg_id_t  start_bg;
+} utf_bg_manager_tnibg_info;
+
+/*
+ * Information in the first portion of a mmap buffer
  */
 typedef struct {
     /*
-     * 共有メモリセグメント削除制御用領域(atomic_ulong)  
+     * Control area for deleting a shared memory segment (atomic_ulong)
      */
 #if (!defined(TOFUGIJI))
     atomic_ulong  ul;
 #else
     unsigned long ul;
 #endif
-    /*
-     * 最初のutf_bg_alloc呼び出しで作成されたMPI_COMM_WORLDの始点ゲート
-     * uint64_t
-     *
-     * utf_bg_intra_node_barrier_is_tofuが真の場合
-     *   : すべてのプロセスがutf_bg_allocで設定する。
-     *     utf_bg_init側で参照する必要はない。
-     *
-     * utf_bg_intra_node_barrier_is_tofuが偽の場合
-     *   : ノード内マネージャーがutf_bg_allocで設定する。
-     *     ノード内ワーカーがutf_bg_initで参照する必要がある。
-     */
-    utofu_vbg_id_t first_vbg_id;
-    /* ノード内マネージャーが確保した始点BGID               uint16_t */
-    utofu_bg_id_t  manager_start_bg_id;
-    /* ノード内マネージャーがバリアゲートを確保したTNI番号  uint16_t */
-    utofu_tni_id_t manager_tni_id;
-    /* 次コミュニケータが使用する先頭のTNI番号              uint16_t */
+    /* TNI to start using when the next barrier network is created */
     utofu_tni_id_t next_tni_id;
+    /* Manager's TNI/BG infos */
+    utf_bg_manager_tnibg_info manager_info[UTF_BG_MAX_PROC_IN_NODE];
 } utf_bg_mmap_header_info_t;
 
 /*
- * mmapファイル情報
+ * Information about a mmap buffer
  */
 typedef struct {
     /*
-     * 共有メモリをUTF本体側で確保しないことを指示
-     *   true  : UTFバリア通信が自身でmmapによる共有メモリ領域を作成、使用、解放
-     *   false : utf_shm_initで共有メモリ領域を確保、utf_shm_finalizeで解放
+     * Checks whether the function calling utf barrier communication
+     * has already acquired the shared memory.
+     *   true  : utf barrier communication allocates, uses, and
+     *           releases mmap shared memory by itself.
+     *   false : Allocates shared memory in utf_shm_init function and
+     *           releases it in utf_shm_finalize function.
      */
     bool disable_utf_shm;
-    /* ファイル名 */
+    /* Name of the shared memory file */
     char    *file_name;
-    /* ファイル、mmap領域の大きさ */
+    /* Size of the shared memory file */
     size_t  size;
-    /* 最大ノード内プロセス数 */
+    /* Maximum number of processes in the node */
     size_t  width;
     /*
-     * ファイルディスクリプタ
-     * UTF_BG_INTRA_NODE_MANAGERはutf_bg_allocの初回呼び出しで代入
-     * UTF_BG_INTRA_NODE_WORKERはutf_bg_initの初回呼び出しで代入
+     * File descriptor
+     * The leader process in the node sets it in utf_bg_alloc function
+     * called in the first time.
+     * The other processes set it in utf_bg_init function
+     * called in the first time.
      */
     int     fd;
     /*
-     * mmap領域の先頭アドレス
-     * UTF_BG_INTRA_NODE_MANAGERはutf_bg_allocの初回呼び出しで代入
-     * UTF_BG_INTRA_NODE_WORKERはutf_bg_initの初回呼び出しで代入
+     * Pointer to mmap shared memory
+     * The leader process in the node sets it in utf_bg_alloc function
+     * called in the first time.
+     * The other processes set it in utf_bg_init function
+     * called in the first time.
      */
     utf_bg_mmap_header_info_t *mmaparea;
     /*
-     * 最初のutf_bg_alloc呼び出しで作成されたMPI_COMM_WORLDの始点ゲート
-     */
-    utofu_vbg_id_t first_vbg_id;
-    /*
-     * 全プロセスにおける、最初のutf_bg_alloc呼び出し結果
-     *   true  : 全てのプロセスがVBGを確保できた。
-     *   false : VBGを確保できなかったプロセスが存在する。
+     * Checks whether the result of the first utf_bg_alloc function succeeds
+     * about all processes.
+     *   false : There were enough VBGs to use for all processes.
+     *   true  : There was one or more processes where the number
+     *           of VBGs was not enough to use.
      */
     bool first_alloc_is_failed;
 } utf_bg_mmap_file_info_t;
 
 typedef struct{
-    /* 受信 */
+    /* Source to receive */
     size_t src_rmt_index;
-    /* 送信 */
+    /* Destination to send */
     size_t dst_rmt_index;
 } utf_rmt_src_dst_index_t;
 
-/** 通信開始側と演算完了側で共有する情報 */
-/** Information shared by communication start processiong and end processing */
-
+/** Information for one barrier network handing between functions */
 typedef struct{
     /*
-     * utf_bg_allocの引数情報
+     * The arguments for utf_bg_alloc function
      */
     utf_bg_alloc_argument_info_t arg_info;
 
     /*
-     * ノード内プロセス情報
+     * Information about processes in the own node
      */
     utf_bg_intra_node_detail_info_t *intra_node_info;
 
     /*
-     * バリア回路構築用に獲得したVBGの総数
-     *   utf_bg_alloc(): 値を設定
+     * Total number of VBGs used to build the barrier network
+     * - Set the value in utf_bg_alloc function.
      */
     size_t num_vbg;
 
     /*
-     * 確保されたVBGのID(×num_vbg)
-     * 先頭が開始終了VBG
-     *   utf_bg_alloc(): 領域を確保、値を設定
-     *   utf_bg_free():  領域を解放
+     * An array of VBGs (Number of elements is num_bgs.)
+     * The first element is the start/end VBG.
+     * - Allocates memory and sets values in utf_bg_alloc function.
+     * - Frees memory in utf_bg_free function.
      */
     utofu_vbg_id_t *vbg_ids;
 
     /*
-     * 該当コミュニケータ―に対応する送受信シーケンス(×num_vbg)
-     *   utf_bg_alloc(): 領域を確保
-     *   utf_bg_init():  utofu_set_vbg()で使用、領域を解放
+     * An array of arguments to utofu_set_vbgs function (Number of elements is num_bgs.)
+     * The sequence of destination or source VCQs is set there.
+     * - Allocates memory in utf_bg_alloc function.
+     * - Frees memory after calling utofu_set_vbg () function
+     *   with this as an argument in utf_bg_init function.
      */
     struct utofu_vbg_setting *vbg_settings;
 
     /*
-     * 通信相手ノードのインデックス(×num_vbg)
-     *   utf_bg_alloc(): 領域を確保、値を設定
-     *   utf_bg_init():  領域を解放
+     * An array of indexes of communication peer processes (Number of elements is num_bgs.)
+     * - Allocates memory and sets values in the utf_bg_alloc function.
+     * - Frees memory in utf_bg_init function.
      */
     utf_rmt_src_dst_index_t  *rmt_src_dst_seqs;
 
 } utf_coll_group_detail_t;
 
 /*
- * 外部変数の宣言
+ * Declarations of external variables
  */
-/* 真:ノード内ハードバリア 偽:ノード内ソフトバリア */
+/* Whether the barrier in the node is Tofu barrier or not
+ * true :  Tofu barrier
+ * false : Software barrier using shared memory
+ */
 extern bool utf_bg_intra_node_barrier_is_tofu;
-/* utf_bg_init,utf_barrier,utf_(all)reduce,向けのバリア情報 */
+
+/** Information for one barrier network handing between functions */
 extern utf_coll_group_detail_t *utf_bg_detail_info;
 /*
- * utf_bg_init,utf_barrier,utf_(all)reduce,向けのMPI_COMM_WORLDバリア情報
- * (utf_bg_alloc初回呼び出し時に作成されたバリア情報)
+ * Information about the barrier network created by the first utf_bg_alloc function call
  */
 extern utf_coll_group_detail_t *utf_bg_detail_info_first_alloc;
-/* mmapファイル情報 */
+/* Information about a mmap buffer */
 extern utf_bg_mmap_file_info_t utf_bg_mmap_file_info;
-/* 次コミュニケータが使用する先頭のTNI番号 */
+/* TNI which should be used in the allocation of the next barrier network */
 extern utofu_tni_id_t utf_bg_next_tni_id; 
-/* utf_bg_alloc呼び出し回数 */
+/* Counter for utf_bg_alloc function call */
 extern uint64_t utf_bg_alloc_count;
+/* Vpid list in my node */
+extern size_t *utf_bg_alloc_intra_world_indexes;
 
 typedef struct {
     utofu_vbg_id_t utf_bg_poll_ids;
@@ -262,17 +273,16 @@ typedef struct {
     void          *utf_bg_poll_idata;
     void          *utf_bg_poll_result;
     int            utf_bg_poll_op;
-    int            utf_bg_poll_count;
+    size_t         utf_bg_poll_count;
     uint64_t       utf_bg_poll_datatype;
     size_t         utf_bg_poll_size;
     int            utf_bg_poll_numcount;
     bool           utf_bg_poll_root;
-    // 以降はsmで使用
+    // Shared memory communication uses the following variables.
     bool           sm_flg_comm_start;/* Flag to check the start of barrier communication */
     int            sm_utofu_op;     /* Operation type(utofu) */
     int            sm_loop_counter; /* Loop counter */
     size_t         sm_loop_rank;    /* Loop rank */
-    size_t         sm_state;        // == intra_node_info->state
     size_t         sm_numproc;      // == intra_node_info->size
     size_t         sm_intra_index;  // == intra_node_info->intra_index
     uint64_t       sm_seq_val;      // == intra_node_info->curr_seq
@@ -282,12 +292,14 @@ extern utf_bg_poll_info_t poll_info;
 
 #if defined(UTF_BG_UNIT_TEST)
 /*
- * 仮デバッグマクロ
- * UTF本体結合するまでのテスト用
+ * Temporary declarations of macros for the debugging
+ * Uses some source codes of MPICH-tofu for unit tests of the functions
+ * of utf barrier communication.
  */
 extern void utofu_get_last_error(const char*);
-extern int mypid;      /* utf_bg_alloc.cに仮に作成 初回呼び出しのmy_indexを入れる */
-extern int utf_dflag;  /* utf_bg_alloc.cに仮に作成 */
+extern int mypid;      /* Temporarily declared in utf_bg_alloc.c
+                        * The function sets my_index when called for the first time. */
+extern int utf_dflag;  /* Temporarily declared in utf_bg_alloc.c */
 
 #define DLEVEL_UTOFU       0x2
 #define DLEVEL_PROTO_VBG  0x40 /* 64 */

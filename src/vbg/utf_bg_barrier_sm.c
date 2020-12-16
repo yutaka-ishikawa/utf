@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 XXXXXXXXXXXXXXXXXXXXXXXX.
+ * Copyright (C) 2020 RIKEN, Japan. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -16,48 +16,53 @@
  * @param(IN/OUT) data1        A pointer to the operand 1 of operation.
  * @param(IN)     data2        A pointer to the operand 2 of operation.
  */
-#define SM_REDUCE_OP(data_1, data_2) {                                  \
-    switch(poll_info.sm_utofu_op) {                                     \
-        case UTF_REDUCE_OP_SUM:                                         \
-            for(n = 0; n < count; n++){                                 \
-                *((data_1) + n) += *((data_2) + n);                     \
-            }                                                           \
-            break;                                                      \
-        case UTF_REDUCE_OP_BAND:                                        \
-            for(n = 0; n < count; n++){                                 \
-                *((data_1) + n) &= *((data_2) + n);                     \
-            }                                                           \
-            break;                                                      \
-        case UTF_REDUCE_OP_BOR:                                         \
-            for(n = 0; n < count; n++){                                 \
-                *((data_1) + n) |= *((data_2) + n);                     \
-            }                                                           \
-            break;                                                      \
-        case UTF_REDUCE_OP_BXOR:                                        \
-            for(n = 0; n < count; n++){                                 \
-                *((data_1) + n) ^= *((data_2) + n);                     \
-            }                                                           \
-            break;                                                      \
-        case UTF_REDUCE_OP_MAX:                                         \
-            for(n = 0; n < count; n++){                                 \
-                if(*((data_1) + n) < *((data_2) + n)){                  \
-                    *((data_1) + n) = *((data_2) + n);                  \
-                }                                                       \
-            }                                                           \
-            break;                                                      \
-        case UTF_REDUCE_OP_MAXLOC:                                      \
-            for(n = 0; n < count; n+=2){                                \
-                if(*((data_1) + n) < *((data_2) + n)){                  \
-                    *((data_1) + n) = *((data_2) + n);                  \
-                    *((data_1) + n + 1) = *((data_2) + n + 1);          \
-                }                                                       \
-                else if(*((data_1) + n) == *((data_2) + n) &&           \
-                        *((data_1) + n + 1) < *((data_2) + n + 1)){     \
-                    *((data_1) + n + 1) = *((data_2) + n + 1);          \
-                }                                                       \
-            }                                                           \
-            break;                                                      \
-    }                                                                   \
+#define SM_REDUCE_OP(data_1, data_2) {                                              \
+    switch(poll_info.sm_utofu_op) {                                                 \
+        case UTF_REDUCE_OP_SUM:                                                     \
+            for(n = 0; n < count; n++){                                             \
+                *((data_1) + n) += *((data_2) + n);                                 \
+            }                                                                       \
+            break;                                                                  \
+        case UTF_REDUCE_OP_BAND:                                                    \
+            for(n = 0; n < count; n++){                                             \
+                *((data_1) + n) &= *((data_2) + n);                                 \
+            }                                                                       \
+            break;                                                                  \
+        case UTF_REDUCE_OP_BOR:                                                     \
+            for(n = 0; n < count; n++){                                             \
+                *((data_1) + n) |= *((data_2) + n);                                 \
+            }                                                                       \
+            break;                                                                  \
+        case UTF_REDUCE_OP_BXOR:                                                    \
+            for(n = 0; n < count; n++){                                             \
+                *((data_1) + n) ^= *((data_2) + n);                                 \
+            }                                                                       \
+            break;                                                                  \
+        case UTF_REDUCE_OP_MAX:                                                     \
+            for(n = 0; n < count; n++){                                             \
+                if(*((data_1) + n) < *((data_2) + n)){                              \
+                    *((data_1) + n) = *((data_2) + n);                              \
+                }                                                                   \
+            }                                                                       \
+            break;                                                                  \
+        case UTF_REDUCE_OP_MAXLOC:                                                  \
+            for(n = 0; n < count; n+=2){                                            \
+                if(*((data_1) + n) < *((data_2) + n)){                              \
+                    *((data_1) + n) = *((data_2) + n);                              \
+                    *((data_1) + n + 1) = *((data_2) + n + 1);                      \
+                }                                                                   \
+                else if(*((data_1) + n) == *((data_2) + n) &&                       \
+                        *((data_1) + n + 1) > *((data_2) + n + 1)){                 \
+                    *((data_1) + n + 1) = *((data_2) + n + 1);                      \
+                }                                                                   \
+            }                                                                       \
+            break;                                                                  \
+        default:                                                                    \
+            utf_printf("%s(SM_REDUCE_OP): Invalid reduction operation:"             \
+                       " intra_index=%zu op=%d\n",                                  \
+                       __func__, poll_info.sm_intra_index, poll_info.sm_utofu_op);  \
+            return UTF_ERR_INTERNAL;                                                \
+    }                                                                               \
 }
 
 
@@ -79,7 +84,7 @@ int utf_poll_barrier_sm(void)
 
     if(!poll_info.sm_flg_comm_start){
 #if defined(DEBUGLOG2)
-        fprintf(stderr, "%s:rank=%zu(%zu) mmap_seq(%zu)=%p(%zu), seq_val=%zu\n",
+        fprintf(stderr, "%s: node rank=%zu(%zu) mmap_seq(%zu)=%p(%zu) seq_val=%zu\n",
                 __func__, rank, poll_info.sm_intra_index, poll_info.sm_intra_index,
                 UTF_BG_MMAP_SEQ(poll_info.sm_intra_index), *(UTF_BG_MMAP_SEQ(poll_info.sm_intra_index)), seq_val);
 #endif
@@ -88,19 +93,12 @@ int utf_poll_barrier_sm(void)
                 /* Odd rank, or even rank without pair stores the value. */
                 *(UTF_BG_MMAP_SEQ(rank * i)) = seq_val;
 #if defined(DEBUGLOG2)
-        fprintf(stderr,
-                "%s:counter=%d rank=%zu(%zu) num_proc=%zu set mmap_seq(%zu)=%lu seq_val=%zu\n",
-                __func__, loop_counter, rank, poll_info.sm_intra_index, num_proc,
-                rank*i, *UTF_BG_MMAP_SEQ(rank*i), seq_val);
+                fprintf(stderr, "%s: rank=%zu(%zu) set mmap_seq(%zu)=%p(%zu)\n",
+                        __func__, rank, poll_info.sm_intra_index, rank*i, UTF_BG_MMAP_SEQ(rank*i),
+                        *(UTF_BG_MMAP_SEQ(rank*i)));
 #endif
                 break;
             }else{
-#if defined(DEBUGLOG2)
-        fprintf(stderr,
-                "%s:counter=%d rank=%zu(%zu) num_proc=%zu ref mmap_seq(%zu)=%lu seq_val=%zu\n",
-                __func__, loop_counter, rank, poll_info.sm_intra_index, num_proc,
-                (rank+1)*i, *UTF_BG_MMAP_SEQ((rank+1)*i), seq_val);
-#endif
                 /* Even rank with a pair checks that the value has been stored. */
                 if(*UTF_BG_MMAP_SEQ((rank + 1) * i) != seq_val){
                     /* The value has not been stored yet.
@@ -110,13 +108,19 @@ int utf_poll_barrier_sm(void)
                     poll_info.sm_loop_rank = rank;
                     return UTF_ERR_NOT_COMPLETED;
                 }
+#if defined(DEBUGLOG2)
+                fprintf(stderr, "%s: rank=%zu(%zu) ref mmap_seq(%zu)=%p(%zu)\n",
+                        __func__, rank, poll_info.sm_intra_index, (rank+1)*i, UTF_BG_MMAP_SEQ((rank+1)*i),
+                        *UTF_BG_MMAP_SEQ((rank+1)*i));
+#endif
                 rank >>= 1;
             }
         }
 
         if(poll_info.utf_bg_poll_ids != -1){
-#if defined(DEBUGLOG)
-            fprintf(stderr, "%s:vbg_ids=%016lx\n", __func__, poll_info.utf_bg_poll_ids);
+#if defined(DEBUGLOG2)
+            fprintf(stderr, "%s: Call utofu_barrier: node rank=%zu vbg_ids=%016lx\n",
+                    __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_ids);
 #endif
             /* The leader process starts the barrier communication */
             if(UTOFU_SUCCESS != (rc = utofu_barrier(poll_info.utf_bg_poll_ids, 0))){
@@ -124,14 +128,13 @@ int utf_poll_barrier_sm(void)
             }
         }
         poll_info.sm_flg_comm_start = true;
-#if defined(DEBUGLOG2)
-        fprintf(stderr, "%s:node rank=%zu state=% ld mmap_seq(0)=%p(%zu)\n", __func__,
-                poll_info.sm_intra_index, (long)poll_info.sm_state, UTF_BG_MMAP_SEQ(0),
-                *(UTF_BG_MMAP_SEQ(0)));
-#endif /* DEBUGLOG2 */
     }
 
     if(poll_info.utf_bg_poll_ids != -1){
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s: Call utofu_poll_barrier: node rank=%zu vbg_ids=%016lx\n",
+                __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_ids);
+#endif
         /* The leader process waits for the communication to complete. */
         if(UTOFU_SUCCESS != (rc = utofu_poll_barrier(poll_info.utf_bg_poll_ids, 0))){
             return rc;
@@ -146,9 +149,8 @@ int utf_poll_barrier_sm(void)
         }
     }
 #if defined(DEBUGLOG2)
-    fprintf(stderr, "%s:node rank=%zu state=% ld mmap_seq(0)=%p(%zu)\n", __func__,
-            poll_info.sm_intra_index, (long)poll_info.sm_state, UTF_BG_MMAP_SEQ(0),
-            *(UTF_BG_MMAP_SEQ(0)));
+    fprintf(stderr, "%s: node rank=%zu mmap_seq(0)=%p(%zu)\n",
+            __func__, poll_info.sm_intra_index, UTF_BG_MMAP_SEQ(0), *(UTF_BG_MMAP_SEQ(0)));
 #endif /* DEBUGLOG2 */
 
     return UTF_SUCCESS;
@@ -162,30 +164,27 @@ int utf_poll_barrier_sm(void)
  *   communication.
  *   The worker processes confirm that the barrier communication of the 
  *   leader process is completed and get the result of the operation.
- * @param  none.
+ * @param(OUT) data     address of receive buffer
  * @return UTF_SUCCESS, UTF_ERR_NOT_COMPLETED, or other return codes of uTofu
  *         functions.
  */
 int utf_poll_reduce_double_sm(void **data)
 {
-    int      i, n, rc;
-    int      count = poll_info.utf_bg_poll_numcount;
+    int      rc;
+    size_t   i, n;
+    size_t   count = poll_info.utf_bg_poll_numcount;
     size_t   num_proc = poll_info.sm_numproc;
     size_t   rank = poll_info.sm_loop_rank;
+    size_t   loop_counter = poll_info.sm_loop_counter;
     uint64_t seq_val = poll_info.sm_seq_val;
-    int      loop_counter = poll_info.sm_loop_counter;
-
-#if defined(DEBUGLOG3)
-    fprintf(stderr, "%s: op=%d idata=%p count=%d\n",
-            __func__, poll_info.utf_bg_poll_op, poll_info.utf_bg_poll_idata, count);
-#endif /* DEBUGLOG3 */
 
     if(!poll_info.sm_flg_comm_start){
         /* Collect the values of all processes in node into the leader process. */
 #if defined(DEBUGLOG2)
-        fprintf(stderr, "%s:rank=%zu(%zu) op=%d mmap_seq(%zu)=%p(%zu), seq_val=%zu\n",
-                __func__, rank, poll_info.sm_intra_index, poll_info.utf_bg_poll_op, poll_info.sm_intra_index,
-                UTF_BG_MMAP_SEQ(poll_info.sm_intra_index), *(UTF_BG_MMAP_SEQ(poll_info.sm_intra_index)), seq_val);
+        fprintf(stderr, "%s: rank=%zu(%zu) op=%d idata=%p count=%zu mmap_seq(%zu)=%p(%zu), seq_val=%zu\n",
+                __func__, rank, poll_info.sm_intra_index, poll_info.utf_bg_poll_op, poll_info.utf_bg_poll_idata,
+                count, poll_info.sm_intra_index, UTF_BG_MMAP_SEQ(poll_info.sm_intra_index),
+                *(UTF_BG_MMAP_SEQ(poll_info.sm_intra_index)), seq_val);
 #endif
         for(i = loop_counter; i < num_proc; i <<= 1){
             if(rank % 2 || (rank + 1) * i >= num_proc){
@@ -196,7 +195,7 @@ int utf_poll_reduce_double_sm(void **data)
                 utf_bg_wmb();
                 *(UTF_BG_MMAP_SEQ(rank * i)) = seq_val;
 #if defined(DEBUGLOG2)
-                fprintf(stderr, "%s:rank=%zu(%zu) set mmap_seq(%zu)=%p(%zu)\n",
+                fprintf(stderr, "%s: rank=%zu(%zu) set mmap_seq(%zu)=%p(%zu)\n",
                         __func__, rank, poll_info.sm_intra_index, (rank*i), UTF_BG_MMAP_SEQ(rank*i),
                         *(UTF_BG_MMAP_SEQ(rank*i)));
 #endif
@@ -214,7 +213,7 @@ int utf_poll_reduce_double_sm(void **data)
                 utf_bg_rmb();
 #if defined(DEBUGLOG2)
                 for(n = 0; n < count; n++){
-                    fprintf(stderr, "%s:rank=%zu(%zu) pair=%zu op=%d type=0x%lx count=%d/%d before idata=%lf MMAP_BUF=%lf\n",
+                    fprintf(stderr, "%s: rank=%zu(%zu) pair=%zu op=%d type=0x%lx count=%zu/%zu before idata=%lf MMAP_BUF=%lf\n",
                             __func__, rank, poll_info.sm_intra_index, (rank+1)*i, poll_info.utf_bg_poll_op,
                             poll_info.utf_bg_poll_datatype, n+1, count,
                             *((double *)poll_info.utf_bg_poll_idata + n), *((double *)(UTF_BG_MMAP_BUF((rank+1)*i)) + n));
@@ -227,7 +226,7 @@ int utf_poll_reduce_double_sm(void **data)
                 }
 #if defined(DEBUGLOG2)
                 for(n = 0; n < count; n++){
-                    fprintf(stderr, "%s:rank=%zu(%zu) op=%d count=%d/%d after idata=%lf\n",
+                    fprintf(stderr, "%s: rank=%zu(%zu) op=%d count=%zu/%zu after idata=%lf\n",
                             __func__, rank, poll_info.sm_intra_index, poll_info.utf_bg_poll_op, n+1, count,
                             *((double *)poll_info.utf_bg_poll_idata + n));
                 }
@@ -238,16 +237,18 @@ int utf_poll_reduce_double_sm(void **data)
 
         if(poll_info.utf_bg_poll_ids != -1){
 #if defined(DEBUGLOG2)
+            fprintf(stderr, "%s: Call utofu_reduce_double: node rank=%zu vbg_ids=%016lx op=%d, count=%zu\n",
+                    __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_ids, poll_info.sm_utofu_op, count);
             for(n = 0; n < count; n++){
-                fprintf(stderr, "%s:rank=%zu state=% ld count=%d/%d arg data[%d]=%lf\n",
-                        __func__, poll_info.sm_intra_index, (long)poll_info.sm_state, n+1, 
+                fprintf(stderr, "%s: node rank=%zu vbg_ids=%016lx count=%zu/%zu arg data[%zu]=%lf\n",
+                        __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_ids, n+1, 
                         count, n, *((double *)poll_info.utf_bg_poll_idata+n));
             }
 #endif /* DEBUGLOG2 */
             /* The leader process starts the barrier communication */
             if(UTOFU_SUCCESS !=
                (rc = utofu_reduce_double(poll_info.utf_bg_poll_ids, poll_info.sm_utofu_op,
-                                         poll_info.utf_bg_poll_idata, (size_t)count, 0))){
+                                         poll_info.utf_bg_poll_idata, count, 0))){
                 return rc;
             }
         }
@@ -255,6 +256,10 @@ int utf_poll_reduce_double_sm(void **data)
     }
 
     if(poll_info.utf_bg_poll_ids != -1){
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s: Call utofu_poll_reduce_double: node rank=%zu vbg_ids=%016lx odata=%p\n",
+                __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_ids, poll_info.utf_bg_poll_odata);
+#endif
         /* The leader process waits for the communication to complete. */
         if(UTOFU_SUCCESS !=
            (rc = utofu_poll_reduce_double(poll_info.utf_bg_poll_ids, 0, (double *)poll_info.utf_bg_poll_odata))){
@@ -265,11 +270,11 @@ int utf_poll_reduce_double_sm(void **data)
             *((double *)UTF_BG_MMAP_BUF(0) + n) = *((double *)poll_info.utf_bg_poll_odata + n);
         }
 #if defined(DEBUGLOG2)
-        fprintf(stderr, "%s:rank=%zu state=% ld now mmap_seq(0)=%p(%zu)\n",
-                __func__, poll_info.sm_intra_index, (long)poll_info.sm_state, UTF_BG_MMAP_SEQ(0), *(UTF_BG_MMAP_SEQ(0)));
+        fprintf(stderr, "%s: node rank=%zu vbg_ids=%016lx now mmap_seq(0)=%p(%zu)\n",
+                __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_ids, UTF_BG_MMAP_SEQ(0), *(UTF_BG_MMAP_SEQ(0)));
         for(n = 0; n < count; n++){
-            fprintf(stderr, "%s:rank=%zu state=% ld count=%d/%d odata[%d]=%lf\n",
-                    __func__, poll_info.sm_intra_index, (long)poll_info.sm_state, n+1,
+            fprintf(stderr, "%s: node rank=%zu vbg_ids=%016lx count=%zu/%zu odata[%zu]=%lf\n",
+                    __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_ids, n+1,
                     count, n, *((double *)poll_info.utf_bg_poll_odata + n));
         }
 #endif /* DEBUGLOG2 */
@@ -278,8 +283,8 @@ int utf_poll_reduce_double_sm(void **data)
         /* Notify other processes that the communication is completed. */
         *(UTF_BG_MMAP_SEQ(0)) = seq_val;
 #if defined(DEBUGLOG2)
-        fprintf(stderr, "%s:rank=%zu state=% ld set mmap_seq(0)=%p(%zu)\n",
-                __func__, poll_info.sm_intra_index, (long)poll_info.sm_state,
+        fprintf(stderr, "%s: node rank=%zu vbg_ids=%016lx set mmap_seq(0)=%p(%zu)\n",
+                __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_ids,
                 UTF_BG_MMAP_SEQ(0), *(UTF_BG_MMAP_SEQ(0)));
 #endif
 
@@ -289,8 +294,8 @@ int utf_poll_reduce_double_sm(void **data)
             return UTF_ERR_NOT_COMPLETED;
         }
 #if defined(DEBUGLOG2)
-        fprintf(stderr, "%s:rank=%zu state=% ld ref mmap_seq(0)=%p(%zu)\n",
-                __func__, poll_info.sm_intra_index, (long)poll_info.sm_state, UTF_BG_MMAP_SEQ(0), *(UTF_BG_MMAP_SEQ(0)));
+        fprintf(stderr, "%s: node rank=%zu vbg_ids=%016lx ref mmap_seq(0)=%p(%zu)\n",
+                __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_ids, UTF_BG_MMAP_SEQ(0), *(UTF_BG_MMAP_SEQ(0)));
 #endif /* DEBUGLOG2 */
 
         utf_bg_rmb();
@@ -298,35 +303,36 @@ int utf_poll_reduce_double_sm(void **data)
         for(n = 0; n < count; n++){
             *((double *)poll_info.utf_bg_poll_odata + n) = *((double *)UTF_BG_MMAP_BUF(0) + n);
 #if defined(DEBUGLOG2)
-            fprintf(stderr, "%s:rank=%zu state=% ld count=%d/%d odata[%d]=%lf\n",
-                    __func__, poll_info.sm_intra_index, (long)poll_info.sm_state, n+1, 
+            fprintf(stderr, "%s: node rank=%zu vbg_ids=%016lx count=%zu/%zu odata[%zu]=%lf\n",
+                    __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_ids, n+1, 
                     count, n, *((double *)poll_info.utf_bg_poll_odata + n));
 #endif /* DEBUGLOG2 */
         }
     }
 
 #if defined(DEBUGLOG2)
-    fprintf(stderr, "%s:rank=%zu state=% ld data=%p poll_result=%p root=%d count=%d\n",
-            __func__, poll_info.sm_intra_index, (long)poll_info.sm_state, data, 
-            poll_info.utf_bg_poll_result, poll_info.utf_bg_poll_root, poll_info.utf_bg_poll_count);
+    fprintf(stderr, "%s: node rank=%zu vbg_ids=%016lx data=%p poll_result=%p root=%d count=%zu size=%zu\n",
+            __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_ids, data, 
+            poll_info.utf_bg_poll_result, poll_info.utf_bg_poll_root, poll_info.utf_bg_poll_count,
+            poll_info.utf_bg_poll_size);
 #endif
     /* Set the result in the user buffer. */
-    if(UTF_DATATYPE_DIV_COMP != poll_info.utf_bg_poll_datatype >> 24){
-        switch(poll_info.utf_bg_poll_datatype & UTF_DATATYPE_SIZE){
-            case sizeof(double):
-                UTF_BG_SET_RESULT_DOUBLE();
-                break;
-            case sizeof(float):
-                UTF_BG_SET_RESULT_FLOAT();
-                break;
+    switch(poll_info.utf_bg_poll_size){
+        case sizeof(double):
+            UTF_BG_SET_RESULT_DOUBLE();
+            break;
+        case sizeof(float):
+            UTF_BG_SET_RESULT_FLOAT();
+            break;
 #if defined(__clang__)
-            case sizeof(_Float16):
-                UTF_BG_SET_RESULT_FLOAT16();
-                break;
+        case sizeof(_Float16):
+            UTF_BG_SET_RESULT_FLOAT16();
+            break;
 #endif
-        }
-    }else{
-        UTF_BG_SET_RESULT_COMP();
+        default:
+            utf_printf("%s: Invalid data size: intra_index=%zu size=%zu\n",
+                       __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_size);
+            return UTF_ERR_INTERNAL;
     }
 
     return UTF_SUCCESS;
@@ -340,33 +346,29 @@ int utf_poll_reduce_double_sm(void **data)
  *   communication.
  *   The worker processes confirm that the barrier communication of the 
  *   leader process is completed and get the result of the operation.
- * @param(IN)     utf_bg_grp   A pointer to the structure that stores the VBG
- *                             information.
+ * @param(OUT) data     address of receive buffer
  * @return UTF_SUCCESS, UTF_ERR_NOT_COMPLETED, or other return codes of uTofu
  *         functions.
  */
 int utf_poll_reduce_uint64_sm(void **data)
 {
-    int      i, j, n, rc;
-    int      count = poll_info.utf_bg_poll_numcount;
+    int      rc;
+    size_t   i, j, n;
+    size_t   count = poll_info.utf_bg_poll_numcount;
     size_t   num_proc = poll_info.sm_numproc;
     size_t   rank = poll_info.sm_loop_rank;
+    size_t   loop_counter = poll_info.sm_loop_counter;
     uint64_t seq_val = poll_info.sm_seq_val;
-    int      loop_counter = poll_info.sm_loop_counter;
     int      bit_count;
-    bool     is_signed;
-
-#if defined(DEBUGLOG3)
-    fprintf(stderr, "%s: op=%d idata=%p count=%d\n",
-            __func__, poll_info.utf_bg_poll_op, poll_info.utf_bg_poll_idata, count);
-#endif /* DEBUGLOG3 */
 
     if(!poll_info.sm_flg_comm_start){
         /* Collect the values of all processes in node into the leader process. */
 #if defined(DEBUGLOG2)
-        fprintf(stderr, "%s:rank=%zu(%zu) op=%d mmap_seq(%zu)=%p(%zu), seq_val=%zu\n",
-                __func__, rank, poll_info.sm_intra_index, poll_info.utf_bg_poll_op, poll_info.sm_intra_index,
-                UTF_BG_MMAP_SEQ(poll_info.sm_intra_index), *(UTF_BG_MMAP_SEQ(poll_info.sm_intra_index)), seq_val);
+        fprintf(stderr, "%s: rank=%zu(%zu) op=%d utofu_op=%d idata=%p count=%zu mmap_buf=%p mmap_seq(%zu)=%p(%zu) seq_val=%zu\n",
+                __func__, rank, poll_info.sm_intra_index, poll_info.utf_bg_poll_op, poll_info.sm_utofu_op,
+                poll_info.utf_bg_poll_idata,  count, poll_info.sm_mmap_buf,
+                poll_info.sm_intra_index, UTF_BG_MMAP_SEQ(poll_info.sm_intra_index), 
+                *(UTF_BG_MMAP_SEQ(poll_info.sm_intra_index)), seq_val);
 #endif
         for(i = loop_counter; i < num_proc; i <<= 1){
             if(rank % 2 || (rank + 1) * i >= num_proc){
@@ -377,8 +379,8 @@ int utf_poll_reduce_uint64_sm(void **data)
                 utf_bg_wmb();
                 *(UTF_BG_MMAP_SEQ(rank * i)) = seq_val;
 #if defined(DEBUGLOG2)
-                fprintf(stderr, "%s:rank=%zu(%zu) set mmap_seq(%zu)=%p(%zu)\n",
-                        __func__, rank, poll_info.sm_intra_index, (rank*i), UTF_BG_MMAP_SEQ(rank*i),
+                fprintf(stderr, "%s: rank=%zu(%zu) set mmap_seq(%zu)=%p(%zu)\n",
+                        __func__, rank, poll_info.sm_intra_index, rank*i, UTF_BG_MMAP_SEQ(rank*i),
                         *(UTF_BG_MMAP_SEQ(rank*i)));
 #endif
                 break;
@@ -395,8 +397,9 @@ int utf_poll_reduce_uint64_sm(void **data)
                 utf_bg_rmb();
 #if defined(DEBUGLOG2)
                 for(n = 0; n < count; n++){
-                    fprintf(stderr, "%s:rank=%zu(%zu) pair=%zu op=%d type=0x%lx count=%d/%d before idata=0x%lx MMAP_BUF=0x%lx\n",
-                            __func__, rank, poll_info.sm_intra_index, (rank+1)*i, poll_info.utf_bg_poll_op,
+                    fprintf(stderr, "%s: rank=%zu(%zu) pair=%zu utofu_op=%d type=0x%lx count=%zu/%zu"
+                                    " before idata=0x%lx MMAP_BUF=0x%lx\n",
+                            __func__, rank, poll_info.sm_intra_index, (rank+1)*i, poll_info.sm_utofu_op,
                             poll_info.utf_bg_poll_datatype, n+1, count,
                             *((uint64_t *)poll_info.utf_bg_poll_idata + n), *(UTF_BG_MMAP_BUF((rank+1)*i) + n));
                 }
@@ -405,8 +408,8 @@ int utf_poll_reduce_uint64_sm(void **data)
                 SM_REDUCE_OP((uint64_t *)poll_info.utf_bg_poll_idata, UTF_BG_MMAP_BUF((rank + 1)*i));
 #if defined(DEBUGLOG2)
                 for(n = 0; n < count; n++){
-                    fprintf(stderr, "%s:rank=%zu(%zu) op=%d count=%d/%d after idata=0x%lx\n",
-                            __func__, rank, poll_info.sm_intra_index, poll_info.utf_bg_poll_op, n+1, count,
+                    fprintf(stderr, "%s: rank=%zu(%zu) utofu_op=%d count=%zu/%zu after idata=0x%lx\n",
+                            __func__, rank, poll_info.sm_intra_index, poll_info.sm_utofu_op, n+1, count,
                             *((uint64_t *)poll_info.utf_bg_poll_idata + n));
                 }
 #endif /* DEBUGLOG2 */
@@ -416,16 +419,18 @@ int utf_poll_reduce_uint64_sm(void **data)
 
         if(poll_info.utf_bg_poll_ids != -1){
 #if defined(DEBUGLOG2)
+            fprintf(stderr, "%s: Call utofu_reduce_uint64: node rank=%zu vbg_ids=%016lx op=%d, count=%zu\n",
+                    __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_ids, poll_info.sm_utofu_op, count);
             for(n = 0; n < count; n++){
-                fprintf(stderr, "%s:rank=%zu state=% ld count=%d/%d arg data[%d]=0x%lx\n",
-                        __func__, poll_info.sm_intra_index, (long)poll_info.sm_state, n+1,
+                fprintf(stderr, "%s: node rank=%zu vbg_ids=%016lx count=%zu/%zu arg data[%zu]=0x%lx\n",
+                        __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_ids, n+1,
                         count, n, *((uint64_t *)poll_info.utf_bg_poll_idata+n));
             }
 #endif /* DEBUGLOG2 */
             /* The leader process starts the barrier communication */
             if(UTOFU_SUCCESS !=
                (rc = utofu_reduce_uint64(poll_info.utf_bg_poll_ids, poll_info.sm_utofu_op,
-                                         poll_info.utf_bg_poll_idata, (size_t)count, 0))){
+                                         poll_info.utf_bg_poll_idata, count, 0))){
                 return rc;
             }
         }
@@ -433,6 +438,10 @@ int utf_poll_reduce_uint64_sm(void **data)
     }
 
     if(poll_info.utf_bg_poll_ids != -1){
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s: Call utofu_poll_reduce_uint64: node rank=%zu vbg_ids=%016lx odata=%p\n",
+                __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_ids, poll_info.utf_bg_poll_odata);
+#endif
         /* The leader process waits for the communication to complete. */
         if(UTOFU_SUCCESS !=
            (rc = utofu_poll_reduce_uint64(poll_info.utf_bg_poll_ids, 0, (uint64_t *)poll_info.utf_bg_poll_odata))){
@@ -443,11 +452,12 @@ int utf_poll_reduce_uint64_sm(void **data)
             *(UTF_BG_MMAP_BUF(0) + n) = *((uint64_t *)poll_info.utf_bg_poll_odata + n);
         }
 #if defined(DEBUGLOG2)
-        fprintf(stderr, "%s:rank=%zu state=% ld now mmap_seq(0)=%p(%zu)\n",
-                __func__, poll_info.sm_intra_index, (long)poll_info.sm_state, UTF_BG_MMAP_SEQ(0), *(UTF_BG_MMAP_SEQ(0)));
+        fprintf(stderr, "%s: node rank=%zu vbg_ids=%016lx now mmap_seq(0)=%p(%zu)\n",
+                __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_ids,
+                UTF_BG_MMAP_SEQ(0), *(UTF_BG_MMAP_SEQ(0)));
         for(n = 0; n < count; n++){
-            fprintf(stderr, "%s:rank=%zu state=% ld count=%d/%d odata[%d]=0x%lx\n",
-                    __func__, poll_info.sm_intra_index, (long)poll_info.sm_state, n+1,
+            fprintf(stderr, "%s: node rank=%zu vbg_ids=%016lx count=%zu/%zu odata[%zu]=0x%lx\n",
+                    __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_ids, n+1,
                     count, n, *((uint64_t *)poll_info.utf_bg_poll_odata + n));
         }
 #endif /* DEBUGLOG2 */
@@ -456,8 +466,8 @@ int utf_poll_reduce_uint64_sm(void **data)
         /* Notify other processes that the communication is completed. */
         *(UTF_BG_MMAP_SEQ(0)) = seq_val;
 #if defined(DEBUGLOG2)
-        fprintf(stderr, "%s:rank=%zu state=% ld set mmap_seq(0)=%p(%zu)\n",
-                __func__, poll_info.sm_intra_index, (long)poll_info.sm_state,
+        fprintf(stderr, "%s: node rank=%zu vbg_ids=%016lx set mmap_seq(0)=%p(%zu)\n",
+                __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_ids,
                 UTF_BG_MMAP_SEQ(0), *(UTF_BG_MMAP_SEQ(0)));
 #endif
 
@@ -467,8 +477,9 @@ int utf_poll_reduce_uint64_sm(void **data)
             return UTF_ERR_NOT_COMPLETED;
         }
 #if defined(DEBUGLOG2)
-        fprintf(stderr, "%s:rank=%zu state=% ld ref mmap_seq(0)=%p(%zu)\n",
-                __func__, poll_info.sm_intra_index, (long)poll_info.sm_state, UTF_BG_MMAP_SEQ(0), *(UTF_BG_MMAP_SEQ(0)));
+        fprintf(stderr, "%s: node rank=%zu vbg_ids=%016lx ref mmap_seq(0)=%p(%zu)\n",
+                __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_ids,
+                UTF_BG_MMAP_SEQ(0), *(UTF_BG_MMAP_SEQ(0)));
 #endif /* DEBUGLOG2 */
 
         utf_bg_rmb();
@@ -476,22 +487,26 @@ int utf_poll_reduce_uint64_sm(void **data)
         for(n = 0; n < count; n++){
             *((uint64_t *)poll_info.utf_bg_poll_odata + n) = *(UTF_BG_MMAP_BUF(0) + n);
 #if defined(DEBUGLOG2)
-            fprintf(stderr, "%s:rank=%zu state=% ld count=%d/%d odata[%d]=0x%lx\n",
-                    __func__, poll_info.sm_intra_index, (long)poll_info.sm_state, n+1, 
+            fprintf(stderr, "%s: node rank=%zu vbg_ids=%016lx count=%zu/%zu odata[%zu]=0x%lx\n",
+                    __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_ids, n+1, 
                     count, n, *((uint64_t *)poll_info.utf_bg_poll_odata + n));
 #endif /* DEBUGLOG2 */
         }
     }
 
 #if defined(DEBUGLOG2)
-    fprintf(stderr, "%s:rank=%zu state=% ld data=%p poll_result=%p root=%d count=%d\n",
-            __func__, poll_info.sm_intra_index, (long)poll_info.sm_state, data, 
-            poll_info.utf_bg_poll_result, poll_info.utf_bg_poll_root, poll_info.utf_bg_poll_count);
+    fprintf(stderr, "%s: node rank=%zu vbg_ids=%016lx data=%p poll_result=%p root=%d count=%zu op=%d datatype=0x%lx\n",
+            __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_ids, data, 
+            poll_info.utf_bg_poll_result, poll_info.utf_bg_poll_root, poll_info.utf_bg_poll_count,
+            poll_info.utf_bg_poll_op, poll_info.utf_bg_poll_datatype);
 #endif
     /* Set the result in the user buffer. */
     switch(poll_info.utf_bg_poll_op){
         case UTF_REDUCE_OP_SUM:
             UTF_BG_SET_RESULT_UINT64();
+            break;
+        case UTF_BG_BCAST:
+            UTF_BG_SET_RESULT_BCAST();
             break;
         case UTF_REDUCE_OP_MAX:
         case UTF_REDUCE_OP_MIN:
@@ -501,25 +516,24 @@ int utf_poll_reduce_uint64_sm(void **data)
                 UTF_BG_SET_RESULT_UINT64_MAX_MIN();
             }
             break;
-        case UTF_REDUCE_OP_LAND:
-        case UTF_REDUCE_OP_LOR:
-        case UTF_REDUCE_OP_LXOR:
-            UTF_BG_SET_RESULT_LOGICAL();
+        case UTF_REDUCE_OP_MAXLOC:
+        case UTF_REDUCE_OP_MINLOC:
+            UTF_BG_SET_RESULT_MAXMIN_LOC();
             break;
         case UTF_REDUCE_OP_BAND:
         case UTF_REDUCE_OP_BOR:
         case UTF_REDUCE_OP_BXOR:
             UTF_BG_SET_RESULT_BITWISE();
             break;
-        case UTF_REDUCE_OP_MAXLOC:
-        case UTF_REDUCE_OP_MINLOC:
-            UTF_BG_SET_RESULT_MAXMIN_LOC();
-            break;
-        case UTF_BG_BCAST:
-            UTF_BG_SET_RESULT_BCAST();
+        case UTF_REDUCE_OP_LAND:
+        case UTF_REDUCE_OP_LOR:
+        case UTF_REDUCE_OP_LXOR:
+            UTF_BG_SET_RESULT_LOGICAL();
             break;
         default:
-            assert(0);
+            utf_printf("%s: Invalid reduction operation: intra_index=%zu op=%d\n",
+                       __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_op);
+            return UTF_ERR_INTERNAL;
     }
 
     return UTF_SUCCESS;

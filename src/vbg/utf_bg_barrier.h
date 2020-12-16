@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 XXXXXXXXXXXXXXXXXXXXXXXX.
+ * Copyright (C) 2020 RIKEN, Japan. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -70,7 +70,6 @@ enum utf_datatype_div{
     poll_info.utf_bg_poll_ids =                                           \
         (UTF_BG_INTRA_NODE_MANAGER == (p)->intra_node_info->state ?       \
          *((p)->vbg_ids) : -1);                                           \
-    poll_info.sm_state = (p)->intra_node_info->state;                     \
     poll_info.sm_numproc = (p)->intra_node_info->size;                    \
     poll_info.sm_intra_index = (p)->intra_node_info->intra_index;         \
     poll_info.sm_mmap_buf = (p)->intra_node_info->mmap_buf;               \
@@ -89,11 +88,11 @@ enum utf_datatype_div{
 }
 
 /** Sequence buffer in shared memory */
-#define UTF_BG_MMAP_SEQ(x)                                           \
-    (poll_info.sm_mmap_buf + (x) * UTF_BG_CACHE_LINE_SIZE)
+#define UTF_BG_MMAP_SEQ(x)                                                     \
+    (uint64_t *)((char *)poll_info.sm_mmap_buf + (x) * UTF_BG_CACHE_LINE_SIZE)
 
 /** Data buffer in shared memory */
-#define UTF_BG_MMAP_BUF(x)                                           \
+#define UTF_BG_MMAP_BUF(x)                                                     \
     (UTF_BG_MMAP_SEQ(x) + UTF_BG_MMAP_NUM_SEQ)
 
 /** Memory barreir */
@@ -142,44 +141,6 @@ enum utf_datatype_div{
     for(i = 0; i < poll_info.utf_bg_poll_count; i++){                                                             \
         *((_Float16 *)poll_info.utf_bg_poll_result + i) = (_Float16)*((double *)poll_info.utf_bg_poll_odata + i); \
     }                                                                                                             \
-}
-#endif
-
-#if !defined(__clang__)
-/** Set the reduction results(SUM:complex) */
-#define UTF_BG_SET_RESULT_COMP()                                                                                \
-{                                                                                                               \
-    UTF_BG_SET_RESULT_COMMON()                                                                                  \
-    switch(poll_info.utf_bg_poll_size/2){                                                                       \
-        case sizeof(double):                                                                                    \
-            *(double *)poll_info.utf_bg_poll_result       = *(double *)poll_info.utf_bg_poll_odata;             \
-            *((double *)poll_info.utf_bg_poll_result + 1) = *((double *)poll_info.utf_bg_poll_odata + 1);       \
-            break;                                                                                              \
-        case sizeof(float):                                                                                     \
-            *(float *)poll_info.utf_bg_poll_result       = (float)*(double *)poll_info.utf_bg_poll_odata;       \
-            *((float *)poll_info.utf_bg_poll_result + 1) = (float)*((double *)poll_info.utf_bg_poll_odata + 1); \
-            break;                                                                                              \
-    }                                                                                                           \
-}
-#else
-/** Set the reduction results(SUM:complex) */
-#define UTF_BG_SET_RESULT_COMP()                                                                                \
-{                                                                                                               \
-    UTF_BG_SET_RESULT_COMMON()                                                                                  \
-    switch(poll_info.utf_bg_poll_size/2){                                                                       \
-        case sizeof(double):                                                                                    \
-            *(double *)poll_info.utf_bg_poll_result       = *(double *)poll_info.utf_bg_poll_odata;             \
-            *((double *)poll_info.utf_bg_poll_result + 1) = *((double *)poll_info.utf_bg_poll_odata + 1);       \
-            break;                                                                                              \
-        case sizeof(float):                                                                                     \
-            *(float *)poll_info.utf_bg_poll_result       = (float)*(double *)poll_info.utf_bg_poll_odata;       \
-            *((float *)poll_info.utf_bg_poll_result + 1) = (float)*((double *)poll_info.utf_bg_poll_odata + 1); \
-            break;                                                                                              \
-        case sizeof(_Float16):                                                                                  \
-            *(_Float16 *)poll_info.utf_bg_poll_result = (_Float16)*(double *)poll_info.utf_bg_poll_odata;       \
-            *((_Float16 *)poll_info.utf_bg_poll_result + 1) =                                                   \
-                                                        (_Float16)*((double *)poll_info.utf_bg_poll_odata + 1); \
-    }                                                                                                           \
 }
 #endif
 
@@ -261,12 +222,11 @@ enum utf_datatype_div{
 #define UTF_BG_SET_RESULT_UINT64_MAX_MIN()                                                                      \
 {                                                                                                               \
     UTF_BG_SET_RESULT_COMMON()                                                                                  \
-    is_signed = poll_info.utf_bg_poll_datatype >> 16;                                                           \
     for(i = 0; i < poll_info.utf_bg_poll_count; i++){                                                           \
         if(UTF_REDUCE_OP_MIN == poll_info.utf_bg_poll_op){                                                      \
             *((uint64_t *)poll_info.utf_bg_poll_odata + i) = ~(*((uint64_t *)poll_info.utf_bg_poll_odata + i)); \
         }                                                                                                       \
-        if(is_signed){                                                                                          \
+        if(poll_info.utf_bg_poll_datatype >> 16){                                                               \
             *((uint64_t *)poll_info.utf_bg_poll_odata + i) -= UTF_BG_REDUCE_MASK_HB;                            \
         }                                                                                                       \
         memcpy((char *)poll_info.utf_bg_poll_result + i * poll_info.utf_bg_poll_size,                           \
@@ -290,30 +250,30 @@ enum utf_datatype_div{
         while(bit_count != 0){                                                                           \
             if((*((uint64_t *)poll_info.utf_bg_poll_odata + i)>>(bit_count-1)) & UTF_BG_REDUCE_MASK_LB){ \
                 switch (poll_info.utf_bg_poll_size){                                                     \
-                    case 8:                                                                              \
+                    case sizeof(int64_t):                                                                \
                         *((int64_t *)poll_info.utf_bg_poll_result + j) = 1;                              \
                         break;                                                                           \
-                    case 4:                                                                              \
+                    case sizeof(int):                                                                    \
                         *((int *)poll_info.utf_bg_poll_result + j) = 1;                                  \
                         break;                                                                           \
-                    case 2:                                                                              \
+                    case sizeof(short):                                                                  \
                         *((short *)poll_info.utf_bg_poll_result + j) = 1;                                \
                         break;                                                                           \
-                    case 1:                                                                              \
+                    case sizeof(char):                                                                   \
                         *((char *)poll_info.utf_bg_poll_result + j) = 1;                                 \
                 }                                                                                        \
             }else{                                                                                       \
                 switch (poll_info.utf_bg_poll_size){                                                     \
-                    case 8:                                                                              \
+                    case sizeof(int64_t):                                                                \
                         *((int64_t *)poll_info.utf_bg_poll_result + j) = 0;                              \
                         break;                                                                           \
-                    case 4:                                                                              \
+                    case sizeof(int):                                                                    \
                         *((int *)poll_info.utf_bg_poll_result + j) = 0;                                  \
                         break;                                                                           \
-                    case 2:                                                                              \
+                    case sizeof(short):                                                                  \
                         *((short *)poll_info.utf_bg_poll_result + j) = 0;                                \
                         break;                                                                           \
-                    case 1:                                                                              \
+                    case sizeof(char):                                                                   \
                         *((char *)poll_info.utf_bg_poll_result + j) = 0;                                 \
                 }                                                                                        \
             }                                                                                            \
@@ -384,7 +344,7 @@ enum utf_datatype_div{
         *data = poll_info.utf_bg_poll_result;                                             \
     }                                                                                     \
     if(!poll_info.utf_bg_poll_root){                                                      \
-        memcpy(poll_info.utf_bg_poll_result, (uint64_t *)poll_info.utf_bg_poll_odata,     \
+        memcpy(poll_info.utf_bg_poll_result, poll_info.utf_bg_poll_odata,                 \
                poll_info.utf_bg_poll_size);                                               \
     }                                                                                     \
 }

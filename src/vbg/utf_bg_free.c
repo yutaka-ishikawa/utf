@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 XXXXXXXXXXXXXXXXXXXXXXXX.
+ * Copyright (C) 2020 RIKEN, Japan. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -32,7 +32,7 @@ int utf_bg_free(utf_coll_group_t group_struct) {
     utf_coll_group_detail_t *detail_p;
 
     DEBUG(DLEVEL_PROTO_VBG) {
-        utf_printf("%s:group_struct=%p\n", __func__, group_struct);
+        utf_printf("%s: group_struct=%p\n", __func__, group_struct);
     }
 
     /* Check the arguments */
@@ -47,7 +47,7 @@ int utf_bg_free(utf_coll_group_t group_struct) {
         goto free_end;
     }
     else if((0 == detail_p->num_vbg && NULL != detail_p->vbg_ids) ||
-            (1 >= detail_p->num_vbg && NULL == detail_p->vbg_ids)) {
+            (1 <= detail_p->num_vbg && NULL == detail_p->vbg_ids)) {
         rc = UTF_ERR_INTERNAL;
         goto free_end;
     }
@@ -58,7 +58,7 @@ int utf_bg_free(utf_coll_group_t group_struct) {
     rc = utofu_free_vbg(detail_p->vbg_ids, detail_p->num_vbg);
 
     DEBUG(DLEVEL_PROTO_VBG) {
-        utf_printf("%s:utofu_free_vbg=%d\n", __func__, rc);
+        utf_printf("%s: Call utofu_free_vbg: rc=%d\n", __func__, rc);
     }
 
 free_end:
@@ -91,6 +91,10 @@ free_end:
         if (NULL != poll_info.utf_bg_poll_idata) {
             free(poll_info.utf_bg_poll_idata);
             poll_info.utf_bg_poll_idata = NULL;
+        }
+        if (NULL != utf_bg_alloc_intra_world_indexes) {
+            free(utf_bg_alloc_intra_world_indexes);
+            utf_bg_alloc_intra_world_indexes=NULL;
         }
         utf_bg_detail_info_first_alloc = NULL;
     }
