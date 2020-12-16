@@ -111,7 +111,9 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
     int	opt;
     int	np, tppn, rnk, i;
 
-    utf_printf("%s: utf_initialized(%d)\n", __func__, utf_initialized);
+    DEBUG(DLEVEL_INIFIN) {
+	utf_printf("%s: utf_initialized(%d)\n", __func__, utf_initialized);
+    }
     if (utf_initialized) {
 	utf_initialized++;
 	goto ext;
@@ -163,7 +165,6 @@ ext:
 void
 utf_finalize(int wipe)
 {
-    utf_printf("%s: wipe(%d) utf_initialized(%d)\n", __func__, wipe, utf_initialized);
     DEBUG(DLEVEL_INIFIN) {
 	utf_printf("%s: wipe(%d) utf_initialized(%d)\n", __func__, wipe, utf_initialized);
     }
