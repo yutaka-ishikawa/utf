@@ -27,7 +27,8 @@ sym_tmr[] = { "UTF_SEND_POST", "UTF_RECV_POST", "UTF_SENDENGINE",
 	      "UTF_WAIT", "TOFU_PUT", "TOFU_GET",
 	      "UTF_MEMREG", "UTF_MEMDEREG", "UTF_MALLOC", "UTF_MFREE",
 	      "UTF_SEND_POST2", "UTF_RECV_LATENCY", "UTF_RECV_LATENCY2",
-	      "UTF_SEND_LATENCY", "UTF_EXT1",  "UTF_EXT2", 0};
+	      "UTF_SEND_LATENCY", "UTF_EXT1",  "UTF_EXT2",
+	      "FI_TSEND", "FI_SEND", "FI_TRECV", "FI_RECV", "FI_WRITE", "FI_READ", "FI_CQREAD", 0};
 
 #define CLK2USEC(a)	((double)(a) / ((double)tmr_hz/(double)1000000))
 
@@ -100,14 +101,20 @@ show_compile_options(FILE *fp, char *buf, ssize_t sz)
 }
 
 
-void
+/*
+ * All proccesses must call utf_init()
+ *	where utf_fence() is called.
+ */
+int
 utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
 {
     int	opt;
     int	np, tppn, rnk, i;
 
+    utf_printf("%s: utf_initialized(%d)\n", __func__, utf_initialized);
     if (utf_initialized) {
-	return;
+	utf_initialized++;
+	goto ext;
     }
     utf_initialized = 1;
     utf_info.mypid = getpid();
@@ -145,17 +152,25 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
     }
     /**/
     utf_fence();
-    if (rank) *rank = rnk;
-    if (nprocs) *nprocs = np;
-    if (ppn) *ppn = tppn;
+ext:
+    if (rank) *rank = utf_info.myrank;
+    if (nprocs) *nprocs = utf_info.nprocs;
+    if (ppn) *ppn = utf_info.myppn;
+    return 0;
 }
 
 
 void
 utf_finalize(int wipe)
 {
+    utf_printf("%s: wipe(%d) utf_initialized(%d)\n", __func__, wipe, utf_initialized);
     DEBUG(DLEVEL_INIFIN) {
-	utf_printf("%s: wipe(%d)\n", __func__, wipe);
+	utf_printf("%s: wipe(%d) utf_initialized(%d)\n", __func__, wipe, utf_initialized);
+    }
+    --utf_initialized;
+    if (utf_initialized > 0) {
+	/* still use */
+	return;
     }
     if (wipe) {
 	utf_req_wipe();
@@ -192,6 +207,18 @@ utf_tmr_start()
     tmr_sflag = 1;
     memset(tmr_count, 0, sizeof(tmr_count));
     memset(tmr_tm, 0, sizeof(tmr_tm));
+}
+
+void
+utf_tmr_suspend()
+{
+    tmr_sflag = 0;
+}
+
+void
+utf_tmr_resume()
+{
+    tmr_sflag = 1;
 }
 
 int

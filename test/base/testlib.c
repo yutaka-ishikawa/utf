@@ -76,7 +76,7 @@ mytmrinit()
     utf_tmr_start();
 }
 
-#define YI_TMR_EVT_MAX	20
+#define YI_TMR_EVT_MAX	30
 #define YI_TMR_COUNT_MAX	1000
 #define YI_TMR_SYM_LEN	20
 static struct utf_timer	yi_timer[YI_TMR_EVT_MAX];

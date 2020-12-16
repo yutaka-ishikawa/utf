@@ -15,7 +15,7 @@ int utf_tcq_count, utf_mrq_count;
 int utf_sreq_count, utf_rreq_count;
 int utf_dflag;
 int utf_rflag;
-int utf_initialized;
+int utf_initialized = 0;
 int utf_mode_msg;
 int utf_mode_trans;
 int utf_mode_mrail;

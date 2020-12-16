@@ -15,14 +15,15 @@
 SAVED_LD_LIBRARY_PATH=$LD_LIBRARY_PATH
 
 MPIOPT="-of results/%n.%j.out -oferr results/%n.%j.err"
-#MAX_LEN=134217728	# 128 MB
-#MIN_LEN=1024
+#MAX_LEN=1048576	# 1 MB
+MAX_LEN=134217728	# 128 MB
 MIN_LEN=1
-MAX_LEN=134217728 # 128 MB
 ITER=1000
 VRYFY=2
 
+export MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG=1
 export MPICH_TOFU_SHOW_PARAMS=1
+echo "********MPICH EXP*********"
 echo "checking pingpong"
 mpich_exec -n 2 $MPIOPT ../bin/pingpong -L $MAX_LEN -l $MIN_LEN -i $ITER -V $VRYFY
 
@@ -31,7 +32,7 @@ echo; echo
 echo "FJMPI"
 mpiexec -n 2 $MPIOPT ../bin/pingpong-f -L $MAX_LEN -l $MIN_LEN -i $ITER -V $VRYFY
 exit
-
+###################################################################################
 
 echo "checking pingpong"
 time mpich_exec -n 2 $MPIOPT ../bin/pingpong -L $MAX_LEN -l $MIN_LEN -i $ITER -V $VRYFY
