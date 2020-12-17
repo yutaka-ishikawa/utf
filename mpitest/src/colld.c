@@ -102,7 +102,11 @@ main(int argc, char** argv)
     }
 #endif
     MPI_Type_size(MPI_DOUBLE, &tsz);
-    sz = length*nprocs*tsz;
+    if (sflag & (0x8|0x10|0x20)) { /* Gather, Alltoall, Scatter */
+	sz = length*nprocs*tsz;
+    } else {
+	sz = length*tsz;
+    }
     sendbuf = malloc(sz);
     recvbuf = malloc(sz);
     MYPRINT {
@@ -118,9 +122,16 @@ main(int argc, char** argv)
 	}
 	exit(-1);
     }
-    for (i = 0; i < length*nprocs; i++) {
-	sendbuf[i] = (double) (myrank + i + 1);
-	recvbuf[i] = (double) -1;
+    if (sflag & (0x8|0x10|0x20)) { /* Gather, Alltoall, Scatter */
+	for (i = 0; i < length*nprocs; i++) {
+	    sendbuf[i] = (double) (myrank + i + 1);
+	    recvbuf[i] = (double) -1;
+	}
+    } else {
+	for (i = 0; i < length; i++) {
+	    sendbuf[i] = (double) (myrank + i + 1);
+	    recvbuf[i] = (double) -1;
+	}
     }
     MYPRINT { VERBOSE("Start MPI_Barier %ldth\n", i); }
     if (sflag & 0x1) {
@@ -179,7 +190,7 @@ main(int argc, char** argv)
 		    errs += verify_reduce(sendbuf, recvbuf, length);
 		}
 		/* reset value */
-		for (j = 0; j < length*nprocs; j++) {
+		for (j = 0; j < length; j++) {
 		    sendbuf[j] = myrank + j + 1;
 		    recvbuf[j] = -1;
 		}
@@ -203,7 +214,7 @@ main(int argc, char** argv)
 		int	j;
 		errs += verify_reduce(sendbuf, recvbuf, length);
 		/* reset value */
-		for (j = 0; j < length*nprocs; j++) {
+		for (j = 0; j < length; j++) {
 		    sendbuf[j] = myrank + j + 1;
 		    recvbuf[j] = -1;
 		}

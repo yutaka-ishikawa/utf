@@ -68,6 +68,7 @@ MPI_UTF_init(int nproc, int myrank, utf_coll_group_t *utf_grp)
     UTFCALL_CHECK(err1, rc, utf_bg_alloc(rankset, nproc, myrank,
 					 jtofu_query_max_proc_per_node(),
 					 UTF_BG_TOFU, lcl_bginfo));
+    if (myrank == 0) printf("sizeof(utf_bg_info_t) = %ld\n", sizeof(utf_bg_info_t));
     MPICALL_CHECK(err2, rc, MPI_Alltoall(lcl_bginfo, sizeof(utf_bg_info_t), MPI_BYTE,        
 					 rmt_bginfo, sizeof(utf_bg_info_t), MPI_BYTE, MPI_COMM_WORLD));
     UTFCALL_CHECK(err3, rc, utf_bg_init(rankset, nproc, myrank, rmt_bginfo, utf_grp));

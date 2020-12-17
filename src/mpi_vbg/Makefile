@@ -5,8 +5,12 @@ include ../dep/mkdef.$(UTF_ARCH)
 INSTDIR  := $(HOME)/mpich-tofu
 INSTALL  := install
 
+#
 # -DDEBUGLOG for VBG
-CFLAGS += -I../include/ -shared -fPIC -Wall -DDEBUGLOG
+# -DDEBUG for mpi_utf
+CFLAGS += -I../include/ -shared -fPIC -Wall
+CFLAGS += -DDEBUG
+CFLAGS += -DDEBUGLOG
 CFLAGS += $(INCLUDES)
 SRCDIR   := ./base/
 SRC_VBGDIR  := ./vbg/

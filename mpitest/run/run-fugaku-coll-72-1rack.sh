@@ -1,6 +1,6 @@
 #!/bin/bash
 #------ pjsub option --------#
-#PJM -N "MPICH-COLL72" # jobname
+#PJM -N "MPICH-COLL72-1" # jobname
 #PJM -S		# output statistics
 #
 #PJM --spath "results/coll-72rack/%n.%j.stat"
@@ -8,9 +8,10 @@
 #PJM -e "results/coll-72rack/%n.%j.err"
 #
 #PJM -L "node=27648"
+#	PJM -L "node=16384"
 #	PJM -L "node=1152"
-#	PJM --mpi "max-proc-per-node=1"
-#PJM --mpi "max-proc-per-node=4"
+#PJM --mpi "max-proc-per-node=1"
+#	PJM --mpi "max-proc-per-node=4"
 #	PJM --mpi "max-proc-per-node=32"
 #	PJM --mpi "max-proc-per-node=48"
 #PJM -L "elapse=00:10:00"
@@ -18,6 +19,7 @@
 #PJM -L proc-core=unlimited
 #------- Program execution -------#
 
+. ./mpich.env
 MPIOPT="-of results/coll-72rack/%n.%j.out -oferr results/coll-72rack/%n.%j.err"
 
 #
@@ -31,32 +33,35 @@ MPIOPT="-of results/coll-72rack/%n.%j.out -oferr results/coll-72rack/%n.%j.err"
 #echo  "checking collective except Alltoall"
 #RED_LEN=512  # verification error
 #GS_LEN=512
-RED_LEN=128
-GS_LEN=128
+#RED_LEN=128
+#GS_LEN=128
+RED_LEN=1
+GS_LEN=1
+NP=27648
 
 echo "checking Barrier"
-time mpich_exec -n 110592 $MPIOPT ../bin/colld -l 1 -s 0x1	#
+time mpiexec -n $NP $MPIOPT ../bin/colld -l 1 -s 0x1	#
 echo "checking Reduce"
-time mpich_exec -n 110592 $MPIOPT ../bin/colld -l $RED_LEN -s 0x2	#
+time mpiexec -n $NP $MPIOPT ../bin/colld -l $RED_LEN -s 0x2	#
 echo; echo; echo
 echo "checking Allreduce"
-time mpich_exec -n 110592 $MPIOPT ../bin/colld -l $RED_LEN -s 0x4	#
+time mpiexec -n $NP $MPIOPT ../bin/colld -l $RED_LEN -s 0x4	#
 echo; echo; echo
 echo "checking Gather"
-time mpich_exec -n 110592 $MPIOPT ../bin/colld -l $GS_LEN -s 0x8	#
+time mpiexec -n $NP $MPIOPT ../bin/colld -l $GS_LEN -s 0x8	#
 echo; echo; echo
 echo "checking Scatter"
-time mpich_exec -n 110592 $MPIOPT ../bin/colld -l $GS_LEN -s 0x20	#
+time mpiexec -n $NP $MPIOPT ../bin/colld -l $GS_LEN -s 0x20	#
 #
 echo; echo; echo
 echo "Skipping Alltoall"
 #echo "checking Alltoall"
-#time mpich_exec -n 110592 $MPIOPT ../bin/colld -l 1 -s 0x10	#
+#time mpiexec -n 110592 $MPIOPT ../bin/colld -l 1 -s 0x10	#
 
-#mpich_exec -n 110592 $MPIOPT ../bin/colld -l 1 -s 0x4	# OK 3 sec 47 min with barrier
-#mpich_exec -n 110592 $MPIOPT ../bin/colld -l 1 -s 0x1	# OK 2 sec 38 min
-#mpich_exec -n 110592 $MPIOPT ../bin/colld -l 2 -s 0x3f	# TIMEOUT
-#mpich_exec -n 110592 $MPIOPT ../bin/colld -l 512 -s 0x3f	#
+#mpiexec -n 110592 $MPIOPT ../bin/colld -l 1 -s 0x4	# OK 3 sec 47 min with barrier
+#mpiexec -n 110592 $MPIOPT ../bin/colld -l 1 -s 0x1	# OK 2 sec 38 min
+#mpiexec -n 110592 $MPIOPT ../bin/colld -l 2 -s 0x3f	# TIMEOUT
+#mpiexec -n 110592 $MPIOPT ../bin/colld -l 512 -s 0x3f	#
 
 exit
 ###########################################################################
@@ -85,17 +90,17 @@ echo "MPIR_CVAR_CH4_OFI_ENABLE_TAGGED = " $MPIR_CVAR_CH4_OFI_ENABLE_T
 #
 #
 echo  "checking collective except Alltoall"
-mpich_exec -n 110592 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  5 min 57 sec == 72 rack
-#mpich_exec -n 131072 $MPIOPT ../bin/coll -l 512 -s 0x2f	# ERROR
-#mpich_exec -n 165888 $MPIOPT ../bin/coll -l 512 -s 0x2f	# ERROR
-#mpich_exec -n 110592 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  5 min 57 sec == 72 rack
-#mpich_exec -n 55296 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  3 min 00 sec
-#mpich_exec -n 36864 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  2 min 13 sec
-#mpich_exec -n 1152 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  57 sec
-#mpich_exec -n 3456 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  sec
+mpiexec -n 110592 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  5 min 57 sec == 72 rack
+#mpiexec -n 131072 $MPIOPT ../bin/coll -l 512 -s 0x2f	# ERROR
+#mpiexec -n 165888 $MPIOPT ../bin/coll -l 512 -s 0x2f	# ERROR
+#mpiexec -n 110592 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  5 min 57 sec == 72 rack
+#mpiexec -n 55296 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  3 min 00 sec
+#mpiexec -n 36864 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  2 min 13 sec
+#mpiexec -n 1152 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  57 sec
+#mpiexec -n 3456 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  sec
 
 exit
-#mpich_exec ../bin/coll -l 5120 -v -s 
+#mpiexec ../bin/coll -l 5120 -v -s 
 
 
 #echo

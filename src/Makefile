@@ -6,7 +6,8 @@ INSTDIR  := $(HOME)/mpich-tofu
 INSTALL  := install
 
 # -DDEBUGLOG for VBG
-CFLAGS += -I../include/ -shared -fPIC -Wall -DDEBUGLOG
+#CFLAGS += -I../include/ -shared -fPIC -Wall -DDEBUGLOG
+CFLAGS += -I../include/ -shared -fPIC -Wall
 CFLAGS += $(INCLUDES)
 SRCDIR   := ./base/
 SRC_VBGDIR  := ./vbg/
@@ -36,6 +37,7 @@ $(BUILDDIR)/%.o: %.c
 	$(CC) $(CFLAGS) -c  -MMD $< -o $@
 
 clean:
-	rm -f $(BUILDDIR)/$(SRCDIR)/*.o $(BUILDDIR)/$(SRCDIR)/*.o $(BUILDDIR)/$(SRCDIR)/*.d. $(TARGET)
+	rm -f $(BUILDDIR)/$(SRCDIR)/*.o $(BUILDDIR)/$(SRC_VBGDIR)/*.o \
+	     $(BUILDDIR)/$(SRCDIR)/*.d $(BUILDDIR)/$(SRC_VBGDIR)/*.d $(TARGET)
 #
 -include $(DEPS)

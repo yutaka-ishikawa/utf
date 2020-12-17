@@ -15,22 +15,66 @@
 #	PJM --mpi "max-proc-per-node=16"
 #	PJM --mpi "max-proc-per-node=32"
 #PJM --mpi "max-proc-per-node=48"
-#PJM -L "elapse=00:10:30"
+#PJM -L "elapse=00:1:30"
+#	PJM -L "elapse=00:3:30"
 #PJM -L "rscunit=rscunit_ft01,rscgrp=eap-llio,jobenv=linux2"
 #	PJM -L "rscunit=rscunit_ft01,rscgrp=eap-small,jobenv=linux2"
 #PJM -L proc-core=unlimited
 #------- Program execution -------#
 
-. ./mpich.env
+RED_LEN=512  #
+#GS_LEN=512   # OK 2020/12/17
+GS_LEN=1024   # OK 2020/12/17
+
+#RED_LEN=128
+#GS_LEN=128
+
+NP=18432
 MPIOPT="-of results/coll-1rack/%n.%j.out -oferr results/coll-1rack/%n.%j.err"
+export MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG=1
 
 #
 #   coll -s  0x1: Barrier, 0x2: Reduce, 0x4: Allreduce, 0x8: Gather, 0x10: Alltoall, 0x20: Scatter
 #
 
-##export UTF_DEBUG=0x4000	# statistics
+for RED_LEN in 2048 4096 8192 16384 32768
+do
+    echo "checking Reduce"
+    time mpich_exec -n $NP $MPIOPT ../bin/colld -l $RED_LEN -s 0x2	#
+    unset MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG
+    echo; echo;
+    echo "checking Allreduce"
+    time mpich_exec -n $NP $MPIOPT ../bin/colld -l $RED_LEN -s 0x4	#
+done
+exit
 
-mpiexec -n 18432 $MPIOPT ../bin/coll -l 1024 -s 0x2f	# See MPICH-COLL-1rack.3138355.out
+export MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG=1
+for RED_LEN in 1 128 512 1024
+do
+    GS_LEN=$RED_LEN
+    echo "NP = " $NP "REDUCE_LENGTH" $RED_LEN "GATHER_LENGTH" $GS_LEN
+    echo "checking Barrier"
+    time mpich_exec -n $NP $MPIOPT ../bin/colld -l 1 -s 0x1	#
+
+    unset MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG
+    echo; echo;
+    echo "checking Reduce"
+    time mpich_exec -n $NP $MPIOPT ../bin/colld -l $RED_LEN -s 0x2	#
+    echo; echo;
+    echo "checking Allreduce"
+    time mpich_exec -n $NP $MPIOPT ../bin/colld -l $RED_LEN -s 0x4	#
+    echo; echo;
+    echo "checking Gather"
+    time mpich_exec -n $NP $MPIOPT ../bin/colld -l $GS_LEN -s 0x8	#
+    echo; echo;
+    echo "checking Scatter"
+    time mpich_exec -n $NP $MPIOPT ../bin/colld -l $GS_LEN -s 0x20	#
+done
+
+exit
+
+##export UTF_DEBUG=0x4000	# statistics
+#mpich_exec -n 18432 $MPIOPT ../bin/coll -l 1024 -s 0x2f# See MPICH-COLL-1rack.3138355.out
 #mpiexec -n 18432 $MPIOPT ../bin/coll -l 512 -s 0x2f	# OK
 #mpiexec -n 18432 $MPIOPT ../bin/coll -l 10240 -s 0x1	# 720 MiB
 #mpiexec -n 18432 $MPIOPT ../bin/coll -l 10240 -s 0x2f	# 720 MiB

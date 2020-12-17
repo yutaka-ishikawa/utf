@@ -7,7 +7,6 @@
 #include <utofu.h>
 #include <jtofu.h>
 #include <utf_bg.h>
-#include "commgroup.c"
 
 #define UTF_BG_MIN_BARRIER_SIZE	4
 static int	mpi_bg_enabled = 0;
@@ -16,6 +15,9 @@ static int	mpi_bg_confirm = 0;
 static utf_coll_group_t mpi_world_grp;
 static utf_bg_info_t	*mpi_bg_bginfo;
 static int	mpi_bg_nprocs, mpi_bg_myrank;
+static int	mpi_init_nfirst = 0;
+
+#include "commgroup.c"
 
 #define UTFCALL_CHECK(lbl, rc, func)			\
 {							\
@@ -87,6 +89,19 @@ myprintf(int myrank, const char *fmt, ...)
     return rc;
 }
 
+static void
+option_get()
+{
+    char	*cp = getenv("UTF_BG_DBG");
+    if (cp && atoi(cp) != 0) {
+	mpi_bg_dbg = 1;
+    }
+    cp = getenv("UTF_BG_CONFIRM");
+    if (cp && atoi(cp) != 0) {
+	mpi_bg_confirm = 1;
+    }
+}
+
 static inline int
 mpi_bg_init()
 {
@@ -147,30 +162,26 @@ MPI_Init(int *argc, char ***argv)
 {
     int	rc;
 
-    {
-	char	*cp = getenv("UTF_BG_DBG");
-	if (cp && atoi(cp) != 0) {
-	    mpi_bg_dbg = 1;
-	}
-	cp = getenv("UTF_BG_CONFIRM");
-	if (cp && atoi(cp) != 0) {
-	    mpi_bg_confirm = 1;
-	}
+    if (mpi_init_nfirst > 0)  {
+	/* Already called, and thus no need to initialize VBG */
+	return PMPI_Init(argc, argv);
     }
+    mpi_init_nfirst++;
+    option_get();
     MPICALL_CHECK(err, rc, PMPI_Init(argc, argv));
     DBG {
 	myprintf(0, "%s: 1\n", __func__);
     }
     MPICALL_CHECK(err, rc, mpi_bg_init());
     DBG {
-	myprintf(mpi_bg_myrank, "%s: 2\n", __func__);
+	myprintf(0, "[%d] %s: 2\n", mpi_bg_myrank, __func__);
     }
     MPICALL_CHECK(err, rc, PMPI_Barrier(MPI_COMM_WORLD));
     DBG {
-	myprintf(mpi_bg_myrank, "%s: 3 return\n", __func__);
+	myprintf(0, "[%d] %s: 3 return\n", mpi_bg_myrank, __func__);
     }
     if (mpi_bg_confirm) {
-	myprintf(mpi_bg_myrank, "*** UTF VBG is enabled **\n");
+	myprintf(0, "[%d] *** UTF VBG is enabled **\n", mpi_bg_myrank);
     }
 err:
     return rc;
@@ -181,6 +192,12 @@ MPI_Init_thread(int *argc, char ***argv, int required, int *provided)
 {
     int	rc;
 
+    if (mpi_init_nfirst > 0)  {
+	/* Already called, and thus no need to initialize VBG */
+	return PMPI_Init_thread(argc, argv, required, provided);
+    }
+    mpi_init_nfirst++;
+    option_get();
     MPICALL_CHECK(err, rc, PMPI_Init_thread(argc, argv, required, provided));
     rc = mpi_bg_init();
 err:
