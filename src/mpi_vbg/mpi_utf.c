@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <unistd.h>
 #include <assert.h>
 #include <mpi.h>
 #include <utf.h>
@@ -12,6 +13,9 @@
 static int	mpi_bg_enabled = 0;
 static int	mpi_bg_disable = 0;
 static int	mpi_bg_dbg = 0;
+static int	mpi_bg_barrier = 0;
+static useconds_t	mpi_bg_iniwait = 0;
+static int	mpi_bg_utfprogress = 0;
 static int	mpi_bg_confirm = 0;
 static utf_coll_group_t mpi_world_grp;
 static utf_bg_info_t	*mpi_bg_bginfo;
@@ -101,9 +105,43 @@ option_get()
     if (cp && atoi(cp) != 0) {
 	mpi_bg_disable = 1;
     }
+    cp = getenv("UTF_BG_INITWAIT");
+    if (cp && atoi(cp) != 0) {
+	mpi_bg_iniwait = atol(cp);
+    }
+    cp = getenv("UTF_BG_UTFPROGRESS");
+    if (cp && atoi(cp) != 0) {
+	mpi_bg_utfprogress = 1;
+    }
+    cp = getenv("UTF_BG_BARRIER");
+    if (cp && atoi(cp) != 0) {
+	mpi_bg_barrier = 1;
+    }
     cp = getenv("UTF_BG_CONFIRM");
     if (cp && atoi(cp) != 0) {
 	mpi_bg_confirm = 1;
+    }
+}
+
+static inline void
+mpi_bg_poll_barrier(utf_coll_group_t bg_grp)
+{
+    while (utf_poll_barrier(bg_grp) == UTF_ERR_NOT_COMPLETED) {
+	if (mpi_bg_utfprogress) {
+	    extern int utf_progress();
+	    utf_progress();
+	}
+    }
+}
+
+static inline void
+mpi_bg_poll_reduce(utf_coll_group_t bg_grp, void **data)
+{
+    while (utf_poll_reduce(bg_grp, data) == UTF_ERR_NOT_COMPLETED) {
+	if (mpi_bg_utfprogress) {
+	    extern int utf_progress();
+	    utf_progress();
+	}
     }
 }
 
@@ -187,7 +225,19 @@ MPI_Init(int *argc, char ***argv)
     DBG {
 	myprintf(0, "[%d] %s: 2\n", mpi_bg_myrank, __func__);
     }
+    if (mpi_bg_iniwait > 0) {
+	usleep(mpi_bg_iniwait);
+	if (mpi_bg_confirm) {
+	    myprintf(0, "[%d] *** UTF VBG (%d usec waited)**\n", mpi_bg_myrank, mpi_bg_iniwait);
+	}
+    }
     MPICALL_CHECK(err, rc, PMPI_Barrier(MPI_COMM_WORLD));
+    if (mpi_bg_barrier) {
+	if (mpi_bg_confirm) {
+	    myprintf(0, "[%d] PASS\n", mpi_bg_myrank);
+	}
+	MPICALL_CHECK(err, rc, PMPI_Barrier(MPI_COMM_WORLD));
+    }
     DBG {
 	myprintf(0, "[%d] %s: 3 return\n", mpi_bg_myrank, __func__);
     }
@@ -245,7 +295,7 @@ MPI_Barrier(MPI_Comm comm)
 	MPICALL_CHECK_RETURN(rc, PMPI_Barrier(comm));
     } else {
 	UTFCALL_CHECK(err, rc,  utf_barrier(ent->bg_grp));
-	while (utf_poll_barrier(ent->bg_grp) == UTF_ERR_NOT_COMPLETED) { }
+	mpi_bg_poll_barrier(ent->bg_grp);
     }
 err:
     return rc;
@@ -335,8 +385,7 @@ MPI_Bcast(void *buf, int count, MPI_Datatype datatype, int root, MPI_Comm comm)
     rc = utf_broadcast(ent->bg_grp, buf, tsize, NULL, root);
     if (rc == UTF_SUCCESS) {
 	double	data;
-
-	while (utf_poll_reduce(ent->bg_grp, (void **)&data) == UTF_ERR_NOT_COMPLETED) { }
+	mpi_bg_poll_reduce(ent->bg_grp, (void**)&data);
     } else if (rc == UTF_ERR_NOT_AVAILABLE) {
 	//myprintf(0, "[%d] %s: calling PMPI_Bcast\n", mpi_bg_myrank, __func__);
 	rc = PMPI_Bcast(buf, count, datatype, root, comm);
@@ -368,7 +417,7 @@ MPI_Reduce(const void *sbuf, void *rbuf, int count, MPI_Datatype datatype,
 	    goto pmpi_call;
 	}
 	/* progress */
-	while (utf_poll_reduce(ent->bg_grp, (void **)&data) == UTF_ERR_NOT_COMPLETED) { }
+	mpi_bg_poll_reduce(ent->bg_grp, (void**)&data);
 	goto ext;
     } else {
     pmpi_call:
@@ -403,7 +452,7 @@ MPI_Allreduce(const void *sbuf, void *rbuf, int count, MPI_Datatype datatype,
 	    goto pmpi_call;
 	}
 	/* progress */
-	while (utf_poll_reduce(ent->bg_grp, (void **)&data) == UTF_ERR_NOT_COMPLETED) { }
+	mpi_bg_poll_reduce(ent->bg_grp, (void**)&data);
 	goto ext;
     } else {
     pmpi_call:

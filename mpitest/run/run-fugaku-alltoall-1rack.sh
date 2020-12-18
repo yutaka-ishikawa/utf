@@ -1,6 +1,6 @@
 #!/bin/bash
 #------ pjsub option --------#
-#PJM -N "MPICH-COLL-1rack" # jobname
+#PJM -N "MPICH-ALLTOALL-1rack" # jobname
 #PJM -S		# output statistics
 #
 #PJM --spath "results/coll-1rack/%n.%j.stat"

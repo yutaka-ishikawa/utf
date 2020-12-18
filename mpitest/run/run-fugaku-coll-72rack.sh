@@ -13,7 +13,7 @@
 #PJM --mpi "max-proc-per-node=4"
 #	PJM --mpi "max-proc-per-node=32"
 #	PJM --mpi "max-proc-per-node=48"
-#PJM -L "elapse=00:10:00"
+#PJM -L "elapse=00:30:00"
 #PJM -L "rscunit=rscunit_ft01,rscgrp=eap-large,jobenv=linux2"
 #PJM -L proc-core=unlimited
 #------- Program execution -------#
@@ -23,89 +23,29 @@ MPIOPT="-of results/coll-72rack/%n.%j.out -oferr results/coll-72rack/%n.%j.err"
 #
 #   coll -s  0x1: Barrier, 0x2: Reduce, 0x4: Allreduce, 0x8: Gather, 0x10: Alltoall, 0x20: Scatter
 #
-
 #
-#   coll -s  0x1: Barrier, 0x2: Reduce, 0x4: Allreduce, 0x8: Gather, 0x10: Alltoall, 0x20: Scatter
-#
-#
-#echo  "checking collective except Alltoall"
-#RED_LEN=512  # verification error
-#GS_LEN=512
-RED_LEN=128
-GS_LEN=128
-
-echo "checking Barrier"
-time mpich_exec -n 110592 $MPIOPT ../bin/colld -l 1 -s 0x1	#
-echo "checking Reduce"
-time mpich_exec -n 110592 $MPIOPT ../bin/colld -l $RED_LEN -s 0x2	#
-echo; echo; echo
-echo "checking Allreduce"
-time mpich_exec -n 110592 $MPIOPT ../bin/colld -l $RED_LEN -s 0x4	#
-echo; echo; echo
-echo "checking Gather"
-time mpich_exec -n 110592 $MPIOPT ../bin/colld -l $GS_LEN -s 0x8	#
-echo; echo; echo
-echo "checking Scatter"
-time mpich_exec -n 110592 $MPIOPT ../bin/colld -l $GS_LEN -s 0x20	#
-#
-echo; echo; echo
-echo "Skipping Alltoall"
-#echo "checking Alltoall"
-#time mpich_exec -n 110592 $MPIOPT ../bin/colld -l 1 -s 0x10	#
-
-#mpich_exec -n 110592 $MPIOPT ../bin/colld -l 1 -s 0x4	# OK 3 sec 47 min with barrier
-#mpich_exec -n 110592 $MPIOPT ../bin/colld -l 1 -s 0x1	# OK 2 sec 38 min
-#mpich_exec -n 110592 $MPIOPT ../bin/colld -l 2 -s 0x3f	# TIMEOUT
-#mpich_exec -n 110592 $MPIOPT ../bin/colld -l 512 -s 0x3f	#
-
-exit
-###########################################################################
-###########################################################################
-###########################################################################
-export LD_LIBRARY_PATH=${HOME}/mpich-tofu/lib:$LD_LIBRARY_PATH
-
-export MPIR_CVAR_OFI_USE_PROVIDER=tofu
-export MPICH_CH4_OFI_ENABLE_SCALABLE_ENDPOINTS=1
-export MPIR_CVAR_ALLTOALL_SHORT_MSG_SIZE=2147483647 # 32768 in default (integer value)
-export MPIR_CVAR_CH4_OFI_ENABLE_ATOMICS=-1
-export MPIR_CVAR_CH4_OFI_ENABLE_MR_VIRT_ADDRESS=1
-export MPIR_CVAR_CH4_OFI_ENABLE_RMA=1
-export MPIR_CVAR_CH4_OFI_ENABLE_TAGGED=0
+NP=110592
 export MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG=1
-export UT_MSGMODE=0
-export UTF_TRANSMODE=1  # Aggressive                                                                                      
-export TOFU_NAMED_AV=1
 
-echo "TOFU_NAMED_AV = " $TOFU_NAMED_AV
-echo "UTF_MSGMODE   = " $UTF_MSGMODE "(0: Eager, 1: Rendezous)"
-echo "UTF_TRANSMODE = " $UTF_TRANSMODE "(0: Chained, 1: Aggressive)"
-echo "MPIR_CVAR_CH4_OFI_ENABLE_TAGGED = " $MPIR_CVAR_CH4_OFI_ENABLE_T
-#
-#   coll -s  0x1: Barrier, 0x2: Reduce, 0x4: Allreduce, 0x8: Gather, 0x10: Alltoall, 0x20: Scatter
-#
-#
-echo  "checking collective except Alltoall"
-mpich_exec -n 110592 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  5 min 57 sec == 72 rack
-#mpich_exec -n 131072 $MPIOPT ../bin/coll -l 512 -s 0x2f	# ERROR
-#mpich_exec -n 165888 $MPIOPT ../bin/coll -l 512 -s 0x2f	# ERROR
-#mpich_exec -n 110592 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  5 min 57 sec == 72 rack
-#mpich_exec -n 55296 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  3 min 00 sec
-#mpich_exec -n 36864 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  2 min 13 sec
-#mpich_exec -n 1152 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  57 sec
-#mpich_exec -n 3456 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  sec
-
+for RED_LEN in 1024 262144 524288
+do
+    echo; echo;
+    echo "checking Reduce"
+    time mpich_exec -n $NP $MPIOPT ../bin/colld -l $RED_LEN -s 0x2 -V 1	#
+    unset MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG
+    echo; echo;
+    echo "checking Allreduce"
+    time mpich_exec -n $NP $MPIOPT ../bin/colld -l $RED_LEN -s 0x4 -V 1	#
+done
 exit
-#mpich_exec ../bin/coll -l 5120 -v -s 
 
-
-#echo
-#echo
-##ldd ../bin/coll
-#	-x FI_LOG_PROV=tofu \
-#	-x MPICH_DBG=FILE \
-#	-x MPICH_DBG_CLASS=COLL \
-#	-x MPICH_DBG_LEVEL=TYPICAL \
-#
-#	-x PMIX_DEBUG=1 \
-#	-x FI_LOG_LEVEL=Debug \
-#
+for RED_LEN in 1 1024 2048 4096
+do
+    echo; echo;
+    echo "checking Reduce"
+    time mpich_exec -n $NP $MPIOPT ../bin/colld -l $RED_LEN -s 0x2	#
+    unset MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG
+    echo; echo;
+    echo "checking Allreduce"
+    time mpich_exec -n $NP $MPIOPT ../bin/colld -l $RED_LEN -s 0x4	#
+done

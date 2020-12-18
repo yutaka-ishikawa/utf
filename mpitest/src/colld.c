@@ -112,8 +112,8 @@ main(int argc, char** argv)
     MYPRINT {
 	printf("sendbuf=%p recvbuf=%p\n"
 	       "MPI_DOUBLE SIZE: %d\n"
-	       "length(%ld) byte(%ld) nprocs(%d) iteration(%d) sflag(0x%x)\n",
-	       sendbuf, recvbuf, tsz, length, sz, nprocs, iteration, sflag); fflush(stdout);
+	       "length(%ld) byte(%ld) nprocs(%d) iteration(%d) sflag(0x%x) Vflag(0x%x)\n",
+	       sendbuf, recvbuf, tsz, length, sz, nprocs, iteration, sflag, Vflag); fflush(stdout);
     }
     if (sendbuf == NULL || recvbuf == NULL) {
 	MYPRINT {

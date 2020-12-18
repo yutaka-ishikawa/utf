@@ -61,10 +61,10 @@ test_init(int argc, char **argv)
 	    iteration = atoi(optarg);
 	    break;
 	case 'l': /* length */
-	    length = atoi(optarg);
+	    length = atol(optarg);
 	    break;
 	case 'L': /* max length */
-	    mlength = atoi(optarg);
+	    mlength = atol(optarg);
 	    break;
 	case 'm':
 	    mflag = atoi(optarg);

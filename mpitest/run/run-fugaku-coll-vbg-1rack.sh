@@ -19,23 +19,28 @@
 #------- Program execution -------#
 
 MPIOPT="-of results/vbg/%n.%j.out -oferr results/vbg/%n.%j.err"
+VBGLOAD="env LD_PRELOAD=../../build/libmpi_vbg.so"
 
-#export UTF_BG_DBG=1
-#export UTF_BG_CONFIRM=1
+echo "UTF_BG_CONFIRM" $UTF_BG_CONFIRM
+echo "UTF_BG_DBG" $UTF_BG_DB
+echo "UTF_BG_DISABLE" $UTF_BG_DISABLE
+echo "UTF_BG_INITWAIT" $UTF_BG_INITWAIT
+echo "UTF_BG_BARRIER" $UTF_BG_BARRIER
+echo "UTF_BG_UTFPROGRESS" $UTF_BG_UTFPROGRESS
 
 echo "Barrier"
-mpich_exec $MPIOPT env LD_PRELOAD=../../build/libmpi_vbg.so ../src/test_collective_vbg -s 0x1
+mpich_exec $MPIOPT $VBGLOAD ../src/test_collective_vbg -s 0x1
 
 echo;echo
 echo "Bcast"
-mpich_exec $MPIOPT env LD_PRELOAD=../../build/libmpi_vbg.so ../src/test_collective_vbg -s 0x2
+mpich_exec $MPIOPT $VBGLOAD ../src/test_collective_vbg -s 0x2
 
 echo;echo
 echo "Reduce"
-mpich_exec $MPIOPT env LD_PRELOAD=../../build/libmpi_vbg.so ../src/test_collective_vbg -s 0x4
+mpich_exec $MPIOPT $VBGLOAD ../src/test_collective_vbg -s 0x4
 
 echo;echo
 echo "AllReduce"
-mpich_exec $MPIOPT env LD_PRELOAD=../../build/libmpi_vbg.so ../src/test_collective_vbg -s 0x8
+mpich_exec $MPIOPT $VBGLOAD ../src/test_collective_vbg -s 0x8
 
 exit

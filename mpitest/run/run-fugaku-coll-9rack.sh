@@ -1,6 +1,6 @@
 #!/bin/bash
 #------ pjsub option --------#
-#PJM -N "MPICH-COLL" # jobname
+#PJM -N "MPICH-COLL-9Rack" # jobname
 #PJM -S		# output statistics
 #
 #PJM --spath "results/coll-9rack/%n.%j.stat"
@@ -11,23 +11,29 @@
 #	PJM -L "node=1152"
 #	PJM --mpi "max-proc-per-node=1"
 #	PJM --mpi "max-proc-per-node=32"
-#PJM --mpi "max-proc-per-node=48"
-#PJM -L "elapse=00:15:30"
+#PJM --mpi "max-proc-per-node=4"
+#PJM -L "elapse=00:30:30"
 #PJM -L "rscunit=rscunit_ft01,rscgrp=eap-llio,jobenv=linux2"
 #PJM -L proc-core=unlimited
 #------- Program execution -------#
-
-. ./mpich.env
 MPIOPT="-of results/coll-9rack/%n.%j.out -oferr results/coll-9rack/%n.%j.err"
 
-#
-#   coll -s  0x1: Barrier, 0x2: Reduce, 0x4: Allreduce, 0x8: Gather, 0x10: Alltoall, 0x20: Scatter
-#
+NP=13824
+export MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG=1
+#for RED_LEN in 2048 4096 8192 16384 32768
+#for RED_LEN in 8192 16384 32768 131072
+for RED_LEN in 262144 524288
+do
+    echo; echo;
+    echo "checking Reduce"
+    time mpich_exec -n $NP $MPIOPT ../bin/colld -l $RED_LEN -s 0x2 -V 1	#
+    unset MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG
+    echo; echo;
+    echo "checking Allreduce"
+    time mpich_exec -n $NP $MPIOPT ../bin/colld -l $RED_LEN -s 0x4 -V 1	#
+done
 
-#
-#   coll -s  0x1: Barrier, 0x2: Reduce, 0x4: Allreduce, 0x8: Gather, 0x10: Alltoall, 0x20: Scatter
-#
-#
+exit
 echo  "checking collective except Alltoall"
 mpiexec -n 165888 $MPIOPT ../bin/colld -l 2 -s 0x3f	#
 mpiexec -n 165888 $MPIOPT ../bin/colld -l 1 -s 0x3f	# OK 5774.7 MiB
@@ -44,7 +50,6 @@ mpiexec -n 165888 $MPIOPT ../bin/colld -l 1 -s 0x3f	# OK 5774.7 MiB
 #mpiexec -n 1152 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  57 sec
 #mpiexec -n 3456 $MPIOPT ../bin/coll -l 512 -s 0x2f	#  sec
 
-exit
 ###########################################################################
 ###########################################################################
 ###########################################################################
