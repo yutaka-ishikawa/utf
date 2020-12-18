@@ -589,8 +589,13 @@ utf_fence()
     DEBUG(DLEVEL_INIFIN) {
 	utf_printf("%s: begin nprocs = %d\n", __func__, utf_info.nprocs);
     }
+#define PMIX_FENCE_TEST
+#ifdef PMIX_FENCE_TEST
+    LIB_CALL(rc, PMIx_Fence(NULL, 0, NULL, 0), err, errstr, "PMIx_Fence");
+#else
     LIB_CALL(rc, PMIx_Fence(utf_info.pmix_wproc, 1, utf_info.pmix_info, 1),
 	     err, errstr, "PMIx_Fence");
+#endif
     DEBUG(DLEVEL_INIFIN) {
 	utf_printf("%s: end\n", __func__);
     }

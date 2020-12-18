@@ -60,7 +60,7 @@ main(int argc, char *argv[])
     if (sflag & 0x01) {
 	myprintf(myrank, "Start utf_barrier\n");
 	/* MPI_Barrier */
-	for (i = 0; i < 1000000; i++) {
+	for (i = 0; i < 10; i++) {
 	    MPICALL_CHECK(err0, rc,  MPI_Barrier(MPI_COMM_WORLD));
 	}
 	myprintf(myrank, "Success: End of utf_barrier\n");

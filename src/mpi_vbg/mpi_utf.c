@@ -10,6 +10,7 @@
 
 #define UTF_BG_MIN_BARRIER_SIZE	4
 static int	mpi_bg_enabled = 0;
+static int	mpi_bg_disable = 0;
 static int	mpi_bg_dbg = 0;
 static int	mpi_bg_confirm = 0;
 static utf_coll_group_t mpi_world_grp;
@@ -96,6 +97,10 @@ option_get()
     if (cp && atoi(cp) != 0) {
 	mpi_bg_dbg = 1;
     }
+    cp = getenv("UTF_BG_DISABLE");
+    if (cp && atoi(cp) != 0) {
+	mpi_bg_disable = 1;
+    }
     cp = getenv("UTF_BG_CONFIRM");
     if (cp && atoi(cp) != 0) {
 	mpi_bg_confirm = 1;
@@ -172,6 +177,12 @@ MPI_Init(int *argc, char ***argv)
     DBG {
 	myprintf(0, "%s: 1\n", __func__);
     }
+    if (mpi_bg_disable == 1) {
+	if (mpi_bg_confirm) {
+	    myprintf(0, "[%d] *** UTF VBG is disabled **\n", mpi_bg_myrank);
+	}
+	return 0;
+    }
     MPICALL_CHECK(err, rc, mpi_bg_init());
     DBG {
 	myprintf(0, "[%d] %s: 2\n", mpi_bg_myrank, __func__);
@@ -202,6 +213,23 @@ MPI_Init_thread(int *argc, char ***argv, int required, int *provided)
     rc = mpi_bg_init();
 err:
     return rc;
+}
+
+int
+MPI_Finalize()
+{
+    int	rc;
+
+    if (mpi_bg_enabled) {
+	UTFCALL_CHECK(err1, rc, utf_bg_free(mpi_world_grp));
+	mpi_bg_enabled = 0;
+    }
+ext:
+    rc = PMPI_Finalize();
+    return rc;
+err1:
+    errprintf(myrank, "error on utf_bg_free %d\n", rc);
+    goto ext;
 }
 
 int
