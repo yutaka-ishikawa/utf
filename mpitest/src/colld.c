@@ -29,16 +29,6 @@ const char	*marker = "coll-mpich";
 
 #define MYPRINT	if (myrank == 0)
 
-#define SEND_RECV do {						\
-    MPI_Send(buf, 0, MPI_BYTE, receiver, 0, MPI_COMM_WORLD);	\
-    MPI_Recv(buf, 0, MPI_BYTE, receiver, 0, MPI_COMM_WORLD, &stat);	\
-} while(0);
-
-#define RECV_SEND do {						\
-    MPI_Recv(buf, 0, MPI_BYTE, sender, 0, MPI_COMM_WORLD, &stat);	\
-    MPI_Send(buf, 0, MPI_BYTE, sender, 0, MPI_COMM_WORLD);		\
-} while(0);
-
 #define CLK2USEC(tm)	((double)(tm) / ((double)hz/(double)1000000))
 void
 show(const char *name, int iter, uint64_t st, uint64_t et)
@@ -88,7 +78,7 @@ main(int argc, char** argv)
 {
     int	tsz;
     int	errs = 0, toterrs = 0;
-    size_t	i, sz;
+    size_t	rc, i, sz;
     uint64_t	st, et;
 
     length = LEN_INIT;
@@ -136,7 +126,6 @@ main(int argc, char** argv)
     MYPRINT { VERBOSE("Start MPI_Barier %ldth\n", i); }
     if (sflag & 0x1) {
 	int	sender, receiver;
-	char	buf[128];
 	MPI_Status stat;
 
 	st = tick_time();
@@ -158,18 +147,18 @@ main(int argc, char** argv)
 #endif
 	if (myrank == sender) {
 	    /* dry run */
-	    SEND_RECV;
+	    SEND_RECV(0);
 	    st = tick_time();
 	    for (i = 0; i < iteration; i++) {
-		SEND_RECV;
+		SEND_RECV(0);
 	    }
 	    et = tick_time();
 	} else if (myrank == receiver) {
 	    /* dry run */
-	    RECV_SEND;
+	    RECV_SEND(0);
 	    st = tick_time();
 	    for (i = 0; i < iteration; i++) {
-		RECV_SEND;
+		RECV_SEND(0);
 	    }
 	    et = tick_time();
 	} else {

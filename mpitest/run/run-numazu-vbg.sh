@@ -18,10 +18,7 @@
 #	PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-spack1,jobenv=linux"
 #PJM -L proc-core=unlimited
 #------- Program execution -------#
-
-export LD_LIBRARY_PATH=${HOME}/mpich-tofu/lib:$LD_LIBRARY_PATH
-export MPIR_CVAR_OFI_USE_PROVIDER=tofu
-export MPICH_CH4_OFI_ENABLE_SCALABLE_ENDPOINTS=1
+MPIOPT="-of results/%n.%j.out -oferr results/%n.%j.err"
 
 #export UTF_DEBUG=12
 #export UTF_DEBUG=0xfffc
@@ -32,10 +29,6 @@ export UTF_TRANSMODE=1	# Aggressive
 export TOFU_NAMED_AV=1
 ###export TOFULOG_DIR=./results
 
-echo "TOFU_NAMED_AV = " $TOFU_NAMED_AV
-echo "UTF_MSGMODE   = " $UTF_MSGMODE "(0: Eager, 1: Rendezous)"
-echo "UTF_TRANSMODE = " $UTF_TRANSMODE "(0: Chained, 1: Aggressive)"
-
-mpiexec ../src/test_vbg
+mpich_exec $MPIOPT ../src/test_vbg
 
 exit

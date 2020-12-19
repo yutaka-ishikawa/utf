@@ -2,9 +2,9 @@
 #------ pjsub option --------#
 #PJM -N "MPICH-COLL-VBG" # jobname
 #PJM -S		# output statistics
-#PJM --spath "results/%n.%j.stat"
-#PJM -o "results/%n.%j.out"
-#PJM -e "results/%n.%j.err"
+#PJM --spath "results/vbg/%n.%j.stat"
+#PJM -o "results/vbg/%n.%j.out"
+#PJM -e "results/vbg/%n.%j.err"
 #
 #	PJM -L "node=2:noncont"
 #PJM -L "node=2:noncont"
@@ -19,26 +19,23 @@
 #PJM -L proc-core=unlimited
 #------- Program execution -------#
 
-export LD_LIBRARY_PATH=${HOME}/mpich-tofu/lib:$LD_LIBRARY_PATH
-export MPIR_CVAR_OFI_USE_PROVIDER=tofu
-export MPICH_CH4_OFI_ENABLE_SCALABLE_ENDPOINTS=1
+MPIOPT="-of results/vbg/%n.%j.out -oferr results/vbg/%n.%j.err"
+VBGLOAD="env LD_PRELOAD=../../build/libmpi_vbg.so"
 
-#export UTF_DEBUG=12
-#export UTF_DEBUG=0xfffc
+#export UTF_BG_CONFIRM=1
+#export UTF_BG_DBG=1
+#export UTF_BG_DISABLE=1
+#export UTF_BG_INITWAIT=10000
+#export UTF_BG_BARRIER=1
+export UTF_BG_UTFPROGRESS=1
 
-export UTF_MSGMODE=1	# Rendezous
-#export UTF_TRANSMODE=0	# Chained
-export UTF_TRANSMODE=1	# Aggressive
-export TOFU_NAMED_AV=1
-###export TOFULOG_DIR=./results
+echo "UTF_BG_CONFIRM" $UTF_BG_CONFIRM
+echo "UTF_BG_DBG" $UTF_BG_DB
+echo "UTF_BG_DISABLE" $UTF_BG_DISABLE
+echo "UTF_BG_INITWAIT" $UTF_BG_INITWAIT
+echo "UTF_BG_BARRIER" $UTF_BG_BARRIER
+echo "UTF_BG_UTFPROGRESS" $UTF_BG_UTFPROGRESS
 
-export UTF_BG_CONFIRM=1
-
-echo "TOFU_NAMED_AV = " $TOFU_NAMED_AV
-echo "UTF_MSGMODE   = " $UTF_MSGMODE "(0: Eager, 1: Rendezous)"
-echo "UTF_TRANSMODE = " $UTF_TRANSMODE "(0: Chained, 1: Aggressive)"
-echo "UTF_VBG_CONFIRM = " $UTF_VBG_CONFIRM
-
-mpiexec env LD_PRELOAD=../../build/libmpi_vbg.so ../src/test_collective_vbg
+mpich_exec $MPIOPT $VBGLOAD ../src/test_collective_vbg
 
 exit

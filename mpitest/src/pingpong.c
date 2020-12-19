@@ -28,18 +28,6 @@ const char	*marker = "pingpong-mpich";
 
 #define MYPRINT	if (myrank == 0)
 
-#define SEND_RECV(len) do {						\
-    MPI_Send(sendbuf, len, MPI_BYTE, receiver, 0, MPI_COMM_WORLD);	\
-    MPI_Recv(recvbuf, len, MPI_BYTE, receiver, 0, MPI_COMM_WORLD, &stat);\
-    if (stat.MPI_ERROR != 0) errs++;\
-} while(0);
-
-#define RECV_SEND(len) do {						\
-    MPI_Recv(recvbuf, len, MPI_BYTE, sender, 0, MPI_COMM_WORLD, &stat);	\
-    if (stat.MPI_ERROR != 0) errs++;\
-    MPI_Send(sendbuf, len, MPI_BYTE, sender, 0, MPI_COMM_WORLD);	\
-} while(0);
-
 #define CLK2USEC(tm)	((double)(tm) / ((double)hz/(double)1000000))
 void
 show(const char *name, int iter, size_t nbyte, uint64_t tm)
@@ -68,7 +56,7 @@ dry_run(int sender, int receiver)
 {
     MPI_Status stat;
     int errs = 0;
-    int	i;
+    int	rc, i;
     if (myrank == sender) {
 	for (i = 0; i < 10; i++) {
 	    SEND_RECV(1);
@@ -137,6 +125,7 @@ main(int argc, char** argv)
     }
 #endif
     for (len = length, tment = 0; len <= mlength && tment < MAX_TM_ENT; len <<= 1, tment++) {
+	int rc;
 	if (myrank == sender) {
 	    st = tick_time();
 	    for (i = 0; i < iteration; i++) {
