@@ -227,6 +227,22 @@ utf_remote_armw4(utofu_vcq_hdl_t vcqh,
 }
 
 static inline struct utf_send_cntr *
+remote_piggysend8(utofu_vcq_hdl_t vcqh,
+		 utofu_vcq_id_t rvcqid, uint64_t data,  utofu_stadd_t rstadd,
+		 size_t len, uint64_t edata, unsigned long flgs, void *cbdata)
+{
+    struct utf_send_cntr *usp;
+    flgs |= UTOFU_ONESIDED_FLAG_TCQ_NOTICE
+	 | UTOFU_ONESIDED_FLAG_CACHE_INJECTION
+	 | UTOFU_ONESIDED_FLAG_PADDING
+	 | UTOFU_ONESIDED_FLAG_STRONG_ORDER;
+    UTOFU_MSGCALL(1, usp, vcqh, utofu_put_piggyback8,
+		  vcqh, rvcqid, data, rstadd, len, edata, flgs, cbdata);
+    utf_tcq_count++;
+    return usp;
+}
+
+static inline struct utf_send_cntr *
 remote_piggysend(utofu_vcq_hdl_t vcqh,
 		 utofu_vcq_id_t rvcqid, void *data,  utofu_stadd_t rstadd,
 		 size_t len, uint64_t edata, unsigned long flgs, void *cbdata)
@@ -268,7 +284,7 @@ remote_put(utofu_vcq_hdl_t vcqh,
     struct utf_send_cntr *usp;
 #ifdef USE_PUT_TCQ_NOTICE
     flgs |= UTOFU_ONESIDED_FLAG_TCQ_NOTICE
-	 | UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE
+/*	 | UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE */ /* 2020/12/20 */
 	 | UTOFU_ONESIDED_FLAG_STRONG_ORDER
 	 | UTOFU_ONESIDED_FLAG_CACHE_INJECTION;
     UTOFU_MSGCALL(1, usp, vcqh, utofu_put,

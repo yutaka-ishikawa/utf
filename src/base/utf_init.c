@@ -133,6 +133,8 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
     }
     /* debug flag */
     utf_dflag = utf_getenvint("UTF_DEBUG");
+    /* info show flag */
+    utf_iflag = utf_getenvint("UTF_INFO");
 #if 0
     if (utf_dflag > 0) {
 	utf_printf("%s: utf_dflag=%d (0x%x)\n", __func__, utf_dflag, utf_dflag);
@@ -147,6 +149,10 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
     utf_tmr_init();
     i = utf_getenvint("UTF_NOKEEP");
     utf_nokeep = i;
+
+    INFO(ILEVEL_MSG) {
+	utf_infoshow(ILEVEL_MSG);
+    }
     DEBUG(DLEVEL_INIFIN) {
 	utf_printf("%s: utf_info.nprocs(%d) np(%d) utf_info.myrank(%d) rnk(%d) NO_KEEP(%d)\n",
 		   __func__, utf_info.nprocs, np, utf_info.myrank, rnk, utf_nokeep);

@@ -34,6 +34,7 @@ utf_progress()
 	pktp = msgbase + urp->recvidx;
 	if (pktp->hdr.marker == MSG_MARKER) {
 	    /* message arrives */
+	    //utf_printf("%s: msgsize(%d) payloadsize(%d)\n", __func__, pktp->hdr.size, PKT_PYLDSZ(pktp));
 	    //utf_tmr_end(TMR_UTF_RCVPROGRESS);
 	    sidx = pktp->hdr.sidx;
 	    if ((sidx & 0xff) == 0xff) {

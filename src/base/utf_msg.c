@@ -90,38 +90,40 @@ minfo_setup(struct utf_send_msginfo *minfo, int rank, uint64_t tag, uint64_t siz
     minfo->msghdr.sidx = usp->mypos; /* 8 bit */
     minfo->mreq = req;
     minfo->scntr = usp;
-    sbufp->pkt.hdr.src  = rank;
-    sbufp->pkt.hdr.tag  = tag;
-    sbufp->pkt.hdr.hall = 0;	/* marker field is now 0 */
-    sbufp->pkt.hdr.size = size;
+    sbufp->pkt[0].hdr.src  = rank;
+    sbufp->pkt[0].hdr.tag  = tag;
+    sbufp->pkt[0].hdr.hall = 0;	/* marker field is now 0 */
+    sbufp->pkt[0].hdr.size = size;
     req->allflgs = 0;
     if (size <= MSG_EAGER_PIGBACK_SZ) {
 	minfo->cntrtype = SNDCNTR_BUFFERED_EAGER_PIGBACK;
-	memcpy(sbufp->pkt.pyld.msgdata, usrbuf, size);
-	sbufp->pkt.hdr.pyldsz = size;
+	memcpy(sbufp->pkt[0].pyld.msgdata, usrbuf, size);
+	sbufp->pkt[0].hdr.pyldsz = size;
 	req->type = REQ_SND_BUFFERED_EAGER;
     } else if (size <= MSG_EAGER_SIZE) {
 	minfo->cntrtype = SNDCNTR_BUFFERED_EAGER;
-	memcpy(sbufp->pkt.pyld.msgdata, usrbuf, size);
-	sbufp->pkt.hdr.pyldsz = size;
+	memcpy(sbufp->pkt[0].pyld.msgdata, usrbuf, size);
+	sbufp->pkt[0].hdr.pyldsz = size;
 	req->type = REQ_SND_BUFFERED_EAGER;
-    } else if (utf_mode_msg != MSG_RENDEZOUS) {
+    } else if (utf_mode_msg != MSG_RENDEZOUS
+	       || size <= MSG_EGRCNTG_SZ) {
 	minfo->cntrtype = SNDCNTR_INPLACE_EAGER1;
 	minfo->usrbuf = usrbuf;
-	memcpy(sbufp->pkt.pyld.msgdata, usrbuf, MSG_PYLDSZ);
-	sbufp->pkt.hdr.pyldsz = MSG_PYLDSZ;
+	// copy by send engine 20201220
+	//memcpy(sbufp->pkt[0].pyld.msgdata, usrbuf, MSG_PYLDSZ);
+	//sbufp->pkt[0].hdr.pyldsz = MSG_PYLDSZ;
 	req->type = REQ_SND_INPLACE_EAGER;
     } else {
 	minfo->cntrtype = SNDCNTR_RENDEZOUS;
 	minfo->rgetaddr.nent = 1;
-	sbufp->pkt.pyld.rndzdata.vcqid[0]
+	sbufp->pkt[0].pyld.rndzdata.vcqid[0]
 	    = minfo->rgetaddr.vcqid[0] = usp->svcqid;
-	sbufp->pkt.pyld.rndzdata.stadd[0]
+	sbufp->pkt[0].pyld.rndzdata.stadd[0]
 	    = minfo->rgetaddr.stadd[0] = utf_mem_reg(utf_info.vcqh, usrbuf, size);
-	sbufp->pkt.pyld.rndzdata.len[0] = size;
-	sbufp->pkt.pyld.rndzdata.nent = 1;
-	sbufp->pkt.hdr.pyldsz = MSG_RCNTRSZ;
-	sbufp->pkt.hdr.rndz = MSG_RENDEZOUS;
+	sbufp->pkt[0].pyld.rndzdata.len[0] = size;
+	sbufp->pkt[0].pyld.rndzdata.nent = 1;
+	sbufp->pkt[0].hdr.pyldsz = MSG_RCNTRSZ;
+	sbufp->pkt[0].hdr.rndz = MSG_RENDEZOUS;
 	req->type = REQ_SND_RENDEZOUS;
     }
     minfo->sndbuf = sbufp;
@@ -219,7 +221,7 @@ utf_recv(void *buf, size_t size, int src, int tag,  UTF_reqid *ridx)
 	    rc = UTF_MSG_AVL;
 	} else {
 	    /* request type is changed and waiting for request done */
-	    utf_printf("%s: Does this case work ?\n", __func__);
+	    utf_printf("%s: Does this case work ? req->state(%d)\n", __func__, req->state);
 	    req->type = REQ_RECV_EXPECTED;
 	}
 	ridx->reqid1 = utf_msgreq2idx(req);
@@ -370,6 +372,21 @@ utf_req_wipe()
 	utf_waitcmpl(reqid);
 	utf_printf("\tDone\n");
     }
+}
+
+void
+utf_infoshow(int lvl)
+{
+    if(utf_info.myrank != 0) return;
+    utf_printf("UTF_DEBUG: 0x%x\n", utf_dflag);
+    utf_printf("MSG MODE: %d (0:eager 1:rendezvous)\n", utf_mode_msg);
+    utf_printf("MSG_PKTSZ: %d\n", MSG_PKTSZ);
+    utf_printf("MSG_EAGER_PIGBACK_SZ: %ld\n", MSG_EAGER_PIGBACK_SZ);
+    utf_printf("MSG_EAGER_SIZE: %ld\n", MSG_EAGER_SIZE);
+    utf_printf("MSG_EGRCNTG_SZ: %ld\n", MSG_EGRCNTG_SZ);
+    utf_printf("COM_EGR_PKTSZ: %d (%d)\n", COM_EGR_PKTSZ, MSG_PYLDSZ*COM_EGR_PKTSZ);
+    utf_printf("sizeof(utf_egr_rbuf): %8.3f MiB\n", (float) sizeof(struct utf_egr_rbuf) /(float)(1024*1024));
+    utf_printf("sizeof(utf_packet): %ld B\n", sizeof(struct utf_packet));
 }
 
 #if 0

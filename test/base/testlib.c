@@ -32,7 +32,7 @@ test_init(int argc, char **argv)
 	    myprintf("dflag(0x%x)\n", dflag);
 	    utf_dflag = dflag;
 	    break;
-	case 'v': /* verbose */
+	case 'v': /* verbose or verify */
 	    vflag = 1;
 	    break;
 	case 'i': /* iteration */

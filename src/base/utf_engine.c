@@ -131,6 +131,22 @@ calc_recvstadd(struct utf_send_cntr *usp, uint64_t ridx)
     return recvstadd;
 }
 
+static inline int
+can_sendcontig(struct utf_send_cntr *usp, uint64_t ridx, int ssize)
+{
+    int reqpckt = (ssize+MSG_PYLDSZ-1)/MSG_PYLDSZ;
+    int npckt;
+
+    npckt = (reqpckt > COM_EGR_PKTSZ) ? COM_EGR_PKTSZ : reqpckt;
+    if (usp->recvidx + npckt < COM_RBUF_SIZE) {
+	return npckt;
+    } else {
+	int rest = COM_RBUF_SIZE - usp->recvidx;
+	// utf_printf("%s: YI!!! REST(%d)\n", __func__, rest);
+	return rest;
+    }
+}
+
 extern void
 utf_sendengine_prep(utofu_vcq_hdl_t vcqh, struct utf_send_cntr *usp);
 
@@ -168,6 +184,65 @@ utf_rndz_done(int pos)
     utfslist_insert(&utf_rndz_freelst, &minfo->slst);
 }
 
+#ifdef ENGINE_INLINE
+static inline struct utf_send_cntr *
+#else
+/* Non-inline is a little bit faster than inline one, just 20 nsec */
+struct utf_send_cntr *
+#endif
+sendcontig(struct utf_send_cntr *usp, int ridx, struct utf_packet *pkt,
+	    struct utf_send_msginfo *minfo, utofu_vcq_id_t rvcqid, utofu_stadd_t recvstadd,
+	    unsigned long flgs)
+{
+    struct utf_send_cntr *newusp;
+    int npckt;
+    int	rest = minfo->msghdr.size - usp->usize;
+    if ((npckt = can_sendcontig(usp, ridx, rest)) > 0) {
+	int	off_mem, off_rest, off_pkt, ssize;
+	off_mem = 0; off_rest = rest; ssize = 0;
+	//utf_printf("%s: npckt(%d) rest(%d)\n", __func__, npckt, rest);
+	for (off_pkt = 0; off_pkt < npckt; off_pkt++) {
+	    int plsize;
+	    if (off_pkt != 0) {
+		/* header copy */
+		memcpy(&PKT_HDR(pkt + off_pkt), &PKT_HDR(pkt), sizeof(struct utf_msghdr));
+	    }
+	    /* payload copy */
+	    if (PKT_MSGFLG(pkt)&MSGHDR_FLGS_FI) {
+		plsize = (off_rest >= MSG_FI_PYLDSZ) ? MSG_FI_PYLDSZ : off_rest;
+		memcpy(&PKT_FI_DATA(pkt + off_pkt), minfo->usrbuf + off_mem, plsize);
+	    } else {
+		plsize = (off_rest >= MSG_PYLDSZ) ? MSG_PYLDSZ : off_rest;
+		memcpy(&PKT_DATA(pkt + off_pkt), minfo->usrbuf + off_mem, plsize);
+	    }
+	    PKT_PYLDSZ(pkt + off_pkt) = plsize;
+	    ssize += plsize;
+	    //utf_printf("%s: off_rest(%d) payload=%d usize(%d)\n", __func__, off_rest, PKT_PYLDSZ(pkt + off_pkt), usp->usize);
+	    off_mem += MSG_PYLDSZ, off_rest -= MSG_PYLDSZ;
+	}
+	newusp = remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd,
+			    recvstadd, MSG_PKTSZ*npckt, usp->mypos, flgs, usp);
+	usp->recvidx += npckt;
+	usp->usize += ssize;
+	if (usp->usize == minfo->msghdr.size) {
+	    //utf_printf("%s: STATE--> S_DONE_EGR\n", __func__);
+	    usp->state = S_DONE_EGR;
+	} else {
+	    //utf_printf("%s: STATE--> S_DO_EGR usize(%d)\n", __func__, usp->usize);
+	    usp->state = S_DO_EGR;
+	}
+	//usp->npckt = npckt;
+	//usp->state = S_WAIT_EGRSEND;
+    } else {
+	newusp = remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd,
+			    recvstadd, MSG_PKTSZ, usp->mypos, flgs, usp);
+	usp->usize = PKT_PYLDSZ(pkt);
+	usp->state = S_DO_EGR;
+	usp->recvidx++;
+    }
+    return newusp;
+}
+
 static inline struct utf_send_cntr *
 utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64_t rslt, int evt)
 {
@@ -201,7 +276,7 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
     case S_HAS_ROOM: /* 3 */
     s_has_room:
     {
-	struct utf_packet	*pkt = &minfo->sndbuf->pkt;
+	struct utf_packet	*pkt = &minfo->sndbuf->pkt[0];
 	utofu_vcq_id_t	rvcqid = usp->rvcqid;
 	unsigned long	flgs = 0; // usp->flags;
 	uint64_t	ridx = utf_sndmgt_get_index(usp->dst, utf_egrmgt);
@@ -219,7 +294,7 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 	    break;
 	}
 	switch (minfo->cntrtype) {
-	case SNDCNTR_BUFFERED_EAGER_PIGBACK:  /* just one chache-line */
+	case SNDCNTR_BUFFERED_EAGER_PIGBACK:  /* max_piggyback_size == 32B */
 	    /* packet data is already filled */
 	    newusp = remote_piggysend(utf_info.vcqh, rvcqid, &minfo->sndbuf->pkt,
 				      recvstadd, 32, usp->mypos, flgs, usp);
@@ -230,18 +305,16 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 	case SNDCNTR_BUFFERED_EAGER: /* just one packet */
 	    /* packet data is already filled */
 	    newusp = remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd,
-				recvstadd, MSG_PKTSZ, usp->mypos, flgs, usp);
+				recvstadd, PKT_SENDSZ(pkt), usp->mypos, flgs, usp);
 	    usp->recvidx++;
 	    usp->usize = PKT_PYLDSZ(pkt);
 	    usp->state = S_DONE_EGR;
 	    break;
-	case SNDCNTR_INPLACE_EAGER1:  /* packet data is already filled */
-	case SNDCNTR_INPLACE_EAGER2:  /* packet data is already filled */
-	    usp->usize = PKT_PYLDSZ(pkt);
-	    usp->state = S_DO_EGR;
-	    newusp = remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd,
-				recvstadd, MSG_PKTSZ, usp->mypos, flgs, usp);
-	    usp->recvidx++;
+	case SNDCNTR_INPLACE_EAGER1:  /* packet data is already filled in the first packet */
+	case SNDCNTR_INPLACE_EAGER2:  /* packet data is already filled in the first packet  */
+	    /* usp->usize and usp->state are set by sendcontig */
+	    usp->usize = 0;
+	    newusp = sendcontig(usp, ridx, pkt, minfo, rvcqid, recvstadd, flgs);
 	    break;
 	case SNDCNTR_RENDEZOUS:
 	    {
@@ -249,10 +322,10 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 		int	mypos;
 		mypos = cpyinfo->mypos;
 		/* rendezvous point is set now */
-		if (PKT_MSGFLG(&minfo->sndbuf->pkt) == 0) { /* utf message */
-		    minfo->sndbuf->pkt.pyld.rndzdata.rndzpos = mypos;
+		if (PKT_MSGFLG(&minfo->sndbuf->pkt[0]) == 0) { /* utf message */
+		    minfo->sndbuf->pkt[0].pyld.rndzdata.rndzpos = mypos;
 		} else {
-		    minfo->sndbuf->pkt.pyld.fi_msg.rndzdata.rndzpos = mypos;
+		    minfo->sndbuf->pkt[0].pyld.fi_msg.rndzdata.rndzpos = mypos;
 		}
 		newusp = remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd,
 				    recvstadd, MSG_PKTSZ, usp->mypos, flgs, usp);
@@ -270,9 +343,9 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 		utf_printf("%s: rendezous send size(%ld) minfo->sndstadd(%lx) "
 			   "src(%d) tag(%d) rndz(%d)\n", __func__,
 			   usp->usize, minfo->sndstadd,
-			   minfo->sndbuf->pkt.hdr.src,
-			   minfo->sndbuf->pkt.hdr.tag,
-			   minfo->sndbuf->pkt.hdr.rndz);
+			   minfo->sndbuf->pkt[0].hdr.src,
+			   minfo->sndbuf->pkt[0].hdr.tag,
+			   minfo->sndbuf->pkt[0].hdr.rndz);
 	    }
 	    break;
 	}
@@ -280,13 +353,11 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
     }
     case S_DO_EGR: /* eager message */
     {
-	struct utf_packet	*pkt = &minfo->sndbuf->pkt;
+	struct utf_packet	*pkt = &minfo->sndbuf->pkt[0];
 	unsigned long	flgs = 0; // usp->flags;
 	utofu_vcq_id_t	rvcqid = usp->rvcqid;
-	size_t		rest = minfo->msghdr.size - usp->usize;
 	uint64_t	ridx = utf_sndmgt_get_index(usp->dst, utf_egrmgt);
 	utofu_stadd_t	recvstadd;
-	size_t		ssize;
 
 	recvstadd = calc_recvstadd(usp, ridx);
 	//utf_printf("%s: MSG DST(%d) S_DO_EGR, msgsize(%ld) sentsize(%ld) recvidx(%d)\n",
@@ -294,6 +365,11 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 	if (recvstadd == 0) {
 	    break;
 	}
+	//utf_printf("%s: DO EGER\n", __func__);
+	newusp = sendcontig(usp, ridx, pkt, minfo, rvcqid, recvstadd, flgs);
+#if 0
+	size_t		rest = minfo->msghdr.size - usp->usize;
+	size_t		ssize;
 	/*
 	 * copy to eager send buffer. minfo->sndbuf is minfo->sndstadd
 	 * in stearing address.
@@ -316,10 +392,12 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 	newusp = remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd, recvstadd, MSG_PKTSZ, usp->mypos, flgs, usp);
 	usp->usize += ssize;
 	usp->recvidx++;
-	// utf_printf("%s: DO_EGR: DST(%d) usp(%p) minfo(%p) recvidx(%d) ssize(0x%ld) usize(%ld) micur(%d) cntrtype(%d)\n", __func__, usp->dst, usp, minfo, usp->recvidx, ssize, usp->usize, usp->micur, minfo->cntrtype);
+	// utf_printf("%s: DO_EGR: DST(%d) usp(%p) minfo(%p) recvidx(%d) ssize(0x%ld) usize(%ld) micur(%d) cntrtype(%d)\n",
+	// __func__, usp->dst, usp, minfo, usp->recvidx, ssize, usp->usize, usp->micur, minfo->cntrtype);
 	if (minfo->msghdr.size == usp->usize) {
 	    usp->state = S_DONE_EGR;
 	}
+#endif
 	break;
     }
     case S_REQ_RDVR: /* Request has been received by the receiver */
@@ -335,7 +413,15 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
     case S_DO_EGR_WAITCMPL:
 	utf_printf("%s: S_DO_EGR_WAITCMPL rcvreset(%d)\n", __func__, usp->rcvreset);
 	break;
-    case S_DONE_EGR:
+    case S_WAIT_EGRSEND:
+	--usp->npckt;
+	utf_printf("%s: usp->npckt(%d)\n", __func__, usp->npckt);
+	if (usp->npckt == 0) {
+	    usp->state = S_DONE_EGR;
+	    goto done_egr;
+	}
+	break;
+    case S_DONE_EGR: done_egr:
     {
 	DEBUG(DLEVEL_PROTOCOL) {
 	    utf_printf("%s: DONE_EGR: DST(%d) usp(%p) minfo(%p) recvidx(%d) usize(%ld) micur(%d) cntrtype(%d)\n", __func__, usp->dst, usp, minfo, usp->recvidx, usp->usize, usp->micur, minfo->cntrtype);

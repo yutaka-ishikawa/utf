@@ -16,9 +16,9 @@ struct utf_msghdr { /* 20 Byte (4 + 8 + 8) */
     union {
 	struct {
 	    uint64_t size:35,  /* 35 bit, 32GiB is enough for Fugaku */
-		pyldsz:10, /* size of payload: up to 1KiB */
+		pyldsz:13, /* size of payload: up to 8KiB */
 		rndz: 1,
-		flgs: 6,   /* utf(0) or libfabric(1) TAGGED(2) or MSG(0) */
+		flgs: 3,   /* utf(0) or libfabric(1) TAGGED(2) or MSG(0) */
 		marker: 4,
 		sidx: 8;
 	};
@@ -99,6 +99,8 @@ struct utf_packet {
 #define PKT_DATA(pkt) ((pkt)->pyld.msgdata)
 #define PKT_PYLDSZ(pkt) ((pkt)->hdr.pyldsz)
 #define PKT_RADDR(pkt)  ((pkt)->pyld.rndzdata)
+#define PKT_SENDSZ(pkt) ((pkt)->hdr.pyldsz + sizeof(struct utf_msghdr))
+
 
 #define PKT_FI_DATA(pkt) ((pkt)->pyld.fi_msg.data)
 #define PKT_FI_MSGDATA(pkt) ((pkt)->pyld.fi_msg.msgdata)
@@ -107,7 +109,7 @@ struct utf_packet {
 struct utf_egr_sbuf {
     union {
 	utfslist_entry_t	slst;
-	struct utf_packet	pkt;
+	struct utf_packet	pkt[COM_EGR_PKTSZ];
     };
 };
 
@@ -277,7 +279,8 @@ enum {
     S_DO_RDVR		= 8,
     S_RDVDONE		= 9,
     S_DONE		= 10,
-    S_WAIT_BUFREADY	= 11
+    S_WAIT_BUFREADY	= 11,
+    S_WAIT_EGRSEND	= 12
 };
 
 enum {
@@ -359,7 +362,8 @@ struct utf_send_cntr {	/* 500 Byte */
     utfslist_t		smsginfo;	/*  64 = +8 Byte */
     uint8_t		micur;		/*  72 = +8 Byte */
     uint8_t		mient;		/*  80 = +4 Byte */
-    uint16_t		inflight;	/**/
+    uint8_t		inflight;	/**/
+    uint8_t		npckt;		/* for eager */
     struct utf_send_msginfo msginfo[COM_SCNTR_MINF_SZ];	/*  84 = +408 the first entry */
     utfslist_entry_t	slst;		/* 492 = + 8 Byte for free list */
 					/* 500  */

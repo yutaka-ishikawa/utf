@@ -98,12 +98,15 @@ err3:
 
 
 void
-myinit()
+myinit(size_t len)
 {
+    size_t	ll;
     uint64_t	st, et;
 
-    memset(rbuf, 0, sizeof(rbuf));
-    memset(sbuf, 0xac, sizeof(sbuf));
+    memset(rbuf, len, sizeof(rbuf));
+    for (ll = 0; ll < len; ll++) {
+	sbuf[ll] = (char) ll;
+    }
     /* dry run */
     pingpong(0, 2, &st, &et);
     /* timer init */
@@ -123,13 +126,30 @@ show(char *bname, int len, uint64_t tm0)
     int	rc;
 
     if (myrank == 0) {
+	int	i, errs = 0;
 	uint64_t	tm1, tm_max, hz;
+
+	if (vflag) {
+	    for (i = 0; i < len; i++) {
+		if (sbuf[i] != (char)i) {
+		    errs++;
+		    if (errs < 10) {
+			fprintf(stderr, "sbuf[%d] is %d, but expect %d\n", i, sbuf[i], (char)i);
+		    }
+		}
+	    }
+	}
 	UTF_CALL(err1, rc, utf_recv, &tm1, sizeof(uint64_t), 1, 0, &reqid);
 	UTF_CALL(err3, rc, utf_wait, reqid);
 	hz = tick_helz(0);
 	tm_max = tm0 > tm1 ? tm0: tm1;
-	printf("@%s-utf, %d,%8.3f,%8.3f\n", 
-	       bname, len, CLK2USEC(tm_max), (float)len/CLK2USEC(tm_max));
+	if (vflag) {
+	    printf("@%s-utf, %d,%8.3f,%8.3f, %d\n", 
+		   bname, len, CLK2USEC(tm_max), (float)len/CLK2USEC(tm_max), errs); fflush(stdout);
+	} else {
+	    printf("@%s-utf, %d,%8.3f,%8.3f\n", 
+		   bname, len, CLK2USEC(tm_max), (float)len/CLK2USEC(tm_max)); fflush(stdout);
+	}
     } else {
 	UTF_CALL(err2, rc, utf_send, &tm0, sizeof(uint64_t), 0, 0, &reqid);
 	UTF_CALL(err3, rc, utf_wait, reqid);
@@ -174,9 +194,13 @@ main(int argc, char **argv)
     }
     if (!sflag && myrank == 0) {
 	printf("%s: length(%d) mlength(%d)\n", progname, length, mlength);
-	printf("%s: iteration=%d %s\n#name, length, usec, MB/sec\n", progname, iteration, optstring);
+	if (vflag) {
+	    printf("%s: iteration=%d %s\n#name, length, usec, MB/sec, Erros\n", progname, iteration, optstring);
+	} else {
+	    printf("%s: iteration=%d %s\n#name, length, usec, MB/sec\n", progname, iteration, optstring);
+	}
     }
-    myinit();
+    myinit((mlength > length) ? mlength : length);
     /**/
     if (mlength > 0) {
 	int	l;

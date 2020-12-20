@@ -11,6 +11,7 @@
 #else
 #define DEBUG(mask) if (0)
 #endif
+#define INFO(mask) if (utf_iflag&(mask))
 #define DLEVEL_PMIX		0x1
 #define DLEVEL_UTOFU		0x2
 #define DLEVEL_PROTOCOL		0x4
@@ -28,6 +29,7 @@
 #define DLEVEL_WARN		0x2000
 #define DLEVEL_STATISTICS	0x4000
 #define DLEVEL_ALL		0xffff
+#define ILEVEL_MSG		0x1
 
 #define SHMEM_KEY_VAL_FMT	"/tmp/MPICH-shm"
 #define PMIX_TOFU_SHMEM	"UTF_TOFU_SHM"
@@ -47,6 +49,9 @@
 #define COM_SBUF_SIZE	(COM_SCNTR_MINF_SZ*COM_PEERS)
 #define IS_COMRBUF_FULL(p) ((p)->recvidx == COM_RBUF_SIZE)
 #define COM_RMACQ_SIZE	128
+#define COM_EGR_PKTSZ	128	/* 256*128 (236*128) 29KiB payload 2020/12/20 */
+//#define COM_EGR_PKTSZ	300	/* 256*300 (236*300) 69KiB payload 2020/12/20 */
+//#define COM_EGR_PKTSZ	3	/* 256*3 (236*3) 708 B payload 2020/12/20 */
 
 //#define MSG_EAGERONLY	0
 //#define MSG_RENDEZOUS	1
@@ -67,6 +72,8 @@
 #define TOFU_RMA_MAXSZ	(8*1024*1024)	/* 8 MiB (8388608 B) */
 
 #define MSG_MTU		1920	/* Tofu MTU */
+//#define MSG_PKTSZ	(256*8)	/* must be cache align (256B) and shorter than MTU */
+//#define MSG_PKTSZ	(256*3)	/* must be cache align (256B) and shorter than MTU */
 //#define MSG_PKTSZ	(256*2)	/* must be cache align (256B) and shorter than MTU */
 #define MSG_PKTSZ	(256)	/* must be cache align (256B) and shorter than MTU */
 #define MSG_NTNI	3	/* see struct utf_vcqid_stadd in utf_queue.h */
@@ -75,6 +82,7 @@
 //#define MSG_MARKER	(0x4B414E00L)	/* 4B */
 #define MSG_RCNTRSZ	sizeof(struct utf_vcqid_stadd)
 #define MSG_EAGER_SIZE	MSG_PYLDSZ	/* 236 B (256 - 20) */
+#define MSG_EGRCNTG_SZ	(MSG_PYLDSZ*COM_EGR_PKTSZ)	/* may send contiguous packets */
 #define UTOFU_PIGBACKSZ	32 /* See below */
 #define MSG_EAGER_PIGBACK_SZ	(UTOFU_PIGBACKSZ - sizeof(struct utf_msghdr))	/* 12 B */
 #define MSG_EGR		0
@@ -83,7 +91,8 @@
 //#define MSG_FI_PYLDSZ		(MSG_PYLDSZ - sizeof(uint64_t))	/* 228 B */ defined in utf_queue.h
 #define MSG_FI_EAGER_PIGBACK_SZ	(MSG_EAGER_PIGBACK_SZ - sizeof(uint64_t))	/* 4 B */
 #define MSG_FI_EAGER_SIZE	(MSG_EAGER_SIZE - sizeof(uint64_t))		/* 228 B */
-#define MSG_FI_EAGER_INPLACE_SZ (1024 - sizeof(uint64_t))
+//#define MSG_FI_EAGER_INPLACE_SZ (1024 - sizeof(uint64_t))
+#define MSG_FI_EAGER_INPLACE_SZ	(MSG_EGRCNTG_SZ - sizeof(uint64_t))	/* 30208 B 2020/12/20 */
 
 /* stadd */
 #define STAG_EGRMGT	10	/* utf_egrmgt */
