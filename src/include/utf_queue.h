@@ -105,6 +105,7 @@ struct utf_packet {
 #define PKT_FI_DATA(pkt) ((pkt)->pyld.fi_msg.data)
 #define PKT_FI_MSGDATA(pkt) ((pkt)->pyld.fi_msg.msgdata)
 #define PKT_FI_RADDR(pkt)  ((pkt)->pyld.fi_msg.rndzdata)
+#define PKT_FI_SENDSZ(pkt) ((pkt)->hdr.pyldsz + sizeof(struct utf_msghdr) + sizeof(uint64_t))
 
 struct utf_egr_sbuf {
     union {

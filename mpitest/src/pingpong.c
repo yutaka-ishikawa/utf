@@ -38,12 +38,12 @@ show(const char *name, int iter, size_t nbyte, uint64_t tm)
 }
 
 int
-verify(int *sendbuf, int length)
+verify(char *sendbuf, int length)
 {
     int errs = 0;
     int	k;
     for (k = 0; k < length; k++) {
-	if (recvbuf[k] != k) {
+	if (recvbuf[k] != (char) k) {
 	    printf("sendbuf[%d] = %d, expect = %d\n", k, recvbuf[k], k);
 	    errs++;
 	}
@@ -102,8 +102,8 @@ main(int argc, char** argv)
     sendbuf = malloc(mlength);
     recvbuf = malloc(mlength);
     MYPRINT {
-	printf("sendbuf=%p recvbuf=%p max len(%ld) min len(%ld) nprocs(%d) iteration(%d)\n",
-	       sendbuf, recvbuf, mlength, length, nprocs, iteration); fflush(stdout);
+	printf("sendbuf=%p recvbuf=%p max len(%ld) min len(%ld) nprocs(%d) iteration(%d) Vflag(0x%x)\n",
+	       sendbuf, recvbuf, mlength, length, nprocs, iteration, Vflag); fflush(stdout);
     }
     if (sendbuf == NULL || recvbuf == NULL) {
 	MYPRINT { printf("Cannot allocate buffers: sz=%ldMiB * 2\n", (uint64_t)(((double)mlength)/(1024.0*1024.0))); }
@@ -141,6 +141,9 @@ main(int argc, char** argv)
 	}
 	tm = et - st;
 	MPI_Reduce(&tm, &tm_max[tment], 1, MPI_LONG_LONG, MPI_MAX, 0, MPI_COMM_WORLD);
+	if (Vflag) {
+	    verify(sendbuf, len);
+	}
     }
     if (myrank == 0) {
 	printf("#name, nprocs, bench, iteration, byte, usec, MB/sec\n");

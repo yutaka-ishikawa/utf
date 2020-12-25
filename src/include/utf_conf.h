@@ -44,12 +44,14 @@
 #define RCV_CNTRL_INIT	(RCV_CNTRL_MAX - 2) /* reserved for the chain mode */
 #define COM_PEERS	128	/* sidx, must be smaller than 2^8 (edata) */
 #define COM_RBUF_SIZE	1024	/* # of packet for receive buffer per process */
+//#define COM_RBUF_SIZE	8*1024	/* # of packet for receive buffer per process */
 #define COM_RBUF_TOTSZ	(COM_RBUF_SIZE*COM_PEERS) /* 50 MiB: 512*1000*100 */
 #define COM_SCNTR_MINF_SZ	4
 #define COM_SBUF_SIZE	(COM_SCNTR_MINF_SZ*COM_PEERS)
 #define IS_COMRBUF_FULL(p) ((p)->recvidx == COM_RBUF_SIZE)
 #define COM_RMACQ_SIZE	128
 #define COM_EGR_PKTSZ	128	/* 256*128 (236*128) 29KiB payload 2020/12/20 */
+//#define COM_EGR_PKTSZ	512	/* 256*512 (236*512) 118KiB payload 2020/12/20 */
 //#define COM_EGR_PKTSZ	300	/* 256*300 (236*300) 69KiB payload 2020/12/20 */
 //#define COM_EGR_PKTSZ	3	/* 256*3 (236*3) 708 B payload 2020/12/20 */
 

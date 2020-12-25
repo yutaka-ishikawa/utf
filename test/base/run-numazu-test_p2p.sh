@@ -35,11 +35,6 @@ MAX_LEN=134217728
 ITER=1000
 
 echo "LD_LIBRARY_PATH=" $LD_LIBRARY_PATH
-echo;
-echo "******************************************************"
-export UTF_INFO=0x1
-export UTF_MSGMODE=0
-mpiexec $MPIOPT -np 2 ./test_p2p pingpong -i $ITER -l $MIN_LEN -L $MAX_EAGERLEN $VRYFY
 
 echo "******************************************************"
 export UTF_INFO=0x1
@@ -47,3 +42,10 @@ export UTF_MSGMODE=1
 mpiexec $MPIOPT -np 2 ./test_p2p pingpong -i $ITER -l $MIN_LEN -L $MAX_LEN $VRYFY
 
 exit
+
+echo;
+echo "******************************************************"
+export UTF_INFO=0x1
+export UTF_MSGMODE=0
+mpiexec $MPIOPT -np 2 ./test_p2p pingpong -i $ITER -l $MIN_LEN -L $MAX_EAGERLEN $VRYFY
+

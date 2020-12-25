@@ -132,9 +132,9 @@ calc_recvstadd(struct utf_send_cntr *usp, uint64_t ridx)
 }
 
 static inline int
-can_sendcontig(struct utf_send_cntr *usp, uint64_t ridx, int ssize)
+can_sendcontig(struct utf_send_cntr *usp, uint64_t ridx, int ssize, int pyldsz)
 {
-    int reqpckt = (ssize+MSG_PYLDSZ-1)/MSG_PYLDSZ;
+    int reqpckt = (ssize+pyldsz-1)/pyldsz;
     int npckt;
 
     npckt = (reqpckt > COM_EGR_PKTSZ) ? COM_EGR_PKTSZ : reqpckt;
@@ -195,30 +195,35 @@ sendcontig(struct utf_send_cntr *usp, int ridx, struct utf_packet *pkt,
 	    unsigned long flgs)
 {
     struct utf_send_cntr *newusp;
-    int npckt;
+    int npckt, pyldsz, fi;
     int	rest = minfo->msghdr.size - usp->usize;
-    if ((npckt = can_sendcontig(usp, ridx, rest)) > 0) {
+    fi = PKT_MSGFLG(pkt)&MSGHDR_FLGS_FI; 
+    if (fi) {
+	pyldsz = MSG_FI_PYLDSZ;
+    } else {
+	pyldsz = MSG_PYLDSZ;
+    }
+    if ((npckt = can_sendcontig(usp, ridx, rest, pyldsz)) > 0) {
 	int	off_mem, off_rest, off_pkt, ssize;
 	off_mem = 0; off_rest = rest; ssize = 0;
-	//utf_printf("%s: npckt(%d) rest(%d)\n", __func__, npckt, rest);
 	for (off_pkt = 0; off_pkt < npckt; off_pkt++) {
 	    int plsize;
 	    if (off_pkt != 0) {
 		/* header copy */
 		memcpy(&PKT_HDR(pkt + off_pkt), &PKT_HDR(pkt), sizeof(struct utf_msghdr));
 	    }
+	    plsize = (off_rest >= pyldsz) ? pyldsz : off_rest;
 	    /* payload copy */
-	    if (PKT_MSGFLG(pkt)&MSGHDR_FLGS_FI) {
-		plsize = (off_rest >= MSG_FI_PYLDSZ) ? MSG_FI_PYLDSZ : off_rest;
-		memcpy(&PKT_FI_DATA(pkt + off_pkt), minfo->usrbuf + off_mem, plsize);
+	    if (fi) {
+		pkt[off_pkt].pyld.fi_msg.data = pkt[0].pyld.fi_msg.data; /* fi data */	
+		memcpy(&PKT_FI_MSGDATA(pkt + off_pkt), minfo->usrbuf + off_mem, plsize);
 	    } else {
-		plsize = (off_rest >= MSG_PYLDSZ) ? MSG_PYLDSZ : off_rest;
 		memcpy(&PKT_DATA(pkt + off_pkt), minfo->usrbuf + off_mem, plsize);
 	    }
 	    PKT_PYLDSZ(pkt + off_pkt) = plsize;
 	    ssize += plsize;
-	    //utf_printf("%s: off_rest(%d) payload=%d usize(%d)\n", __func__, off_rest, PKT_PYLDSZ(pkt + off_pkt), usp->usize);
-	    off_mem += MSG_PYLDSZ, off_rest -= MSG_PYLDSZ;
+	    //utf_printf("%s: off_rest(%d) payload=%d usize(%d)\n", __func__, off_rest, PKT_PYLDSZ(pkt+off_pkt), usp->usize);
+	    off_mem += pyldsz; off_rest -= pyldsz;
 	}
 	newusp = remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd,
 			    recvstadd, MSG_PKTSZ*npckt, usp->mypos, flgs, usp);
@@ -304,8 +309,13 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 	    break;
 	case SNDCNTR_BUFFERED_EAGER: /* just one packet */
 	    /* packet data is already filled */
-	    newusp = remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd,
-				recvstadd, PKT_SENDSZ(pkt), usp->mypos, flgs, usp);
+	    if (PKT_MSGFLG(pkt)&MSGHDR_FLGS_FI) {
+		newusp = remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd,
+				    recvstadd, PKT_FI_SENDSZ(pkt), usp->mypos, flgs, usp);
+	    } else {
+		newusp = remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd,
+				    recvstadd, PKT_SENDSZ(pkt), usp->mypos, flgs, usp);
+	    }
 	    usp->recvidx++;
 	    usp->usize = PKT_PYLDSZ(pkt);
 	    usp->state = S_DONE_EGR;
@@ -706,8 +716,8 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 	    }
 	} else {
 	    DEBUG(DLEVEL_PROTOCOL) {
-		utf_printf("%s: recv_post SRC(%d) EXP DONE(req=%p,idx=%d,flgs(%x)), req->fi_flgs(0x%lx)\n", __func__, req->hdr.src,
-			   req, utf_msgreq2idx(req), req->hdr.flgs, req->fi_flgs);
+		utf_printf("%s: recv_post SRC(%d) EXP DONE(req=%p,idx=%d,flgs(%x)), req->fi_flgs(0x%lx) notify(%p)\n", __func__, req->hdr.src,
+			   req, utf_msgreq2idx(req), req->hdr.flgs, req->fi_flgs, req->notify);
 	    }
 	    if (req->notify) req->notify(req, 1);
 	}

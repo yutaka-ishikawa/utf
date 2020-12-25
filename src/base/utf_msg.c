@@ -384,6 +384,11 @@ utf_infoshow(int lvl)
     utf_printf("MSG_EAGER_PIGBACK_SZ: %ld\n", MSG_EAGER_PIGBACK_SZ);
     utf_printf("MSG_EAGER_SIZE: %ld\n", MSG_EAGER_SIZE);
     utf_printf("MSG_EGRCNTG_SZ: %ld\n", MSG_EGRCNTG_SZ);
+
+    utf_printf("MSG_FI_EAGER_PIGBACK_SZ: %ld\n", MSG_FI_EAGER_PIGBACK_SZ);
+    utf_printf("MSG_FI_EAGER_SIZE: %ld\n", MSG_FI_EAGER_SIZE);
+    utf_printf("MSG_FI_EAGER_INPLACE_SZ: %ld\n", MSG_FI_EAGER_INPLACE_SZ);
+
     utf_printf("COM_EGR_PKTSZ: %d (%d)\n", COM_EGR_PKTSZ, MSG_PYLDSZ*COM_EGR_PKTSZ);
     utf_printf("sizeof(utf_egr_rbuf): %8.3f MiB\n", (float) sizeof(struct utf_egr_rbuf) /(float)(1024*1024));
     utf_printf("sizeof(utf_packet): %ld B\n", sizeof(struct utf_packet));
