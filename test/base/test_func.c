@@ -6,7 +6,7 @@
 
 #define PROG_PINGPING	"pingping"
 #define PROG_PINGPONG	"pingpong"
-#define BSIZE		(1024*1024*1024)	// max 1 GiB
+#define BSIZE		(16*1024*1024)	// max
 #define MSGSIZE		0	// default
 #define ITER		100	// default
 
@@ -53,6 +53,7 @@ err2:
     myprintf("utf_wait error: %d (i=%d)\n", rc, i); exit(-1);
 err3:
     myprintf("utf_send error: %d (i=%d)\n", rc, i); exit(-1);
+    return;
 }
 
 void
@@ -96,17 +97,13 @@ err3:
     myprintf("utf_send error: %d (i=%d)\n", rc, i); exit(-1);
 }
 
-
 void
-myinit(size_t len)
+myinit()
 {
-    size_t	ll;
     uint64_t	st, et;
 
-    memset(rbuf, len, sizeof(rbuf));
-    for (ll = 0; ll < len; ll++) {
-	sbuf[ll] = (char) ll;
-    }
+    memset(rbuf, 0, sizeof(rbuf));
+    memset(sbuf, 0xac, sizeof(sbuf));
     /* dry run */
     pingpong(0, 2, &st, &et);
     /* timer init */
@@ -120,36 +117,18 @@ myinit(size_t len)
 
 #define CLK2USEC(tm)	((double)(tm) / ((double)hz/(double)1000000))
 void
-show(char *bname, int len, uint64_t tm0)
+show(int len, uint64_t tm0)
 {
     UTF_reqid	reqid;
     int	rc;
 
     if (myrank == 0) {
-	int	i, errs = 0;
-	uint64_t	tm1, tm_max, hz;
-
-	if (vflag) {
-	    for (i = 0; i < len; i++) {
-		if (sbuf[i] != (char)i) {
-		    errs++;
-		    if (errs < 10) {
-			fprintf(stderr, "sbuf[%d] is %d, but expect %d\n", i, sbuf[i], (char)i);
-		    }
-		}
-	    }
-	}
+	uint64_t	tm1, hz;
 	UTF_CALL(err1, rc, utf_recv, &tm1, sizeof(uint64_t), 1, 0, &reqid);
 	UTF_CALL(err3, rc, utf_wait, reqid);
 	hz = tick_helz(0);
-	tm_max = tm0 > tm1 ? tm0: tm1;
-	if (vflag) {
-	    printf("@%s-utf, %d,%8.3f,%8.3f, %d\n", 
-		   bname, len, CLK2USEC(tm_max), (float)len/CLK2USEC(tm_max), errs); fflush(stdout);
-	} else {
-	    printf("@%s-utf, %d,%8.3f,%8.3f\n", 
-		   bname, len, CLK2USEC(tm_max), (float)len/CLK2USEC(tm_max)); fflush(stdout);
-	}
+	myprintf("%d,%8.3f,%8.3f,%8.3f,%8.3f\n", len, CLK2USEC(tm0), CLK2USEC(tm1),
+		 (float)len/CLK2USEC(tm0), (float)len/CLK2USEC(tm0));
     } else {
 	UTF_CALL(err2, rc, utf_send, &tm0, sizeof(uint64_t), 0, 0, &reqid);
 	UTF_CALL(err3, rc, utf_wait, reqid);
@@ -172,6 +151,7 @@ main(int argc, char **argv)
 
     iteration = ITER;	// default
     length = MSGSIZE;	// default
+    if (argc < 2) goto err;
     if (!strcasecmp(argv[1], PROG_PINGPING)) {
 	progname = PROG_PINGPING;
 	prog = pingping;
@@ -179,7 +159,8 @@ main(int argc, char **argv)
 	progname = PROG_PINGPONG;
 	prog = pingpong;
     } else {
-	fprintf(stderr, "must specify pingping or pingpong\n\targument is %s\n", argv[1]);
+    err:
+	fprintf(stderr, "must specify pingping or pingpong\n\targument is %s\n", argv[1]); fflush(stderr);
 	exit(-1);
     }
     test_init(argc, argv);
@@ -193,35 +174,16 @@ main(int argc, char **argv)
 	optstring = "";
     }
     if (!sflag && myrank == 0) {
-	printf("%s: length(%d) mlength(%d)\n", progname, length, mlength);
-	if (vflag) {
-	    printf("%s: iteration=%d %s\n#name, length, usec, MB/sec, Erros\n", progname, iteration, optstring);
-	} else {
-	    printf("%s: iteration=%d %s\n#name, length, usec, MB/sec\n", progname, iteration, optstring);
-	}
+	myprintf("%s: length(%d) mlength(%d)\n", progname, length, mlength);
+	myprintf("%s: iteration=%d %s\n#length, usec, usec, MB/sec\n", progname, iteration, optstring);
     }
-    myinit((mlength > length) ? mlength : length);
-    /**/
-    if (mlength > 0) {
-	size_t	l;
-#if 0 /* zero byte message is excluded 20201225 */
-	prog(0, iteration, &st, &et);
-	tm = (et - st)/iteration;
-	show(progname, 0, tm);
-#endif
-	for (l = length; l <= mlength; l <<= 1) {
-	    prog(l, iteration, &st, &et);
-	    tm = (et - st)/iteration;
-	    show(progname, l, tm);
-	}
-    } else {
-	prog(length, iteration, &st, &et);
-	tm = (et - st)/iteration;
-	show(progname, length, tm);
+    myinit();
+    {
+	int iter = iteration;
+	myprintf("YI>>> len = %d iter = %d\n", length, iteration);
+	prog(length, iter, &st, &et);
+	utf_finalize(1);
+	myprintf("Finish\n");
     }
-    /* timer report */
-    mytmrfinalize(progname);
-    utf_finalize(1);
-    if (myrank == 0) printf("Finish\n");
     return 0;
 }
