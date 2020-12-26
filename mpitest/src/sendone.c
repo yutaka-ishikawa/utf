@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include "testlib.h"
 
+extern int	myprintf(const char *fmt, ...);
+
 int	sendbuf[128], recvbuf[128];
 int	buf[128];
 
@@ -35,7 +37,8 @@ main(int argc, char **argv)
     int	rc;
     test_init(argc, argv);
 
-    dry_run(0, 1);
+    // dry_run(0, 1);
+    myprintf("MPICH SENDONE test\n");
     if (myrank == 0) {
 	rc = MPI_Send(buf, 1, MPI_INT, 1, 1000, MPI_COMM_WORLD);
 	printf("[%d] Send rc = %d\n", myrank, rc); fflush(stdout);
