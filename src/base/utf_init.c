@@ -149,6 +149,11 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
     utf_tmr_init();
     i = utf_getenvint("UTF_NOKEEP");
     utf_nokeep = i;
+    i = utf_getenvint("UTF_DBGTIMER_INTERVAL");
+    utf_dbg_timer = i;
+    i = utf_getenvint("UTF_DBGTIMER_ACTION");
+    utf_dbg_timact = i;
+    utf_dbg_init();
 
     INFO(ILEVEL_MSG) {
 	utf_infoshow(ILEVEL_MSG);

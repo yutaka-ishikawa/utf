@@ -39,6 +39,9 @@ echo "LD_LIBRARY_PATH=" $LD_LIBRARY_PATH
 echo "******************************************************"
 export UTF_INFO=0x1
 export UTF_MSGMODE=1
+#export UTF_DEBUG=0x10
+##mpiexec $MPIOPT -np 2 ./test_p2p pingpong -i 1 -l 16777216 -L 16777216
+
 mpiexec $MPIOPT -np 2 ./test_p2p pingpong -i $ITER -l $MIN_LEN -L $MAX_LEN $VRYFY
 
 exit

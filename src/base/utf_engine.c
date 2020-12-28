@@ -138,7 +138,7 @@ can_sendcontig(struct utf_send_cntr *usp, uint64_t ridx, int ssize, int pyldsz)
     int npckt;
 
     npckt = (reqpckt > COM_EGR_PKTSZ) ? COM_EGR_PKTSZ : reqpckt;
-    if (usp->recvidx + npckt < COM_RBUF_SIZE) {
+    if (usp->recvidx + npckt <= COM_RBUF_SIZE) { /* 20201227 "<" --> "<=" */
 	return npckt;
     } else {
 	int rest = COM_RBUF_SIZE - usp->recvidx;
@@ -233,22 +233,36 @@ sendcontig(struct utf_send_cntr *usp, int ridx, struct utf_packet *pkt,
 	    //utf_printf("%s: STATE--> S_DONE_EGR\n", __func__);
 	    usp->state = S_DONE_EGR;
 	} else {
+	    if (usp->usize > minfo->msghdr.size) {
+		utf_printf("%s: internal error: usp->usize(%d) npckt(%d) ssize(%d) message size(%d)\n", __func__, usp->usize, npckt, ssize, minfo->msghdr.size);
+		abort();
+	    }
 	    //utf_printf("%s: STATE--> S_DO_EGR usize(%d)\n", __func__, usp->usize);
 	    usp->state = S_DO_EGR;
 	}
 	//usp->npckt = npckt;
 	//usp->state = S_WAIT_EGRSEND;
     } else {
+	utf_printf("%s: Shoud never come here\n", __func__);
+	abort();
 	newusp = remote_put(utf_info.vcqh, rvcqid, minfo->sndstadd,
 			    recvstadd, MSG_PKTSZ, usp->mypos, flgs, usp);
 	usp->usize = PKT_PYLDSZ(pkt);
 	usp->state = S_DO_EGR;
 	usp->recvidx++;
     }
+    if (usp->recvidx > COM_RBUF_SIZE) {
+	utf_printf("%s: recvidx(%d) exceeds COM_RBUF_SIZE(%d)\n", __func__, usp->recvidx, COM_RBUF_SIZE);
+	abort();
+    }
     return newusp;
 }
 
+#ifdef SENDENGINE_INLINE
 static inline struct utf_send_cntr *
+#else
+struct utf_send_cntr *
+#endif
 utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64_t rslt, int evt)
 {
     struct utf_send_cntr *newusp = NULL;
@@ -644,7 +658,7 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 		urp->req = NULL;
 		urp->state = R_NONE;
 	    } else { /* expected eager */
-		req->hdr = pkt->hdr; /* size is needed */
+		req->hdr = pkt->hdr; /* size and tag are needed */
 		/* req->rcvexpsz is set by the user */
 		if (eager_copy_and_check(urp, req, pkt) == R_DONE) goto done;
 		urp->req = req;
@@ -948,10 +962,42 @@ utf_recvcntr_show(FILE *fp)
     //extern struct erecv_buf	*erbuf;
     uint64_t		cntr = utf_egr_rbuf.head.cntr;
     int	i;
-    utf_printf("# of PEERS: %d\n", RCV_CNTRL_INIT - cntr);
+    utf_printf("***** RECV_CNTR (PEERS: %d) *****\n", RCV_CNTRL_INIT - cntr);
     for (i = COM_PEERS - 1; i > cntr; --i) {
-	fprintf(fp, "\t0x%lx", utf_rcntr[i].svcqid);
-	if (((i + 1) % 8) == 0) fprintf(fp, "\n");
+	struct utf_recv_cntr	*urp = &utf_rcntr[i]; 
+	if (urp->req) {
+	    utf_printf(" r-ridx(%d) r-recvidx(%d) svcqid(0x%lx) state(%s:%d) req(%p) "
+		       " r-msghdr(size(%d) tag(0x%lx) src(%d)\n",
+		       i, urp->recvidx, urp->svcqid, rstate_symbol[urp->state], urp->state,
+		       urp->req, urp->req->hdr.size, urp->req->hdr.tag, urp->req->hdr.src);
+	} else {
+	    utf_printf(" r-ridx(%d) r-recvidx(%d) svcqid(0x%lx) state(%s:%d) req(NULL)\n",
+		       i, urp->recvidx, urp->svcqid, rstate_symbol[urp->state], urp->state);
+	}
     }
-    fprintf(fp, "\n"); fflush(fp);
+}
+
+extern uint8_t		utf_rank2scntridx[PROC_MAX]; /* dest. rank to sender control index (sidx) */
+
+void
+utf_sendctr_show()
+{
+    struct utf_send_cntr *usp;
+    struct utf_send_msginfo	*minfo;
+    int	dst;
+    int	ridx;
+
+    utf_printf("*****  SND_CNTRL *****\n");
+    for (dst = 0; dst < utf_info.nprocs; dst++) {
+	uint8_t	headpos = utf_rank2scntridx[dst];
+	if (headpos == 0xff) continue;
+	usp = &utf_scntr[headpos];
+	ridx = utf_sndmgt_get_index(usp->dst, utf_egrmgt);
+	minfo = &usp->msginfo[usp->micur];
+	utf_printf(" dst(%d) s-ridx(%d) usp(%p)->state(%s:%d) ostate(%s:%d)"
+		   " s-recvidx(%d) usize(%d) msghdr(size(%d) tag(0x%lx))\n",
+		   dst, ridx, usp, sstate_symbol[usp->state], usp->state,
+		   sstate_symbol[usp->ostate], usp->ostate, usp->recvidx,
+		   usp->usize, minfo->msghdr.size, minfo->msghdr.tag);
+    }
 }

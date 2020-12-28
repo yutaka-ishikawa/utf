@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 #include "testlib.h"
 #ifndef FJMPI
 #include <utf.h>
@@ -20,6 +21,9 @@
 #define LEN_INIT	1
 double	*sendbuf;
 double	*recvbuf;
+int	*r_cnt;
+int	*r_disp;
+char	coll_name[sizeof("MPI_Reduce_scatter")*30];
 
 #ifdef FJMPI
 const char	*marker = "coll-fjmpi";
@@ -52,6 +56,15 @@ show(const char *name, int iter, uint64_t st, uint64_t et)
 	}
     }
     fflush(stdout);
+}
+
+void
+collname_add(const char *nm)
+{
+    if (coll_name[0] != 0) {
+	strcat(coll_name, ", ");
+    }
+    strcat(coll_name, nm);
 }
 
 int
@@ -92,22 +105,27 @@ main(int argc, char** argv)
     }
 #endif
     MPI_Type_size(MPI_DOUBLE, &tsz);
-    if (sflag & (0x8|0x10|0x20)) { /* Gather, Alltoall, Scatter */
+    if (sflag & (0x8|0x10|0x20|0x40)) { /* Gather, Alltoall, Scatter */
 	sz = length*nprocs*tsz;
     } else {
 	sz = length*tsz;
     }
     sendbuf = malloc(sz);
     recvbuf = malloc(sz);
+    if (sflag & 0x40) {
+	r_cnt = malloc(nprocs*tsz);
+	r_disp = malloc(nprocs*tsz);
+    }
     MYPRINT {
 	printf("sendbuf=%p recvbuf=%p\n"
 	       "MPI_DOUBLE SIZE: %d\n"
 	       "length(%ld) byte(%ld) nprocs(%d) iteration(%d) sflag(0x%x) Vflag(0x%x)\n",
 	       sendbuf, recvbuf, tsz, length, sz, nprocs, iteration, sflag, Vflag); fflush(stdout);
     }
-    if (sendbuf == NULL || recvbuf == NULL) {
+    if (sendbuf == NULL || recvbuf == NULL
+	|| (sflag&0x40 && (r_cnt == NULL || r_disp == NULL))) {
 	MYPRINT {
-	    printf("Cannot allocate buffers: sz=%ldMiB * 2\n", (uint64_t)(((double)sz)/(1024.0*1024.0)));
+	    printf("Cannot allocate buffers: sz=%ldMiB * 2 in sflag(0x%x)\n", (uint64_t)(((double)sz)/(1024.0*1024.0)), sflag);
 	    fflush(stdout);
 	}
 	exit(-1);
@@ -128,6 +146,7 @@ main(int argc, char** argv)
 	int	sender, receiver;
 	MPI_Status stat;
 
+	collname_add("MPI_Barrier");
 	st = tick_time();
 	for (i = 0; i < iteration; i++) {
 	    MPI_Barrier(MPI_COMM_WORLD);
@@ -170,6 +189,7 @@ main(int argc, char** argv)
 
     MYPRINT { VERBOSE("Start MPI_Reduce %ldth\n", i); }
     if (sflag & 0x2) {
+	collname_add("MPI_Reduce");
 	st = tick_time();
 	for (i = 0; i < iteration; i++) {
 	    MPI_Reduce(sendbuf, recvbuf, length, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
@@ -195,6 +215,7 @@ main(int argc, char** argv)
     toterrs += errs; errs = 0;
     MYPRINT { VERBOSE("Start MPI_Allreduce %ldth\n", i); }
     if (sflag & 0x4) {
+	collname_add("MPI_Allreduce");
 	st = tick_time();
 	for (i = 0; i < iteration; i++) {
 	    // MPI_Allreduce(MPI_IN_PLACE, sendbuf, length, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
@@ -219,6 +240,7 @@ main(int argc, char** argv)
     toterrs += errs; errs = 0;
     MYPRINT { VERBOSE("Start MPI_Gather %ldth\n", i); }
     if (sflag & 0x8) {
+	collname_add("MPI_Gather");
 	st = tick_time();
 	for (i = 0; i < iteration; i++) {
 	    MPI_Gather(sendbuf, length, MPI_DOUBLE, recvbuf, length, MPI_DOUBLE, 0, MPI_COMM_WORLD);
@@ -227,6 +249,7 @@ main(int argc, char** argv)
     }
     VERBOSE("Start of Alltoall %ldth\n", i);
     if (sflag & 0x10) {
+	collname_add("MPI_Alltoall");
 	st = tick_time();
 	for (i = 0; i < iteration; i++) {
 	    MPI_Alltoall(sendbuf, length, MPI_DOUBLE, recvbuf, length, MPI_DOUBLE, MPI_COMM_WORLD);
@@ -235,16 +258,29 @@ main(int argc, char** argv)
     }
     MYPRINT { VERBOSE("Start MPI_Scatter %ldth\n", i); }
     if (sflag & 0x20) {
+	collname_add("MPI_Scatter");
 	st = tick_time();
 	for (i = 0; i < iteration; i++) {
 	    MPI_Scatter(sendbuf, length, MPI_DOUBLE, recvbuf, length, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 	}
 	et = tick_time(); show("MPI_Scatter", iteration, st, et);
     }
+    if (sflag & 0x40) { /* Gatherv */
+	collname_add("MPI_Gatherv");
+	for (i = 0; i < nprocs; i++) {
+	    r_cnt[i] = length;
+	    r_disp[i] = i*length;
+	}
+	st = tick_time();
+	for (i = 0; i < iteration; i++) {
+	    MPI_Gatherv(sendbuf, length, MPI_DOUBLE, recvbuf, r_cnt, r_disp, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	}
+	et = tick_time(); show("MPI_Scatter", iteration, st, et);
+    }
 
     MPI_Finalize();
     MYPRINT {
-	printf("RESULT(0x%x) coll: %s\n", sflag, toterrs == 0 ? "PASS" : "FAIL"); fflush(stdout);
+	printf("RESULT(%s:0x%x) coll: %s\n", coll_name, sflag, toterrs == 0 ? "PASS" : "FAIL"); fflush(stdout);
     }
     return 0;
 }

@@ -17,7 +17,6 @@
 #define DLEVEL_PROTOCOL		0x4
 #define DLEVEL_PROTO_EAGER	0x8
 #define DLEVEL_PROTO_RENDEZOUS	0x10
-#define DLEVEL_ALL		0xffff
 #define DLEVEL_PROTO_RMA	0x20	/* 32 */
 #define DLEVEL_PROTO_VBG	0x40	/* 64 */
 #define DLEVEL_PROTO_AM		0x80	/* 128 */
@@ -28,6 +27,7 @@
 #define DLEVEL_COMM		0x1000
 #define DLEVEL_WARN		0x2000
 #define DLEVEL_STATISTICS	0x4000
+#define DLEVEL_FI		0x8000
 #define DLEVEL_ALL		0xffff
 #define ILEVEL_MSG		0x1
 

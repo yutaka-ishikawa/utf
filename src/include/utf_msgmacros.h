@@ -497,7 +497,7 @@ rget_continue(struct utf_msgreq *req)
     /* req->hdr.size is defined by the sender
      * req->expsize is defined by the receiver */
     DEBUG(DLEVEL_PROTO_RENDEZOUS) {
-	utf_printf("%s: Continueing Rendezous reqsize(0x%lx) "
+	utf_printf("%s: Continuing Rendezous reqsize(0x%lx) "
 		   "rvcqid(0x%lx) lcl_stadd(0x%lx) rmt_stadd(0x%lx) "
 		   "sidx(%d)\n",
 		   __func__, req->rcvexpsz,

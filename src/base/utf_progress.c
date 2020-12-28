@@ -11,6 +11,13 @@
 #define UTF_RSTATESYM_NEEDED
 #include "utf_msgmacros.h"
 
+#define UTF_POLLING_WAIT
+
+#ifdef UTF_POLLING_WAIT
+int utf_progcount;
+#define UTF_POLLING_COUNT 1000
+#endif
+
 int
 utf_progress()
 {
@@ -24,6 +31,12 @@ utf_progress()
 	utf_egrrbuf_show(stderr);
 	abort();
     }
+#ifdef UTF_POLLING_WAIT
+    if (utf_progcount++ > UTF_POLLING_COUNT) {
+	getpid();
+	utf_progcount = 0;
+    }
+#endif /* UTF_POLLING_WAIT */
     /* here is peeking memory */
     for (j = utf_egr_rbuf.head.cntr + 1; j <= RCV_CNTRL_INIT/*RCV_CNTRL_MAX*/ ; j++) {
 	struct utf_packet	*msgbase = utf_recvbuf_get(j);
