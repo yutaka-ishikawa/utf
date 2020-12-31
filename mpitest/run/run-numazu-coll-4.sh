@@ -33,5 +33,12 @@ export UTF_INFO=0x1
 NP=4
 ITER=1
 VRYFY="-V 1"
-LEN=8
-mpich_exec -n $NP $MPIOPT ../src/colld -l $LEN -i $ITER -s 0x10	$VRYFY # Alltoall
+#for LEN in 8 128 256 512 1024 2048 #size in double
+LEN=512
+#do
+    mpich_exec -n $NP $MPIOPT ../src/colld -l $LEN -i $ITER -s 0x2 $VRYFY # Reduce
+#    mpiexec -n $NP $MPIOPT ../src/colld-f -l $LEN -i $ITER -s 0x2 $VRYFY # Reduce
+#done
+exit
+
+#mpich_exec -n $NP $MPIOPT ../src/colld -l $LEN -i $ITER -s 0x10	$VRYFY # Alltoall

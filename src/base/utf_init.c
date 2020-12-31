@@ -146,14 +146,12 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
     utf_mem_init();
     i = utf_getenvint("UTF_MSGMODE");
     utf_setmsgmode(i);
+    i = utf_getenvint("UTF_INJECT_COUNT");
+    utf_setinjcnt(i);
+
     utf_tmr_init();
     i = utf_getenvint("UTF_NOKEEP");
     utf_nokeep = i;
-    i = utf_getenvint("UTF_DBGTIMER_INTERVAL");
-    utf_dbg_timer = i;
-    i = utf_getenvint("UTF_DBGTIMER_ACTION");
-    utf_dbg_timact = i;
-    utf_dbg_init();
 
     INFO(ILEVEL_MSG) {
 	utf_infoshow(ILEVEL_MSG);
@@ -194,6 +192,12 @@ utf_finalize(int wipe)
 	utf_egrbuf_show(stderr);
     } else if (utf_dflag & DLEVEL_STATISTICS) {
 	utf_statistics(stderr);
+    }
+    if (utf_getenvint("UTF_COMDEBUG")) {
+	extern void utf_recvcntr_show(FILE*);
+	extern void utf_sendctr_show();
+	utf_sendctr_show();
+	utf_recvcntr_show(stderr);
     }
     utf_mem_finalize();
     utf_procmap_finalize();

@@ -17,6 +17,7 @@ extern int	utf_send_start(struct utf_send_cntr *usp, struct utf_send_msginfo *mi
 
 extern int	utf_tcq_count;
 extern int	utf_mode_msg;
+extern int	utf_injct_count;
 
 extern uint8_t		utf_rank2scntridx[PROC_MAX]; /* dest. rank to sender control index (sidx) */
 extern utfslist_t		utf_egr_sbuf_freelst;
@@ -135,6 +136,16 @@ void
 utf_setmsgmode(int mode)
 {
     utf_mode_msg = mode;
+}
+
+void
+utf_setinjcnt(int cnt)
+{
+    if (cnt > 0) {
+	utf_injct_count = cnt;
+    } else {
+	utf_injct_count = TOFU_INJECTCNT;
+    }
 }
 
 int
@@ -390,6 +401,8 @@ utf_infoshow(int lvl)
     utf_printf("MSG_FI_EAGER_INPLACE_SZ: %ld\n", MSG_FI_EAGER_INPLACE_SZ);
 
     utf_printf("COM_EGR_PKTSZ: %d (%d)\n", COM_EGR_PKTSZ, MSG_PYLDSZ*COM_EGR_PKTSZ);
+
+    utf_printf("UTF_INJECT_COUNT: %d\n", utf_injct_count);
     utf_printf("sizeof(utf_egr_rbuf): %8.3f MiB\n", (float) sizeof(struct utf_egr_rbuf) /(float)(1024*1024));
     utf_printf("sizeof(utf_packet): %ld B\n", sizeof(struct utf_packet));
 }

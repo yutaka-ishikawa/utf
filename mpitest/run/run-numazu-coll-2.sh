@@ -33,9 +33,11 @@ export MPICH_TOFU_SHOW_PARAMS=1
 NP=2
 ITER=1
 VRYFY="-V 1"
-LEN=8
-mpich_exec -n $NP $MPIOPT ../src/colld -l $LEN -i $ITER -s 0x10	$VRYFY # Alltoall
+LEN=512
+mpich_exec -n $NP $MPIOPT ../src/colld -l $LEN -i $ITER -s 0x2 $VRYFY # Reduce
+##mpiexec -n $NP $MPIOPT ../src/colld-f -l $LEN -i $ITER -s 0x2 $VRYFY # Reduce
 
+#mpich_exec -n $NP $MPIOPT ../src/colld -l $LEN -i $ITER -s 0x10	$VRYFY # Alltoall
 #mpiexec ../bin/coll -v -l 16777216 -i 10	# all-to-all max 16MiB for 32 procs
 #						# 23 sec for 10 times
 ##mpiexec ../bin/coll -l 8388608		# 8MiB 6 sec

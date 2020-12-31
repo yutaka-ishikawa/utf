@@ -259,7 +259,7 @@ struct utf_recv_cntr {
     uint64_t		flags;
     uint8_t	state;
     uint8_t	mypos;
-    uint32_t	tmp;
+    uint32_t	src;
     /* for debugging */
     uint32_t	dbg_idx;
     uint8_t	dbg_rsize[COM_RBUF_SIZE];
@@ -428,11 +428,11 @@ utf_uexplst_match(uint32_t src, uint32_t tag, int peek)
     if (utfslist_isnull(&utf_uexplst)) {
 	return -1;
     }
-    if (src == -1 && tag == -1) {
+    if ((src == -1) && (tag == -1)) {
 	cur = utf_uexplst.head; prev = 0;
 	msl = container_of(cur, struct utf_msglst, slst);
 	goto find;
-    } else if (src == -1 && tag != -1) {
+    } else if ((src == -1) && (tag != -1)) {
 	utfslist_foreach2(&utf_uexplst, cur, prev) {
 	    msl = container_of(cur, struct utf_msglst, slst);
 	    if (tag == msl->hdr.tag) {
@@ -535,8 +535,8 @@ tfi_utf_uexplst_match(utfslist_t *uexplst, uint32_t src, uint64_t tag, uint64_t 
 	    DEBUG(DLEVEL_PROTOCOL) {
 		utf_printf("\t msl(%p) src(%d) tag(%x) rvignr(%lx)\n", msl, msl->hdr.src, msl->hdr.tag, ~ignore);
 	    }
-	    if (src == msl->hdr.src &&
-		(tag & ~ignore) == (msl->hdr.tag & ~ignore)) {
+	    if ((src == msl->hdr.src) &&
+		((tag & ~ignore) == (msl->hdr.tag & ~ignore))) {
 		goto find;
 	    }
 	}
@@ -578,10 +578,10 @@ tfi_utf_explst_match(utfslist_t *explst, uint32_t src, uint64_t tag,  int peek)
 		       (exp_src == -1 && ((tag & exp_rvignr) == (exp_tag & exp_rvignr))),
 		       (exp_src == src && ((tag & exp_rvignr) == (exp_tag & exp_rvignr))));
 	}
-	if (exp_src == -1 && (tag & exp_rvignr) == (exp_tag & exp_rvignr)) {
+	if ((exp_src == -1) && ((tag & exp_rvignr) == (exp_tag & exp_rvignr))) {
 	    goto find;
-	} else if (exp_src == src
-		   && (tag & exp_rvignr) == (exp_tag & exp_rvignr)) {
+	} else if ((exp_src == src)
+		   && ((tag & exp_rvignr) == (exp_tag & exp_rvignr))) {
 	    goto find;
 	}
     }

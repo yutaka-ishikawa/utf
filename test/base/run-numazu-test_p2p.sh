@@ -17,6 +17,8 @@ MPIOPT="-of results/%n.%j.out -oferr results/%n.%j.err"
 
 #
 #export TOFULOG_DIR=./results
+export UTF_INFO=0x1
+export UTF_COMDEBUG=1
 ##export UTF_DEBUG=0xfffffd
 
 #MAX_LEN=134217728	# 128 MiB

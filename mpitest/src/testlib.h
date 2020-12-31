@@ -30,7 +30,7 @@
     if (rc != 0) errs++;\
 } while(0);
 
-extern int	vflag, Vflag, dflag, mflag, sflag, Mflag, pflag, wflag, myrank, nprocs, iteration;
+extern int	bflag, vflag, Vflag, dflag, mflag, sflag, Mflag, pflag, wflag, myrank, nprocs, iteration;
 extern size_t	length, mlength;
 
 extern void	test_init(int, char**);

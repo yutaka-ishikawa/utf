@@ -18,6 +18,7 @@ char	*sendbuf;
 char	*recvbuf;
 uint64_t	hz;
 uint64_t	tm_max[MAX_TM_ENT];
+int		errcnt[MAX_TM_ENT];
 
 #ifdef FJMPI
 const char	*marker = "pingpong-fjmpi";
@@ -30,22 +31,29 @@ const char	*marker = "pingpong-mpich";
 
 #define CLK2USEC(tm)	((double)(tm) / ((double)hz/(double)1000000))
 void
-show(const char *name, int iter, size_t nbyte, uint64_t tm)
+show(const char *name, int iter, size_t nbyte, uint64_t tm, char *vrfy)
 {
     float	usec = (float)CLK2USEC(tm)/(float)iter;
-    printf("@%s, %d, %s, %d, %ld, %8.4f, %8.4f\n",
-	   marker, nprocs, name, iter, nbyte, usec, ((float)nbyte) / usec);
+    if (vrfy) {
+	printf("@%s, %d, %s, %d, %ld, %8.4f, %8.4f, %s\n",
+	       marker, nprocs, name, iter, nbyte, usec, ((float)nbyte) / usec, vrfy);
+    } else {
+	printf("@%s, %d, %s, %d, %ld, %8.4f, %8.4f\n",
+	       marker, nprocs, name, iter, nbyte, usec, ((float)nbyte) / usec);
+    }
 }
 
 int
-verify(char *sendbuf, int length)
+verify(size_t len, size_t length)
 {
     int errs = 0;
-    int	k;
+    size_t	k;
     for (k = 0; k < length; k++) {
 	if (recvbuf[k] != (char) k) {
-	    printf("sendbuf[%d] = %d, expect = %d\n", k, recvbuf[k], k);
 	    errs++;
+	    if (errs < 10) {
+		fprintf(stderr, "len[%ld]: recvbuf[%ld] = %d, expect = %d\n", len, k, recvbuf[k], (char) k);
+	    }
 	}
     }
     return errs;
@@ -141,14 +149,21 @@ main(int argc, char** argv)
 	}
 	tm = et - st;
 	MPI_Reduce(&tm, &tm_max[tment], 1, MPI_LONG_LONG, MPI_MAX, 0, MPI_COMM_WORLD);
-	if (Vflag) {
-	    verify(sendbuf, len);
+	if (myrank == 0 && Vflag) {
+	    errcnt[tment] = verify(len, len);
 	}
     }
     if (myrank == 0) {
-	printf("#name, nprocs, bench, iteration, byte, usec, MB/sec\n");
-	for (len = length, tment = 0; len <= mlength && tment < MAX_TM_ENT; len <<= 1, tment++) {
-	    show("PINGPONG", iteration, len, tm_max[tment]);
+	if (Vflag) {
+	    printf("#name, nprocs, bench, iteration, byte, usec, MB/sec, Verify\n");
+	    for (len = length, tment = 0; len <= mlength && tment < MAX_TM_ENT; len <<= 1, tment++) {
+		show("PINGPONG", iteration, len, tm_max[tment], errcnt[tment] == 0 ? "PASS":"FAIL");
+	    }
+	} else {
+	    printf("#name, nprocs, bench, iteration, byte, usec, MB/sec\n");
+	    for (len = length, tment = 0; len <= mlength && tment < MAX_TM_ENT; len <<= 1, tment++) {
+		show("PINGPONG", iteration, len, tm_max[tment], NULL);
+	    }
 	}
 	fflush(stdout);
     }

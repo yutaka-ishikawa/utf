@@ -68,7 +68,7 @@ collname_add(const char *nm)
 }
 
 int
-verify_reduce(double *sendbuf, double *recvbuf, int length)
+verify_reduce(int nth, double *recvbuf, int length)
 {
     int errs = 0;
     int	j, k;
@@ -78,13 +78,28 @@ verify_reduce(double *sendbuf, double *recvbuf, int length)
 	    val += (double) (j + k + 1);
 	}
 	if (recvbuf[k] != val) {
-	    printf("recvbuf[%d] = %e, expect = %e\n", k, recvbuf[k], val); fflush(stdout);
 	    errs++;
+	    if (errs < 4) {
+		printf("%dth recvbuf[%d] = %e, expect = %e\n", nth, k, recvbuf[k], val); fflush(stdout);
+	    }
 	}
     }
     return errs;
 }
 
+int
+verify_bcast(double *recvbuf, int length)
+{
+    int errs = 0;
+    int	i;
+    for (i = 0; i < length; i++) {
+	if (recvbuf[i] != (double)(i + 1)) {
+	    printf("recvbuf[%d] = %e, expect = %e\n", i, recvbuf[i], (double)(i + 1)); fflush(stdout);
+	    errs++;
+	}
+    }
+    return errs;
+}
 
 int
 main(int argc, char** argv)
@@ -141,7 +156,7 @@ main(int argc, char** argv)
 	    recvbuf[i] = (double) -1;
 	}
     }
-    MYPRINT { VERBOSE("Start MPI_Barier %ldth\n", i); }
+    MYPRINT { VERBOSE("Start MPI_Barier %dth\n", iteration); }
     if (sflag & 0x1) {
 	int	sender, receiver;
 	MPI_Status stat;
@@ -187,22 +202,26 @@ main(int argc, char** argv)
     }
     MPI_Barrier(MPI_COMM_WORLD);
 
-    MYPRINT { VERBOSE("Start MPI_Reduce %ldth\n", i); }
     if (sflag & 0x2) {
+	MYPRINT { VERBOSE("Start MPI_Reduce %dth\n", iteration); }
 	collname_add("MPI_Reduce");
 	st = tick_time();
 	for (i = 0; i < iteration; i++) {
+	    VERBOSE("%ldth\n", i);
 	    MPI_Reduce(sendbuf, recvbuf, length, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
 	    if (Vflag == 1) { /* verify and reset */
 		int	j;
 		if (myrank == 0) {
-		    errs += verify_reduce(sendbuf, recvbuf, length);
+		    errs += verify_reduce(i, recvbuf, length);
 		}
 		/* reset value */
 		for (j = 0; j < length; j++) {
-		    sendbuf[j] = myrank + j + 1;
+		    sendbuf[j] = (double)(myrank + j + 1);
 		    recvbuf[j] = -1;
 		}
+	    }
+	    if (bflag) {
+		MPI_Barrier(MPI_COMM_WORLD);
 	    }
 	}
 	if (errs) {
@@ -213,8 +232,8 @@ main(int argc, char** argv)
 	et = tick_time(); show("MPI_Reduce", iteration, st, et);
     }
     toterrs += errs; errs = 0;
-    MYPRINT { VERBOSE("Start MPI_Allreduce %ldth\n", i); }
     if (sflag & 0x4) {
+	MYPRINT { VERBOSE("Start MPI_Allreduce %dth\n", iteration); }
 	collname_add("MPI_Allreduce");
 	st = tick_time();
 	for (i = 0; i < iteration; i++) {
@@ -222,10 +241,10 @@ main(int argc, char** argv)
 	    MPI_Allreduce(sendbuf, recvbuf, length, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 	    if (Vflag == 1) { /* verify and reset */
 		int	j;
-		errs += verify_reduce(sendbuf, recvbuf, length);
+		errs += verify_reduce(i, recvbuf, length);
 		/* reset value */
 		for (j = 0; j < length; j++) {
-		    sendbuf[j] = myrank + j + 1;
+		    sendbuf[j] = (double)(myrank + j + 1);
 		    recvbuf[j] = -1;
 		}
 	    }
@@ -238,8 +257,8 @@ main(int argc, char** argv)
 	et = tick_time(); show("MPI_Allreduce", iteration, st, et);
     }
     toterrs += errs; errs = 0;
-    MYPRINT { VERBOSE("Start MPI_Gather %ldth\n", i); }
     if (sflag & 0x8) {
+	MYPRINT { VERBOSE("Start MPI_Gather %dth\n", iteration); }
 	collname_add("MPI_Gather");
 	st = tick_time();
 	for (i = 0; i < iteration; i++) {
@@ -247,8 +266,8 @@ main(int argc, char** argv)
 	}
 	et = tick_time(); show("MPI_Gather", iteration, st, et);
     }
-    VERBOSE("Start of Alltoall %ldth\n", i);
     if (sflag & 0x10) {
+	VERBOSE("Start of Alltoall %dth\n", iteration);
 	collname_add("MPI_Alltoall");
 	st = tick_time();
 	for (i = 0; i < iteration; i++) {
@@ -256,8 +275,8 @@ main(int argc, char** argv)
 	}
 	et = tick_time(); show("MPI_Alltoall", iteration, st, et);
     }
-    MYPRINT { VERBOSE("Start MPI_Scatter %ldth\n", i); }
     if (sflag & 0x20) {
+	MYPRINT { VERBOSE("Start MPI_Scatter %dth\n", iteration); }
 	collname_add("MPI_Scatter");
 	st = tick_time();
 	for (i = 0; i < iteration; i++) {
@@ -266,6 +285,7 @@ main(int argc, char** argv)
 	et = tick_time(); show("MPI_Scatter", iteration, st, et);
     }
     if (sflag & 0x40) { /* Gatherv */
+	MYPRINT { VERBOSE("Start MPI_Gather %dth\n", iteration); }
 	collname_add("MPI_Gatherv");
 	for (i = 0; i < nprocs; i++) {
 	    r_cnt[i] = length;
@@ -277,10 +297,32 @@ main(int argc, char** argv)
 	}
 	et = tick_time(); show("MPI_Scatter", iteration, st, et);
     }
+    if (sflag & 0x80) { /* Bcast */
+	MYPRINT { VERBOSE("Start MPI_Bcast %dth\n", iteration); }
+	collname_add("MPI_Bcast");
+	st = tick_time();
+	if (myrank == 0) {
+	    for (i = 0; i < iteration; i++) {
+		MPI_Bcast(sendbuf, length, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	    }
+	} else {
+	    for (i = 0; i < iteration; i++) {
+		MPI_Bcast(recvbuf, length, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+	    }
+	    if (Vflag == 1) { /* verify and reset */
+		errs += verify_bcast(recvbuf, length);
+		for (i = 0; i < length; i++) {
+		    recvbuf[i] = -1;
+		}
+	    }
+	}
+	et = tick_time(); show("MPI_Bcast", iteration, st, et);
+    }
 
     MPI_Finalize();
     MYPRINT {
-	printf("RESULT(%s:0x%x) coll: %s\n", coll_name, sflag, toterrs == 0 ? "PASS" : "FAIL"); fflush(stdout);
+	printf("RESULT(%s:0x%x, len=%ld) coll: %s\n", coll_name, sflag, length, toterrs == 0 ? "PASS" : "FAIL"); fflush(stdout);
+	fprintf(stderr, "RESULT(%s:0x%x, len=%ld) coll: %s\n", coll_name, sflag, length, toterrs == 0 ? "PASS" : "FAIL"); fflush(stderr);
     }
     return 0;
 }

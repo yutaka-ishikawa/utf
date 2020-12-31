@@ -11,7 +11,7 @@
 #define UTF_RSTATESYM_NEEDED
 #include "utf_msgmacros.h"
 
-extern int utf_tcq_count;
+extern int utf_tcq_count, utf_injct_count;
 extern utf_sndmgt_t		utf_egrmgt[PROC_MAX];
 extern struct utf_send_cntr	utf_scntr[SND_CNTRL_MAX];
 extern struct utf_rma_cq	utf_rmacq_pool[COM_RMACQ_SIZE];
@@ -138,7 +138,8 @@ can_sendcontig(struct utf_send_cntr *usp, uint64_t ridx, int ssize, int pyldsz)
     int npckt;
 
     npckt = (reqpckt > COM_EGR_PKTSZ) ? COM_EGR_PKTSZ : reqpckt;
-    if (usp->recvidx + npckt <= COM_RBUF_SIZE) { /* 20201227 "<" --> "<=" */
+    npckt = (npckt > utf_injct_count) ? utf_injct_count : npckt;	/* forcing inject count before polling tcq completion */
+    if (usp->recvidx + npckt < COM_RBUF_SIZE) {
 	return npckt;
     } else {
 	int rest = COM_RBUF_SIZE - usp->recvidx;
@@ -205,7 +206,8 @@ sendcontig(struct utf_send_cntr *usp, int ridx, struct utf_packet *pkt,
     }
     if ((npckt = can_sendcontig(usp, ridx, rest, pyldsz)) > 0) {
 	int	off_mem, off_rest, off_pkt, ssize;
-	off_mem = 0; off_rest = rest; ssize = 0;
+	off_mem = usp->usize;
+	off_rest = rest; ssize = 0;
 	for (off_pkt = 0; off_pkt < npckt; off_pkt++) {
 	    int plsize;
 	    if (off_pkt != 0) {
@@ -473,6 +475,7 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
     next_entry:
 	minfo->mreq = NULL;
 	minfo->cntrtype = SNDCNTR_NONE;
+	usp->state = S_NONE;
 	{ /* checking the next entry */
 	    int	idx = (usp->micur + 1)%COM_SCNTR_MINF_SZ;
 	    if (idx == usp->mient) { /* all entries are sent */
@@ -613,6 +616,21 @@ utf_rget_progress(struct utf_msgreq *req)
     if (req->notify) req->notify(req, 1);
 }
 
+/* 20201229 */
+int
+utfgen_explst_match(uint8_t flgs, uint32_t src, uint64_t tag)
+{
+    int	idx;
+    if (flgs == 0) {
+	idx = utf_explst_match(src, tag, 0);
+    } else {
+	utfslist_t *explst
+	    = flgs&MSGHDR_FLGS_FI_TAGGED ? &tfi_tag_explst : &tfi_msg_explst;
+	idx = tfi_utf_explst_match(explst, src, tag, 0);
+    }
+    return idx;
+}
+
 int
 utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 {
@@ -638,6 +656,7 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 	    utf_printf("%s: NEW MESSAGE SRC(%d) size(%ld)\n", __func__, pkt->hdr.src, (uint64_t)pkt->hdr.size);
 	}
 	if ((idx = utfgen_explst_match(PKT_MSGFLG(pkt), PKT_MSGSRC(pkt), PKT_MSGTAG(pkt))) != -1) {
+	found:
 	    req = utf_idx2msgreq(idx);
 	    req->rndz = pkt->hdr.rndz;
 #if 0
@@ -664,7 +683,16 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 		urp->req = req;
 	    }
 	} else { /* New Unexpected message */
+	    if (tfi_tag_explst.head) {
+		/* try again to search explected list.  20201229 */
+		if ((idx = utfgen_explst_match(PKT_MSGFLG(pkt), PKT_MSGSRC(pkt), PKT_MSGTAG(pkt))) != -1) {
+		    goto found;
+		}
+	    }
 	    req = utf_recvreq_alloc();
+#ifdef UTF_DEBUG_20201229
+	    utf_printf("YI\t\tutf-unexparrv-req(%p) exp(%p)\n", req, tfi_tag_explst.head);
+#endif
 	    if (req == NULL) {
 		/* Cannot handle this message at this time */
 		DEBUG(DLEVEL_PROTOCOL) {
@@ -966,13 +994,13 @@ utf_recvcntr_show(FILE *fp)
     for (i = COM_PEERS - 1; i > cntr; --i) {
 	struct utf_recv_cntr	*urp = &utf_rcntr[i]; 
 	if (urp->req) {
-	    utf_printf(" r-ridx(%d) r-recvidx(%d) svcqid(0x%lx) state(%s:%d) req(%p) "
+	    utf_printf(" r-ridx(%d) r-src(%d) r-recvidx(%d) svcqid(0x%lx) state(%s:%d) req(%p) "
 		       " r-msghdr(size(%d) tag(0x%lx) src(%d)\n",
-		       i, urp->recvidx, urp->svcqid, rstate_symbol[urp->state], urp->state,
+		       i, urp->src, urp->recvidx, urp->svcqid, rstate_symbol[urp->state], urp->state,
 		       urp->req, urp->req->hdr.size, urp->req->hdr.tag, urp->req->hdr.src);
 	} else {
-	    utf_printf(" r-ridx(%d) r-recvidx(%d) svcqid(0x%lx) state(%s:%d) req(NULL)\n",
-		       i, urp->recvidx, urp->svcqid, rstate_symbol[urp->state], urp->state);
+	    utf_printf(" r-ridx(%d) r-src(%d) r-recvidx(%d) svcqid(0x%lx) state(%s:%d) req(NULL)\n",
+		       i, urp->src, urp->recvidx, urp->svcqid, rstate_symbol[urp->state], urp->state);
 	}
     }
 }
@@ -990,14 +1018,26 @@ utf_sendctr_show()
     utf_printf("*****  SND_CNTRL *****\n");
     for (dst = 0; dst < utf_info.nprocs; dst++) {
 	uint8_t	headpos = utf_rank2scntridx[dst];
+	int i;
 	if (headpos == 0xff) continue;
 	usp = &utf_scntr[headpos];
 	ridx = utf_sndmgt_get_index(usp->dst, utf_egrmgt);
-	minfo = &usp->msginfo[usp->micur];
-	utf_printf(" dst(%d) s-ridx(%d) usp(%p)->state(%s:%d) ostate(%s:%d)"
-		   " s-recvidx(%d) usize(%d) msghdr(size(%d) tag(0x%lx))\n",
-		   dst, ridx, usp, sstate_symbol[usp->state], usp->state,
-		   sstate_symbol[usp->ostate], usp->ostate, usp->recvidx,
-		   usp->usize, minfo->msghdr.size, minfo->msghdr.tag);
+	for (i = 0; i < COM_SCNTR_MINF_SZ; i++) {
+	    minfo = &usp->msginfo[i];
+	    utf_printf(" minfo[%d] dst(%d) s-ridx(%d) s-recvidx(%d) usp(%p)(state(%s:%d) ostate(%s:%d)"
+		       " usize(%d)) msghdr(size(%d) tag(0x%lx))\n",
+		       i, dst, ridx, usp->recvidx, usp, sstate_symbol[usp->state], usp->state,
+		       sstate_symbol[usp->ostate], usp->ostate,
+		       usp->usize, minfo->msghdr.size, minfo->msghdr.tag);
+	}
     }
+}
+
+void
+utf_injcnt_show()
+{
+    utf_printf("***** TOFU INJECTION *****\n");
+    utf_printf("\tinjection count : %d\n", utf_injct_count);
+    utf_printf("\ttcq count       : %d\n", utf_tcq_count);
+    utf_printf("\tmrq count       : %d\n", utf_mrq_count);
 }

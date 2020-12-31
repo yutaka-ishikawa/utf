@@ -37,6 +37,7 @@
 
 #define TOFU_NIC_SIZE	6	/* number of NIC */
 #define TOFU_INJECTSIZE	228
+#define TOFU_INJECTCNT	16	/* asynchronous message injection size */
 #define NODE_MAX	158976
 #define PROC_MAX	663552	/* 24*23*24*12 * 4(ppn) */
 #define SND_CNTRL_MAX	128	/* shorter than 2^7 (sidx) */

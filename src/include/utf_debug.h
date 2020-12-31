@@ -18,5 +18,3 @@ extern void	utf_nullfunc();
 
 extern int	utf_dflag, utf_rflag, utf_iflag;
 extern int	utf_nokeep;
-extern int	utf_dbg_timer;
-extern int	utf_dbg_timact;

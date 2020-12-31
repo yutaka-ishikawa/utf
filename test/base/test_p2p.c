@@ -14,7 +14,7 @@ static char	__attribute__ ((aligned(256))) rbuf[BSIZE];
 static char	__attribute__ ((aligned(256))) sbuf[BSIZE];
 
 void
-pingpong(int len, int iter, uint64_t *st, uint64_t *et)
+pingpong(int len, int iter, uint64_t tag, uint64_t *st, uint64_t *et)
 {
     UTF_reqid	s_reqid, r_reqid;
     int	i, rc;
@@ -23,24 +23,24 @@ pingpong(int len, int iter, uint64_t *st, uint64_t *et)
     if (myrank == 0) {
 	for(i = 0; i < iter; i++) {
 	    utf_tmr_begin(TMR_UTF_EXT1);
-	    UTF_CALL(err1, rc, utf_recv, rbuf, len, 1, 0, &r_reqid);
+	    UTF_CALL(err1, rc, utf_recv, rbuf, len, 1, tag, &r_reqid);
 	    UTF_CALL(err2, rc, utf_wait, r_reqid);
 	    utf_tmr_end(TMR_UTF_EXT1);
 
 	    utf_tmr_begin(TMR_UTF_EXT2);
-	    UTF_CALL(err3, rc, utf_send, sbuf, len, 1, 0, &s_reqid);
+	    UTF_CALL(err3, rc, utf_send, sbuf, len, 1, tag, &s_reqid);
 	    UTF_CALL(err2, rc, utf_wait, s_reqid);
 	    utf_tmr_end(TMR_UTF_EXT2);
 	}
     } else {
 	for(i = 0; i < iter; i++) {
 	    utf_tmr_begin(TMR_UTF_EXT2);
-	    UTF_CALL(err3, rc, utf_send, sbuf, len, 0, 0, &s_reqid);
+	    UTF_CALL(err3, rc, utf_send, sbuf, len, 0, tag, &s_reqid);
 	    UTF_CALL(err2, rc, utf_wait, s_reqid);
 	    utf_tmr_end(TMR_UTF_EXT2);
 
 	    utf_tmr_begin(TMR_UTF_EXT1);
-	    UTF_CALL(err1, rc, utf_recv, rbuf, len, 0, 0, &r_reqid);
+	    UTF_CALL(err1, rc, utf_recv, rbuf, len, 0, tag, &r_reqid);
 	    UTF_CALL(err2, rc, utf_wait, r_reqid);
 	    utf_tmr_end(TMR_UTF_EXT1);
 	}
@@ -56,7 +56,7 @@ err3:
 }
 
 void
-pingping(int len, int iter, uint64_t *st, uint64_t *et)
+pingping(int len, int iter, uint64_t tag, uint64_t *st, uint64_t *et)
 {
     UTF_reqid	s_reqid, r_reqid;
     int	i, rc;
@@ -65,7 +65,7 @@ pingping(int len, int iter, uint64_t *st, uint64_t *et)
     if (myrank == 0) {
 	for(i = 0; i < iter; i++) {
 	    utf_tmr_begin(TMR_UTF_EXT1);
-	    UTF_CALL(err1, rc, utf_recv, rbuf, len, 1, 0, &r_reqid);
+	    UTF_CALL(err1, rc, utf_recv, rbuf, len, 1, tag, &r_reqid);
 	    UTF_CALL(err2, rc, utf_wait, r_reqid);
 	    utf_tmr_end(TMR_UTF_EXT1);
 	}
@@ -73,7 +73,7 @@ pingping(int len, int iter, uint64_t *st, uint64_t *et)
 	if (wflag) {
 	    for(i = 0; i < iter; i++) {
 		utf_tmr_begin(TMR_UTF_EXT2);
-		UTF_CALL(err3, rc, utf_send, sbuf, len, 0, 0, &s_reqid);
+		UTF_CALL(err3, rc, utf_send, sbuf, len, 0, tag, &s_reqid);
 		UTF_CALL(err2, rc, utf_waitcmpl, s_reqid);
 		utf_tmr_end(TMR_UTF_EXT2);
 	    }
@@ -108,7 +108,7 @@ myinit(size_t len)
 	sbuf[ll] = (char) ll;
     }
     /* dry run */
-    pingpong(0, 2, &st, &et);
+    pingpong(0, 2, 0x10, &st, &et);
     /* timer init */
     {
 	char	*cp = getenv("UTF_TIMER");
@@ -131,15 +131,15 @@ show(char *bname, int len, uint64_t tm0)
 
 	if (vflag) {
 	    for (i = 0; i < len; i++) {
-		if (sbuf[i] != (char)i) {
+		if (rbuf[i] != (char)i) {
 		    errs++;
 		    if (errs < 10) {
-			fprintf(stderr, "sbuf[%d] is %d, but expect %d\n", i, sbuf[i], (char)i);
+			fprintf(stderr, "rbuf[%d] is %d, but expect %d\n", i, rbuf[i], (char)i);
 		    }
 		}
 	    }
 	}
-	UTF_CALL(err1, rc, utf_recv, &tm1, sizeof(uint64_t), 1, 0, &reqid);
+	UTF_CALL(err1, rc, utf_recv, &tm1, sizeof(uint64_t), 1, 0x20, &reqid);
 	UTF_CALL(err3, rc, utf_wait, reqid);
 	hz = tick_helz(0);
 	tm_max = tm0 > tm1 ? tm0: tm1;
@@ -151,7 +151,7 @@ show(char *bname, int len, uint64_t tm0)
 		   bname, len, CLK2USEC(tm_max), (float)len/CLK2USEC(tm_max)); fflush(stdout);
 	}
     } else {
-	UTF_CALL(err2, rc, utf_send, &tm0, sizeof(uint64_t), 0, 0, &reqid);
+	UTF_CALL(err2, rc, utf_send, &tm0, sizeof(uint64_t), 0, 0x20, &reqid);
 	UTF_CALL(err3, rc, utf_wait, reqid);
     }
     return;
@@ -168,7 +168,7 @@ main(int argc, char **argv)
 {
     uint64_t	st, et, tm;
     char	*progname, *optstring;
-    void	(*prog)(int, int, uint64_t*, uint64_t*);
+    void	(*prog)(int, int, uint64_t, uint64_t*, uint64_t*);
 
     iteration = ITER;	// default
     length = MSGSIZE;	// default
@@ -205,17 +205,17 @@ main(int argc, char **argv)
     if (mlength > 0) {
 	size_t	l;
 #if 0 /* zero byte message is excluded 20201225 */
-	prog(0, iteration, &st, &et);
+	prog(0, iteration, 0x100, &st, &et);
 	tm = (et - st)/iteration;
 	show(progname, 0, tm);
 #endif
 	for (l = length; l <= mlength; l <<= 1) {
-	    prog(l, iteration, &st, &et);
+	    prog(l, iteration, 0x100, &st, &et);
 	    tm = (et - st)/iteration;
 	    show(progname, l, tm);
 	}
     } else {
-	prog(length, iteration, &st, &et);
+	prog(length, iteration, 0x100, &st, &et);
 	tm = (et - st)/iteration;
 	show(progname, length, tm);
     }

@@ -528,6 +528,7 @@ rget_continue(struct utf_msgreq *req)
     utfslist_append(&utf_rget_proglst, &req->rget_slst);
 }
 
+#if 0 /* 20201229 */
 static inline int
 utfgen_explst_match(uint8_t flgs, uint32_t src, uint64_t tag)
 {
@@ -541,6 +542,7 @@ utfgen_explst_match(uint8_t flgs, uint32_t src, uint64_t tag)
     }
     return idx;
 }
+#endif
 
 static inline void
 utfgen_uexplst_enqueue(uint8_t flgs, struct utf_msgreq *req)

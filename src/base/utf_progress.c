@@ -11,8 +11,7 @@
 #define UTF_RSTATESYM_NEEDED
 #include "utf_msgmacros.h"
 
-#define UTF_POLLING_WAIT
-
+//#define UTF_POLLING_WAIT
 #ifdef UTF_POLLING_WAIT
 int utf_progcount;
 #define UTF_POLLING_COUNT 1000
@@ -73,6 +72,7 @@ utf_progress()
 		urp->recvidx = 0;
 		if (urp->svcqid == 0) {
 		    urp->svcqid = utf_info.vname[pktp->hdr.src].vcqid;
+		    urp->src = pktp->hdr.src;
 		}
 		utf_remote_armw4(utf_info.vcqh, urp->svcqid, urp->flags,
 				 UTOFU_ARMW_OP_OR, SCNTR_OK,

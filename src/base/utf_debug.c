@@ -100,70 +100,9 @@ utf_msglist_show(char *msg, utfslist_t *lst)
     utfslist_entry_t	*cur;
     utfslist_foreach(lst, cur) {
 	msl = container_of(cur, struct utf_msglst, slst);
-	utf_printf("\t%s msl(%p) src(%d) tag(%x) rvignr(%lx) reqidx(%d) req(%p)\n",
-		   msg, msl, msl->hdr.src, msl->hdr.tag, ~msl->fi_ignore,
+	utf_printf("\t%s msl(%p) src(%d) tag(0x%llx) size(%ld) flgs(0x%x) rvignr(0x%llx) reqidx(%d) req(%p)\n",
+		   msg, msl, msl->hdr.src, msl->hdr.tag, msl->hdr.size, msl->hdr.flgs, ~msl->fi_ignore,
 		   msl->reqidx, utf_idx2msgreq(msl->reqidx));
     }
 }
 
-void
-utf_allmsglist_show()
-{
-    utf_printf("***** Tagged Message Expected List *****\n");
-    utf_msglist_show("exp-tagged", &tfi_tag_explst);
-    utf_printf("***** Multi-recv Message Expected List *****\n");
-    utf_msglist_show("exp-multi", &tfi_msg_explst);
-
-    utf_printf("***** Tagged Message Unexpected list *****\n");
-    utf_msglist_show("unexp-tagged", &tfi_tag_uexplst);
-    utf_printf("***** Multi-recv Unexpected List *****\n");
-    utf_msglist_show("unexp-multi", &tfi_msg_uexplst);
-    {
-	extern void tofu_cq_show();
-	tofu_cq_show();
-    }
-}
-
-
-#include <signal.h>
-#include<sys/time.h>
-int		utf_dbg_timer;
-int		utf_dbg_timact;
-
-void
-handle_sigtimer(int signum, siginfo_t *info, void *p)
-{
-    utf_sendctr_show();
-    utf_recvcntr_show(stderr);
-    utf_allmsglist_show();
-}
-
-void
-utf_dbg_init()
-{
-    struct sigaction	sigact;
-    struct itimerval	tim;
-    int ret;
-
-    if (utf_dbg_timer == 0) return;
-
-    sigemptyset(&sigact.sa_mask);
-    sigact.sa_flags = SA_SIGINFO;
-    sigact.sa_sigaction = handle_sigtimer;
-    sigaction(SIGALRM, &sigact, NULL);
-    tim.it_value.tv_sec = utf_dbg_timer;
-    tim.it_value.tv_usec = 0;
-    tim.it_interval.tv_sec = utf_dbg_timer;
-    tim.it_interval.tv_usec = 0;
-    ret = setitimer(ITIMER_REAL, &tim, NULL);
-    if (ret < 0) {
-	utf_printf("%s: setimer cannot set\n", __func__);
-	perror(__func__);
-    } else {
-	DEBUG(DLEVEL_INIFIN) {
-	    if (utf_info.myrank == 0) {
-		utf_printf("%s: setimer %d sec, action is %d\n", __func__, utf_dbg_timer, utf_dbg_timact);
-	    }
-	}
-    }
-}

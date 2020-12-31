@@ -11,7 +11,7 @@
 #include "utf_tofu.h"
 #include "utf_timer.h"
 
-int utf_tcq_count, utf_mrq_count;
+int utf_tcq_count, utf_mrq_count, utf_injct_count;
 int utf_sreq_count, utf_rreq_count;
 int utf_dflag; /* debug */
 int utf_rflag; /* redirect */
