@@ -63,7 +63,7 @@
 #define TRANSMODE_THR	10	/* max is 255 (1B) */
 
 /* request */
-#define DEBUG_20211231
+#define DEBUG_20201231
 #ifdef DEBUG_20201231
 #define MSGREQ_SEND_SZ	1024 /* MUST BE CHANGED to handle maximum */
 #define MSGREQ_RECV_SZ	1024 /* MUST BE CHANGED to handle maximum, fi_rx_attr.size specifies this value */

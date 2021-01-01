@@ -17,11 +17,15 @@ int utf_progcount;
 #define UTF_POLLING_COUNT 1000
 #endif
 
+#define DEBUG_20210101
 int
 utf_progress()
 {
     int	j;
+#ifdef DEBUG_20210101
+#else
     int	arvd = 0;
+#endif
 
     if (utf_tcq_count) utf_tcqprogress();
 
@@ -66,7 +70,10 @@ utf_progress()
 	    }
 	    pktp->hdr.hall = -1UL;
 	    urp->recvidx++;
+#ifdef DEBUG_20210101
+#else
 	    arvd = 1;
+#endif
 	    if (IS_COMRBUF_FULL(urp)) {
 		utofu_stadd_t	stadd = SCNTR_ADDR_CNTR_FIELD(sidx);
 		urp->recvidx = 0;
@@ -83,7 +90,11 @@ utf_progress()
 	}
 	// utf_printf("%s: waiting for recvidx(%d)\n", __func__, urp->recvidx);
     }
+#ifdef DEBUG_20210101
+    utf_mrqprogress();
+#else
     if (!arvd) utf_mrqprogress();
+#endif
 
     return 0;
 }

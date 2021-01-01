@@ -412,8 +412,10 @@ utf_infoshow(int lvl)
 
     utf_printf("COM_EGR_PKTSZ: %d (%d)\n", COM_EGR_PKTSZ, MSG_PYLDSZ*COM_EGR_PKTSZ);
 
-    utf_printf("UTF_INJECT_COUNT: %d\n", utf_injct_count);
-    utf_printf("UTF_ASEND_COUNT: %d\n", utf_asend_count);
+    utf_printf("UTF_INJECT_COUNT_MAX: %d\n", utf_injct_count);
+    utf_printf("UTF_ASEND_COUNT_MAX: %d\n", utf_asend_count);
+    utf_printf("UTF_SEND_REQ_COUNT: %d\n", MSGREQ_SEND_SZ);
+    utf_printf("UTF_RECV_REQ_COUNT: %d\n", MSGREQ_RECV_SZ);
     utf_printf("sizeof(utf_egr_rbuf): %8.3f MiB\n", (float) sizeof(struct utf_egr_rbuf) /(float)(1024*1024));
     utf_printf("sizeof(utf_packet): %ld B\n", sizeof(struct utf_packet));
 }
