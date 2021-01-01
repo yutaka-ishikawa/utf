@@ -148,6 +148,8 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
     utf_setmsgmode(i);
     i = utf_getenvint("UTF_INJECT_COUNT");
     utf_setinjcnt(i);
+    i = utf_getenvint("UTF_ASEND_COUNT");
+    utf_setasendcnt(i);
 
     utf_tmr_init();
     i = utf_getenvint("UTF_NOKEEP");

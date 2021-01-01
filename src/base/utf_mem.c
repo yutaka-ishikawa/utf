@@ -13,6 +13,7 @@
 
 int utf_tcq_count, utf_mrq_count, utf_injct_count;
 int utf_sreq_count, utf_rreq_count;
+int utf_asend_count;
 int utf_dflag; /* debug */
 int utf_rflag; /* redirect */
 int utf_iflag; /* info */
@@ -358,7 +359,9 @@ utf_egrbuf_show(FILE *fp)
 void
 utf_statistics(FILE *fp)
 {
-    if (utf_info.myrank == 0) {
+//    if (utf_info.myrank == 0) {
 	fprintf(fp, "\tCNTR = %ld\n", utf_egr_rbuf.head.cntr); fflush(fp);
-    }
+	fprintf(fp, "\tRECV_REQ_CNT = %d\n", utf_rreq_count); fflush(fp);
+	fprintf(fp, "\tSEND_REQ_CNT = %d\n", utf_sreq_count); fflush(fp);
+//    }
 }

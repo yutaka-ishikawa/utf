@@ -13,6 +13,7 @@ extern utfslist_t	utf_rndz_freelst;
 //extern utfslist_t	utf_rmacq_waitlst;
 extern int	utf_tcq_count, utf_mrq_count;
 extern int	utf_sreq_count, utf_rreq_count;
+extern int	utf_asend_count;
 
 extern void	utf_tcqprogress();
 extern int	utf_mrqprogress();
@@ -122,7 +123,7 @@ utf_msglst_alloc()
 	mp = container_of(slst, struct utf_msglst, slst);
 	return mp;
     } else {
-	utf_printf("%s: No more msglst\n", __func__);
+	utf_printf("%s: No more msglst. abort...\n", __func__);
 	abort();
 	return NULL;
     }

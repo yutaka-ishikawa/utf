@@ -8,12 +8,12 @@
 #
 #PJM -L "node=16:noncont"
 #PJM --mpi "max-proc-per-node=4"
-#PJM -L "elapse=00:01:30"
+#PJM -L "elapse=00:01:00"
 #PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-all,jobenv=linux"
 #	PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-mck2_and_spack2,jobenv=linux"
 #PJM -L proc-core=unlimited
 #------- Program execution -------#
-MPIOPT="-of results/coll-64/%n.%j.out -oferr results/coll-64/%n.%j.err"
+#MPIOPT="-of results/coll-64/%n.%j.out -oferr results/coll-64/%n.%j.err"
 # max RMA 8388608
 ###export MPIR_CVAR_REDUCE_SHORT_MSG_SIZE=100000
 
@@ -28,8 +28,10 @@ export UTF_INFO=0x1
 #export FI_LOG_PROV=tofu
 #export FI_LOG_LEVEL=Debug
 #export UTF_INJECT_COUNT=1
-export UTF_INJECT_COUNT=8
+export UTF_INJECT_COUNT=4
 export UTF_DEBUG=0x200	# DLEVEL_ERR
+export UTF_DBGTIMER_INTERVAL=40
+export UTF_DBGTIMER_ACTION=1
 
 NP=64
 ITER=100

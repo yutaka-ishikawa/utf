@@ -321,8 +321,8 @@ main(int argc, char** argv)
 
     MPI_Finalize();
     MYPRINT {
-	printf("RESULT(%s:0x%x, len=%ld) coll: %s\n", coll_name, sflag, length, toterrs == 0 ? "PASS" : "FAIL"); fflush(stdout);
-	fprintf(stderr, "RESULT(%s:0x%x, len=%ld) coll: %s\n", coll_name, sflag, length, toterrs == 0 ? "PASS" : "FAIL"); fflush(stderr);
+	printf("RESULT(%s:0x%x, len=%ld, iter=%d) coll: %s\n", coll_name, sflag, length, iteration, toterrs == 0 ? "PASS" : "FAIL"); fflush(stdout);
+	fprintf(stderr, "RESULT(%s:0x%x, len=%ld, iter=%d) coll: %s\n", coll_name, sflag, length, iteration, toterrs == 0 ? "PASS" : "FAIL"); fflush(stderr);
     }
     return 0;
 }

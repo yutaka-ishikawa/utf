@@ -148,6 +148,16 @@ utf_setinjcnt(int cnt)
     }
 }
 
+void
+utf_setasendcnt(int cnt)
+{
+    if (cnt > 0 && cnt < TOFU_INJECTCNT) {
+	utf_asend_count = cnt;
+    } else {
+	utf_asend_count = COM_SCNTR_MINF_SZ;
+    }
+}
+
 int
 utf_send(void *buf, size_t size, int dst, uint64_t tag, UTF_reqid *ridx)
 {
@@ -403,6 +413,7 @@ utf_infoshow(int lvl)
     utf_printf("COM_EGR_PKTSZ: %d (%d)\n", COM_EGR_PKTSZ, MSG_PYLDSZ*COM_EGR_PKTSZ);
 
     utf_printf("UTF_INJECT_COUNT: %d\n", utf_injct_count);
+    utf_printf("UTF_ASEND_COUNT: %d\n", utf_asend_count);
     utf_printf("sizeof(utf_egr_rbuf): %8.3f MiB\n", (float) sizeof(struct utf_egr_rbuf) /(float)(1024*1024));
     utf_printf("sizeof(utf_packet): %ld B\n", sizeof(struct utf_packet));
 }
