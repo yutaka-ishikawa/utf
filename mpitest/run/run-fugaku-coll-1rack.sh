@@ -10,12 +10,12 @@
 #PJM -L "node=384"
 #	PJM -L "node=128"
 #	PJM --mpi "max-proc-per-node=1"
-#	PJM --mpi "max-proc-per-node=4"
+#PJM --mpi "max-proc-per-node=4"
 #	PJM --mpi "max-proc-per-node=8"
 #	PJM --mpi "max-proc-per-node=16"
 #	PJM --mpi "max-proc-per-node=32"
-#PJM --mpi "max-proc-per-node=48"
-#PJM -L "elapse=00:1:30"
+#	PJM --mpi "max-proc-per-node=48"
+#PJM -L "elapse=00:00:30"
 #	PJM -L "elapse=00:3:30"
 #PJM -L "rscunit=rscunit_ft01,rscgrp=eap-llio,jobenv=linux2"
 #	PJM -L "rscunit=rscunit_ft01,rscgrp=eap-small,jobenv=linux2"
@@ -29,22 +29,33 @@ GS_LEN=1024   # OK 2020/12/17
 #RED_LEN=128
 #GS_LEN=128
 
-NP=18432
+#NP=18432
+#NP=1536
+NP=1024
+NP=3
 MPIOPT="-of results/coll-1rack/%n.%j.out -oferr results/coll-1rack/%n.%j.err"
 export MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG=1
+export MPICH_TOFU_SHOW_PARAMS=1
+export UTF_INFO=0x1
+#export UTF_DEBUG=0xffffff
+#export FI_LOG_PROV=tofu
+#export FI_LOG_LEVEL=Debug
 
 #
 #   coll -s  0x1: Barrier, 0x2: Reduce, 0x4: Allreduce, 0x8: Gather, 0x10: Alltoall, 0x20: Scatter
 #
 
-for RED_LEN in 2048 4096 8192 16384 32768
+ITER=10
+#for RED_LEN in 2048 4096 8192 16384 32768
+for RED_LEN in 16384 32768
 do
+    echo; echo;
     echo "checking Reduce"
-    time mpich_exec -n $NP $MPIOPT ../bin/colld -l $RED_LEN -s 0x2	#
+    time mpich_exec -n $NP $MPIOPT ../bin/colld -l $RED_LEN -i $ITER -s 0x2	#
     unset MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG
     echo; echo;
     echo "checking Allreduce"
-    time mpich_exec -n $NP $MPIOPT ../bin/colld -l $RED_LEN -s 0x4	#
+    time mpich_exec -n $NP $MPIOPT ../bin/colld -l $RED_LEN -i $ITER -s 0x4	#
 done
 exit
 

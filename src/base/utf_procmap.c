@@ -202,13 +202,18 @@ utf_peers_init()
     /* */
     sz = utf_info.nprocs*sizeof(uint8_t);
     pmarker = utf_malloc(sz);
-    memset(pmarker, UCHAR_MAX, sz);
+    memset(pmarker, 0, sz);
     node = 0;
     DEBUG(DLEVEL_INIFIN) {
 	utf_printf("%s: RANK LIST\n", __func__);
     }
+#if 0
+    DEBUG(DLEVEL_INI) {
+	if (utf_info.myrank == 0) { utf_printf("%s: STEP 1.1 nprocs(%d)\n", __func__, utf_info.nprocs); }
+    }
+#endif
     for (rank = 0; rank < utf_info.nprocs; rank++) {
-	if(pmarker[rank] == UCHAR_MAX) {
+	if(pmarker[rank] == 0) {
 	    utofu_tni_id_t	tni;
 	    utofu_cq_id_t	cq;
 	    int	i;
@@ -248,7 +253,7 @@ utf_peers_init()
 		tab_vcqid[this_rank] = vnmp[this_rank].vcqid;
 		vnmp[this_rank].v = 1;
 		utf_info.myfiaddr[this_rank] = this_rank;
-		pmarker[this_rank] = i;
+		pmarker[this_rank] = 1;
 	    }
 	}
 	/* show */
@@ -264,11 +269,14 @@ utf_peers_init()
 	utf_printf("NNODE = %d\n", utf_info.nnodes);
     }
 #if 0
-    {
-	int	i;
-	utf_printf("NODE LIST:\n");
-	for (i = 0; i < node; i++) {
-	    utf_printf("\t<%d> %s\n", i, pcoords2string(physnode[i], NULL, 0));
+    DEBUG(DLEVEL_INI) {
+	utf_printf("%s: STEP 1.2 nnodes(%d)\n", __func__, utf_info.nnodes);
+	if (utf_info.myrank == 0) {
+	    int	i;
+	    utf_printf("NODE LIST:\n");
+	    for (i = 0; i < node; i++) {
+		utf_printf("\t<%d> %s\n", i, pcoords2string(physnode[i], NULL, 0));
+	    }
 	}
     }
 #endif
@@ -314,6 +322,11 @@ utf_peers_init()
 	    }
 	}
     }
+#if 0
+    DEBUG(DLEVEL_INI) {
+	utf_printf("%s: STEP 1.3\n", __func__);
+    }
+#endif
     {	/* other attributes */
         struct utofu_onesided_caps *cap;
 	UTOFU_CALL(1, utofu_query_onesided_caps, utf_info.tniid, &cap);
@@ -325,6 +338,9 @@ utf_peers_init()
 		      utf_info.vcqhs);
     DEBUG(DLEVEL_INIFIN) {
 	utf_printf("%s: returns\n", __func__);
+    }
+    DEBUG(DLEVEL_INI) {
+	if (utf_info.myrank == 0) {utf_printf("%s:S-1.4\n", __func__); }
     }
     return 1;
 }

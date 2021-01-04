@@ -21,6 +21,15 @@ uint64_t	tmr_hz;
 int		tmr_sflag;
 int		utf_nokeep;
 
+#define TMR_INIT_STEP_0	0
+#define TMR_INIT_STEP_1	1
+#define TMR_INIT_STEP_2	2
+#define TMR_INIT_STEP_3	3
+#define TMR_INIT_STEP_4	4
+#define TMR_INIT_STEP_5	5
+#define TMR_INIT_STEP_MAX 6
+uint64_t	tmr_init[TMR_INIT_STEP_MAX];
+
 static char *
 sym_tmr[] = { "UTF_SEND_POST", "UTF_RECV_POST", "UTF_SENDENGINE",
 	      "UTF_SNDPROGRESS", "UTF_RCVPROGRESS", "UTF_TCQ_CHECK",
@@ -111,14 +120,18 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
     int	opt;
     int	np, tppn, rnk, i;
 
+#if 0 /* it takes so much in large processes */
     DEBUG(DLEVEL_INIFIN) {
 	utf_printf("%s: utf_initialized(%d)\n", __func__, utf_initialized);
     }
+#endif
     if (utf_initialized) {
 	utf_initialized++;
 	goto ext;
     }
     utf_initialized = 1;
+    utf_tmr_init();
+    tmr_init[TMR_INIT_STEP_0] = tick_time();
     utf_info.mypid = getpid();
     opterr = 0;
     if (argc > 0 && argv != NULL) {
@@ -142,7 +155,18 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
 #endif
     /* utf_info is setup  */
     /* stderr redirect will be on inside the utf_get_peers */
-    utf_get_peers(NULL, &np, &tppn, &rnk);
+    tmr_init[TMR_INIT_STEP_1] = tick_time();
+    {
+	struct tofu_vname *vn = utf_get_peers(NULL, &np, &tppn, &rnk);
+	if (vn == NULL) {
+	    utf_printf("%s: initialization fail\n", __func__);
+	    abort();
+	}
+    }
+    tmr_init[TMR_INIT_STEP_2] = tick_time();
+    DEBUG(DLEVEL_INI) {
+	if (utf_info.myrank == 0) { utf_printf("%s: S-2\n", __func__); }
+    }
     utf_mem_init();
     i = utf_getenvint("UTF_MSGMODE");
     utf_setmsgmode(i);
@@ -151,7 +175,6 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
     i = utf_getenvint("UTF_ASEND_COUNT");
     utf_setasendcnt(i);
 
-    utf_tmr_init();
     i = utf_getenvint("UTF_NOKEEP");
     utf_nokeep = i;
 
@@ -164,7 +187,25 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
 	utf_mem_show(stderr);
     }
     /**/
+    DEBUG(DLEVEL_INI) {
+	if (utf_info.myrank == 0) { utf_printf("%s:B-F\n", __func__); }
+    }
+    tmr_init[TMR_INIT_STEP_3] = tick_time();
     utf_fence();
+    tmr_init[TMR_INIT_STEP_4] = tick_time();
+    DEBUG(DLEVEL_INI) {
+	if (utf_info.myrank == 0) { utf_printf("%s:A-F\n", __func__); }
+    }
+    DEBUG(DLEVEL_INI) {
+	if (utf_info.myrank == 0) {
+	    utf_printf("%s: step0-1=%fmsec, step1-2=%fmsec, step2-3=%fmsec,step3-4=%fsec\n",
+		       __func__,
+		       CLK2USEC(tmr_init[TMR_INIT_STEP_1] - tmr_init[TMR_INIT_STEP_0])/1000.,
+		       CLK2USEC(tmr_init[TMR_INIT_STEP_2] - tmr_init[TMR_INIT_STEP_1])/1000.,
+		       CLK2USEC(tmr_init[TMR_INIT_STEP_3] - tmr_init[TMR_INIT_STEP_2])/1000.,
+		       CLK2USEC(tmr_init[TMR_INIT_STEP_4] - tmr_init[TMR_INIT_STEP_3])/1000000.);
+	}
+    }
 ext:
     if (rank) *rank = utf_info.myrank;
     if (nprocs) *nprocs = utf_info.nprocs;

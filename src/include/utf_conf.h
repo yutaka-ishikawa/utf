@@ -28,6 +28,7 @@
 #define DLEVEL_WARN		0x2000
 #define DLEVEL_STATISTICS	0x4000
 #define DLEVEL_FI		0x8000
+#define DLEVEL_INI		0x10000
 #define DLEVEL_ALL		0xffff
 #define ILEVEL_MSG		0x1
 
