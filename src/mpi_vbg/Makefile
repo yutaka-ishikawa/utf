@@ -28,6 +28,8 @@ DEPS	 := mpi_utf.d
 .PHONY: all install clean depend
 all: $(TARGET)
 install:
+	[ -d $(INSTDIR) ] || mkdir $(INSTDIR)
+	[ -d $(INSTDIR)/bin ] || mkdir $(INSTDIR)/bin
 	[ -d $(INSTDIR)/lib ] || mkdir $(INSTDIR)/lib
 	$(INSTALL) $(BUILDDIR)/libmpi_vbg.so $(INSTDIR)/lib
 	$(INSTALL) -m 0555 mpich_exec $(INSTDIR)/bin

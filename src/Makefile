@@ -14,7 +14,7 @@ SRC_VBGDIR  := ./vbg/
 INCDIR   := ./include
 BUILDDIR := ../build/
 INCLUDES += -I$(INCDIR)
-#CFLAGS += -DUTF_DEBUG -g
+CFLAGS += -DUTF_DEBUG -g
 TARGET   := $(BUILDDIR)/libutf.so
 
 PROGS = utf.so
@@ -25,6 +25,8 @@ DEPS	 := $(addprefix $(BUILDDIR)/, $(SRCS:.c=.d))
 .PHONY: all install clean depend
 all: $(TARGET)
 install:
+	[ -d $(INSTDIR) ] || mkdir $(INSTDIR)
+	[ -d $(INSTDIR)/bin ] || mkdir $(INSTDIR)/bin
 	[ -d $(INSTDIR)/lib ] || mkdir $(INSTDIR)/lib
 	[ -d $(INSTDIR)/include ] || mkdir $(INSTDIR)/include
 	$(INSTALL) $(BUILDDIR)/libutf.so $(INSTDIR)/lib
