@@ -201,15 +201,23 @@ static inline char *
 pcoords2string(union jtofu_phys_coords jcoords, char *buf, size_t len)
 {
     static char	pbuf[50];
-    size_t	ln;
     if (buf == NULL) {
 	buf = pbuf;
 	len = 50;
     }
-    ln = snprintf(buf, sizeof(FMT_PHYS_COORDS) + 1, FMT_PHYS_COORDS,
-		  jcoords.s.x, jcoords.s.y, jcoords.s.z,
-		  jcoords.s.a, jcoords.s.b, jcoords.s.c);
-    assert(ln <= len);
+#ifdef NDEBUG
+    snprintf(buf, sizeof(FMT_PHYS_COORDS) + 1, FMT_PHYS_COORDS,
+	     jcoords.s.x, jcoords.s.y, jcoords.s.z,
+	     jcoords.s.a, jcoords.s.b, jcoords.s.c);
+#else
+    {
+	size_t	ln;
+	ln = snprintf(buf, sizeof(FMT_PHYS_COORDS) + 1, FMT_PHYS_COORDS,
+		      jcoords.s.x, jcoords.s.y, jcoords.s.z,
+		      jcoords.s.a, jcoords.s.b, jcoords.s.c);
+	assert(ln <= len);
+    }
+#endif
     return buf;
 }
 
@@ -217,13 +225,19 @@ static inline char *
 lcoords2string(union jtofu_log_coords coords, char *buf, size_t len)
 {
     static char	pbuf[50];
-    size_t	ln;
     if (buf == NULL) {
 	buf = pbuf;
 	len = 50;
     }
-    ln = snprintf(buf, len, "%02d:%02d:%02d", coords.s.x, coords.s.y, coords.s.z);
-    assert(ln <= len);
+#ifdef NDEBUG
+    snprintf(buf, len, "%02d:%02d:%02d", coords.s.x, coords.s.y, coords.s.z);
+#else
+    {
+	size_t	ln;
+	ln = snprintf(buf, len, "%02d:%02d:%02d", coords.s.x, coords.s.y, coords.s.z);
+	assert(ln <= len);
+    }
+#endif
     return buf;
 }
 

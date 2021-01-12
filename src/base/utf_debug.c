@@ -106,3 +106,13 @@ utf_msglist_show(char *msg, utfslist_t *lst)
     }
 }
 
+void
+utf_msgreq_show(utfslist_t *slst)
+{
+    utfslist_entry_t	*cur;
+    utfslist_foreach(slst, cur) {
+	struct utf_msgreq *req = container_of(cur, struct utf_msgreq, busyslst);
+	utf_printf("\tscur(%p) req(%p) busyslst->next(%p) src(%d) tag(0x%lx), size(%ld), state(%d) fi_flgs(0x%lx)\n",
+		   cur, req, req->busyslst.next, req->hdr.src, req->hdr.tag, req->hdr.size, req->state, req->fi_flgs);
+    }
+}

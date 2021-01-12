@@ -92,6 +92,7 @@ utfslist_remove2(utfslist_t *lst, utfslist_entry_t *cur, utfslist_entry_t *prev)
     return cur->next;
 }
 
+
 #ifdef USE_UTFSLIST_NEXT
 static utfslist_entry_t *
 utfslist_next(utfslist_t *lst)
@@ -117,6 +118,33 @@ utfslist_next(utfslist_t *lst)
 #define utfslistent_foreach2(ini, cur, prev)			\
 	    for ((cur) = (ini), (prev) = 0; (cur) != 0;		\
 			(prev) = (cur), (cur) = (cur)->next)
+
+static inline utfslist_entry_t *
+utflist_entry_remove(utfslist_t *lst, utfslist_entry_t *ent)
+{
+    utfslist_entry_t	*cur, *prev;
+
+    utfslist_foreach2(lst, cur, prev) {
+	if (cur == ent) goto found;
+    }
+    /* not found */
+    return NULL;
+found: /* cur == ent */
+    if (prev) { /* not the first entry */
+	prev->next = cur->next;
+	if (lst->tail == cur) { /* ent is the last entry */
+	    lst->tail = cur->next;
+	}
+    } else { /* ent is the first entry */
+	if (lst->tail == lst->head) {
+	    lst->head = lst->tail = cur->next;
+	} else {
+	    lst->head = cur->next;
+	}
+    }
+    return cur;
+}
+
 
 typedef struct utfdlist {
     struct utfdlist	*next;

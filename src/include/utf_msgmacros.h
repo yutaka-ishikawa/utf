@@ -3,6 +3,8 @@
  */
 extern struct utf_msgreq	utf_msgrq[MSGREQ_SIZE];
 extern utfslist_t		utf_msgreq_freelst;
+extern utfslist_t		utf_sreq_busylst;
+extern utfslist_t		utf_rreq_busylst;
 extern utfslist_t		utf_egr_sbuf_freelst;
 extern utofu_stadd_t		utf_sndctr_stadd;	/* stadd of utf_scntr */
 extern struct utf_egr_rbuf	utf_egr_rbuf;		/* eager receive buffer */
@@ -59,14 +61,20 @@ static inline struct utf_msgreq *
 utf_sendreq_alloc()
 {
     utfslist_entry_t *slst;
+    struct utf_msgreq *req;
 
     if (utf_sreq_count > MSGREQ_SEND_SZ) {
 	return NULL;
     }
     utf_sreq_count++;
     slst = utfslist_remove(&utf_msgreq_freelst);
-    if (slst != 0) {
-	return container_of(slst, struct utf_msgreq, slst);
+    if (slst != 0) { /* slst->next is NULL */
+	req = container_of(slst, struct utf_msgreq, slst);
+#ifdef DEBUG_20210112
+	/* keeping track the sendreq usage */
+	utfslist_insert(&utf_sreq_busylst, &req->busyslst);
+#endif /* DEBUG_20210112 */
+	return req;
     } else {
 	utf_printf("%s: No more request object\n", __func__);
 	abort();
@@ -100,6 +108,9 @@ utf_sendreq_free(struct utf_msgreq *req)
     req->ustatus = REQ_NONE;
     req->notify = NULL;
     --utf_sreq_count;
+#ifdef DEBUG_20210112
+    utflist_entry_remove(&utf_sreq_busylst, &req->busyslst);
+#endif /* DEBUG_20210112 */
     utfslist_insert(&utf_msgreq_freelst, &req->slst);
 }
 
@@ -387,9 +398,9 @@ eager_copy_and_check(struct utf_recv_cntr *urp,
 
     cpysz = PKT_PYLDSZ(pkt);
     DEBUG(DLEVEL_PROTOCOL) {
-	utf_printf("%s: req->rsize(%ld) req->hdr.size(%ld) cpysz(%ld) fi_data(%ld) buf(%p) "
+	utf_printf("%s: req->rcvexpsz(%ld) req->rsize(%ld) req->hdr.size(%ld) cpysz(%ld) fi_data(%ld) buf(%p) "
 		   "EMSG_SIZE(msgp)=%ld\n",
-		   __func__, req->rsize, req->hdr.size, cpysz, req->fi_data, req->buf, PKT_PYLDSZ(pkt));
+		   __func__, req->rcvexpsz, req->rsize, req->hdr.size, cpysz, req->fi_data, req->buf, PKT_PYLDSZ(pkt));
     }
     if (pkt->hdr.flgs == 0) { /* utf message */
 	memcpy(&req->buf[req->rsize], PKT_DATA(pkt), cpysz);

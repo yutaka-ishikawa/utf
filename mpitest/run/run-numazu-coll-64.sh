@@ -6,8 +6,10 @@
 #PJM -o "results/coll-64/%n.%j.out"
 #PJM -e "results/coll-64/%n.%j.err"
 #
-#PJM -L "node=16:noncont"
-#PJM --mpi "max-proc-per-node=4"
+#	PJM -L "node=16:noncont"
+#PJM -L "node=8:noncont"
+#PJM --mpi "max-proc-per-node=8"
+#	PJM --mpi "max-proc-per-node=4"
 #PJM -L "elapse=00:06:00"
 #PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-all,jobenv=linux"
 #	PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-mck2_and_spack2,jobenv=linux"
@@ -30,7 +32,7 @@ export UTF_INFO=0x1
 #export UTF_INJECT_COUNT=4
 export UTF_INJECT_COUNT=1
 export UTF_ASEND_COUNT=1	# added on 2020/01/01 20:05
-export UTF_DEBUG=0x200	# DLEVEL_ERR
+#export UTF_DEBUG=0x200	# DLEVEL_ERR
 #export UTF_DBGTIMER_INTERVAL=40
 #export UTF_DBGTIMER_ACTION=1
 

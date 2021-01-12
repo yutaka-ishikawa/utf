@@ -194,9 +194,9 @@ enum rstate {
  *                 |              |receiving this size   |          | rsize is a real |
  *                 +--------------+----------------------+----------+ data trans size.|
  * eager unexpected| undef and set|set at msg arrival.   | tempolary| Comparing it    |
- *                 | at matching  |receiving this size   | set      | with hdr.size.  |
- *                 |              |                      |          | copy size is    |
- *                 |              |                      |          | rcvexpsz.       |
+ *                 | at matching  |receiving this size   | set.     | with hdr.size.  |
+ *                 |              |                      | hdr.size | copy size is    |
+ *                 |              |                      | is copied| rcvexpsz.       |
  *                 +--------------+----------------------+----------+-----------------+
  * rendz expected  | defined      |set at matching.      |          | During transfer,|
  *                 |              |No-use during transfer| Use for  | rsize is a real |
@@ -219,19 +219,25 @@ struct utf_msgreq {
 			type:3,		/* 40: EXPECTED or UNEXPECTED or SENDREQ */
 			ptype:4,	/* 40: PKT_EAGER | PKT_RENDZ | PKT_WRITE | PKT_READ */
 			alloc:1,	/* 40: dynamically memory is allocated */
-			fistate:4;	/* 40: fabric-level status */
+			fireqhead:1,	/* 40: fabric-level head of multi-recv req */
+			fimrec:1,	/* 40: fabric-level multi-recv state */
+			fistate:2;	/* 40: fabric-level status */
 	};
 	uint64_t	allflgs;
     };
     size_t	rcvexpsz;	/* 48: expected receive size used in rendezvous */
     size_t	usrreqsz;	/* 48: user request size */
     utfslist_entry_t slst;	/* 56: list */
+    utfslist_entry_t busyslst;	/* XX: list */
     int		(*notify)(struct utf_msgreq*, int aux);	/* 64: notifier */
     struct utf_recv_cntr *rcntr;	/* 72: point to utf_recv_cntr */
     struct utf_vcqid_stadd rgetsender; /* 112: rendezous: sender's stadd's and vcqid's */
     struct utf_vcqhdl_stadd bufinfo; /* 152: rendezous: receiver's stadd's and vcqid's  */
     utfslist_entry_t	rget_slst;/* rendezous: list of rget progress */
     /* for Fabric */
+    int		(*fi_mrecv)(struct utf_msgreq*, size_t sz);
+    struct utf_msgreq	*fi_nxtrq;	/* used in multi-rec implementation */
+    size_t	fi_min_mrecv;
     uint64_t	fi_data;
     void	*fi_ctx;
     void	*fi_ucontext;

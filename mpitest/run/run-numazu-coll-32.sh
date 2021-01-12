@@ -6,10 +6,12 @@
 #PJM -o "results/coll-32/%n.%j.out"
 #PJM -e "results/coll-32/%n.%j.err"
 #
-#PJM -L "node=16:noncont"
-#PJM --mpi "max-proc-per-node=2"
+#PJM -L "node=8:noncont"
+#	PJM -L "node=16:noncont"
+#PJM --mpi "max-proc-per-node=4"
 #	PJM -L "elapse=00:20:30"
 #PJM -L "elapse=00:5:30"
+#	PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-spack1_and_spack2,jobenv=linux"
 #PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-all,jobenv=linux"
 #	PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-mck2_and_spack2,jobenv=linux"
 #PJM -L proc-core=unlimited
@@ -30,12 +32,12 @@ export UTF_INFO=0x1
 #export FI_LOG_LEVEL=Debug
 #export UTF_INJECT_COUNT=1
 #export UTF_INJECT_COUNT=8
-export UTF_INJECT_COUNT=1
-export UTF_ASEND_COUNT=1
+#export UTF_INJECT_COUNT=1
+#export UTF_ASEND_COUNT=1
 #export UTF_DBGTIMER_INTERVAL=50
 #export UTF_DBGTIMER_ACTION=1
 #export UTF_DEBUG=0x4200	# DLEVEL_ERR|DLEVEL_STATISTICS
-export UTF_DEBUG=0x200	# DLEVEL_ERR
+#export UTF_DEBUG=0x200	# DLEVEL_ERR
 
 NP=32
 ITER=10000
@@ -46,7 +48,6 @@ BARRIER="-b"
 #for LEN in 8 128 256 512 1024 2048 #size in double 14sec reduce & bcast
 #for LEN in 512 1024 2048 8192 65536 524288
 #echo "**** Reduce and Barrier ****"
-ITER=100
 echo "**** Reduce only ****"
 for LEN in 512 1024 2048 8192	# reduce & barrier is OK and takes 31sec
 do

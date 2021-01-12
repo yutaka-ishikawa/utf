@@ -9,13 +9,15 @@
 #PJM -L "node=2"
 #PJM --mpi "max-proc-per-node=1"
 #PJM -L "elapse=00:04:10"
-#	PJM -L "elapse=00:00:10"
+#	PJM -L "elapse=00:00:30"
 #PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-spack2,jobenv=linux"
 #PJM -L proc-core=unlimited
 #------- Program execution -------#
 SAVED_LD_LIBRARY_PATH=$LD_LIBRARY_PATH
 
 MPIOPT="-of results/%n.%j.out -oferr results/%n.%j.err"
+export UTF_DBGTIMER_INTERVAL=10
+export UTF_DBGTIMER_ACTION=1
 MAX_LEN=1048576	# 1 MB
 #MAX_LEN=134217728	# 128 MB
 MIN_LEN=1
@@ -25,15 +27,19 @@ VRYFY="-V 1"
 export MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG=1
 export MPICH_TOFU_SHOW_PARAMS=1
 export UTF_INFO=0x1
+#export UTF_DEBUG=0x1000
+##export UTF_DEBUG=0xffffff
+#export UTF_COMDEBUG=1
+
 #export UTF_DEBUG=0xffffff
 #export FI_LOG_PROV=tofu
 #export FI_LOG_LEVEL=Debug
-export UTF_COMDEBUG=1
 
 echo "********MPICH EXP*********"
 echo "checking pingpong"
 
 mpich_exec -n 2 $MPIOPT ../bin/pingpong -L $MAX_LEN -l $MIN_LEN -i $ITER $VRYFY
+exit
 
 export LD_LIBRARY_PATH=$SAVED_LD_LIBRARY_PATH
 echo; echo

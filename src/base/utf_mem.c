@@ -45,7 +45,6 @@ struct utf_msglst MALGN(256)	utf_msglst[MSGLST_SIZE];
 struct utf_rma_cq MALGN(256)	utf_rmacq_pool[COM_RMACQ_SIZE];
 struct utf_send_msginfo MALGN(256) utf_rndz_pool[MSGREQ_SEND_SZ];	/* used for rendezvous at sender */
 
-
 utfslist_t	utf_explst;	/* expected message list */
 utfslist_t	utf_uexplst;	/* unexpected message list */
 utfslist_t	tfi_tag_explst;	/* fi: expected tagged message list */
@@ -56,6 +55,8 @@ utfslist_t	tfi_msg_uexplst;/* fi: unexpected message list */
 utfslist_t	utf_egr_sbuf_freelst;	/* free list of utf_egr_sbuf */
 utfslist_t	utf_scntr_freelst;	/* free list of utf_scntr */
 utfslist_t	utf_msgreq_freelst;	/* free list of utf_msgrq */
+utfslist_t	utf_sreq_busylst;	/* busy list of send-utf_msgrq */
+utfslist_t	utf_rreq_busylst;	/* busy list of recv-utf_msgrq */
 utfslist_t	utf_msglst_freelst;
 utfslist_t	utf_rndz_freelst;
 utfslist_t	utf_rget_proglst;
@@ -167,6 +168,8 @@ utf_mem_init()
     for (i = 0; i < MSGREQ_SIZE; i++) {
 	utfslist_append(&utf_msgreq_freelst, &utf_msgrq[i].slst);
     }
+    utfslist_init(&utf_sreq_busylst, NULL);
+    utfslist_init(&utf_rreq_busylst, NULL);
 
     utfslist_init(&utf_msglst_freelst, NULL);
     for (i = 0; i < MSGLST_SIZE; i++) {

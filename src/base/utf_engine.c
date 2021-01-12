@@ -659,12 +659,11 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 	found:
 	    req = utf_idx2msgreq(idx);
 	    req->rndz = pkt->hdr.rndz;
-#if 0
-	    if (pkt->hdr.size != req->usrreqsz) {
-		utf_printf("%s: YI###### SENDER SIZE(%ld) RECEIVER SIZE(%ld)\n", __func__, pkt->hdr.size, req->rcvexpsz);
-	    }
-#endif
 	    req->fi_data = PKT_FI_DATA(pkt);
+	    if (PKT_MSGFLG(pkt)&~MSGHDR_FLGS_FI_TAGGED && req->fi_mrecv) {
+		/* expected queue is created */
+		req->fi_mrecv(req, PKT_MSGSZ(pkt));
+	    }
 	    if (req->rndz) {
 		if (PKT_MSGFLG(pkt) == 0) { /* utf message */
 		    memcpy(&req->rgetsender, &pkt->pyld.rndzdata, sizeof(struct utf_vcqid_stadd));
@@ -674,7 +673,7 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 		req->hdr = pkt->hdr;
 		req->rcntr = urp;
 		rget_start(req);
-		urp->req = NULL;
+		urp->req = NULL;	/* disconnected */
 		urp->state = R_NONE;
 	    } else { /* expected eager */
 		req->hdr = pkt->hdr; /* size and tag are needed */
@@ -690,9 +689,6 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 		}
 	    }
 	    req = utf_recvreq_alloc();
-#ifdef UTF_DEBUG_20201229
-	    utf_printf("YI\t\tutf-unexparrv-req(%p) exp(%p)\n", req, tfi_tag_explst.head);
-#endif
 	    if (req == NULL) {
 		/* Cannot handle this message at this time */
 		DEBUG(DLEVEL_PROTOCOL) {
@@ -700,6 +696,7 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 		}
 		return 1;
 	    }
+	    req->allflgs = 0;
 	    req->fi_data = PKT_FI_DATA(pkt);
 	    req->fi_ucontext = 0;
 	    req->hdr = pkt->hdr;
@@ -766,7 +763,6 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 	/* reset the state */
 	urp->state = R_NONE;
 	urp->req = NULL;
-	//utf_nullfunc();
 	break;
     case R_HEAD:
     case R_DONE:
@@ -1022,13 +1018,15 @@ utf_sendctr_show()
 	if (headpos == 0xff) continue;
 	usp = &utf_scntr[headpos];
 	ridx = utf_sndmgt_get_index(usp->dst, utf_egrmgt);
+	utf_printf(" snd-dst(%d) s-ridx(%d) s-recvidx(%d) usp(%p)(state(%s:%d) ostate(%s:%d)"
+		   " usize(%d) inflight(%d) micur(%d) mient(%d))",
+		   dst, ridx, usp->recvidx, usp, sstate_symbol[usp->state], usp->state,
+		   sstate_symbol[usp->ostate], usp->ostate,
+		   usp->usize, usp->inflight, usp->micur, usp->mient);
 	for (i = 0; i < COM_SCNTR_MINF_SZ; i++) {
 	    minfo = &usp->msginfo[i];
-	    utf_printf(" minfo[%d] dst(%d) s-ridx(%d) s-recvidx(%d) usp(%p)(state(%s:%d) ostate(%s:%d)"
-		       " usize(%d)) msghdr(size(%d) tag(0x%lx))\n",
-		       i, dst, ridx, usp->recvidx, usp, sstate_symbol[usp->state], usp->state,
-		       sstate_symbol[usp->ostate], usp->ostate,
-		       usp->usize, minfo->msghdr.size, minfo->msghdr.tag);
+	    utf_printf("\tminfo[%d] msghdr(size(%d) tag(0x%lx) req(%p))\n",
+		       i, minfo->msghdr.size, minfo->msghdr.tag, minfo->mreq);
 	}
     }
 }
