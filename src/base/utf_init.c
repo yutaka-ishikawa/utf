@@ -177,6 +177,8 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
     utf_setinjcnt(i);
     i = utf_getenvint("UTF_ASEND_COUNT");
     utf_setasendcnt(i);
+    i = utf_getenvint("UTF_ARMA_COUNT");
+    utf_setarmacnt(i);
 
     i = utf_getenvint("UTF_NOKEEP");
     utf_nokeep = i;

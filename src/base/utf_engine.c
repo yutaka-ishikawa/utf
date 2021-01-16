@@ -290,7 +290,7 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 	    goto s_has_room;
 	} else {
 	    /* No room in remote rank */
-	    utf_printf("No room in remote rank\n");
+	    utf_printf("No room in remote rank %d\n", usp->dst);
 	    abort();
 	}
 	break;
