@@ -45,6 +45,7 @@ struct utf_msglst MALGN(256)	utf_msglst[MSGLST_SIZE];
 struct utf_rma_cq MALGN(256)	utf_rmacq_pool[COM_RMACQ_SIZE];
 struct utf_send_msginfo MALGN(256) utf_rndz_pool[MSGREQ_SEND_SZ];	/* used for rendezvous at sender */
 
+struct utf_sndctr_svd	*utf_scntr_svp;
 utfslist_t	utf_explst;	/* expected message list */
 utfslist_t	utf_uexplst;	/* unexpected message list */
 utfslist_t	tfi_tag_explst;	/* fi: expected tagged message list */
@@ -106,10 +107,18 @@ utf_mem_dereg(utofu_vcq_id_t vcqh, utofu_stadd_t stadd)
 
 
 void
-utf_mem_init()
+utf_mem_init(int nprocs)
 {
     int	i;
+    size_t	sz;
 
+    sz = sizeof(struct utf_sndctr_svd)*nprocs;
+    utf_scntr_svp = utf_malloc(sz);
+    if (utf_scntr_svp == NULL) {
+	utf_printf("%s: ERROR Cannot allocate memory size(%ld)\n", __func__, sz);
+	abort();
+    }
+    memset(utf_scntr_svp, 0, sz);
     utfslist_init(&utf_explst, NULL);
     utfslist_init(&utf_uexplst, NULL);
 
@@ -246,14 +255,19 @@ utf_mem_finalize()
 void
 utf_scntr_free(int idx)
 {
-    struct utf_send_cntr *head;
-    uint16_t	headpos;
-    headpos = utf_rank2scntridx[idx];
-    if (headpos != (uint16_t) -1) {
-	head = &utf_scntr[headpos];
-	utfslist_insert(&utf_scntr_freelst, &head->slst);
+    struct utf_send_cntr *scntr;
+    uint16_t	pos;
+    pos = utf_rank2scntridx[idx];
+    if (pos != (uint16_t) -1) {
+	utf_printf("%s: savd-dst=%d recvidx=%d\n", __func__, idx, utf_scntr[idx].recvidx);
+	utf_scntr_svp[idx].recvidx = utf_scntr[pos].recvidx;
+	utf_scntr_svp[idx].valid = 1;
+	scntr = &utf_scntr[pos];
+	memset(scntr, 0, sizeof(struct utf_send_cntr));
+	utfslist_insert(&utf_scntr_freelst, &scntr->slst);
 	utf_rank2scntridx[idx] = -1;
     } else {
+	utf_printf("%s: internal error idx(%d)\n", __func__, idx);
 	abort();
     }
 }

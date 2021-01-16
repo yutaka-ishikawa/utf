@@ -162,12 +162,15 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
 	    utf_printf("%s: initialization fail\n", __func__);
 	    abort();
 	}
+	INFO(ILEVEL_STAG) {
+	    utf_vname_show(stderr);
+	}
     }
     tmr_init[TMR_INIT_STEP_2] = tick_time();
     DEBUG(DLEVEL_INI) {
 	if (utf_info.myrank == 0) { utf_printf("%s: S-2\n", __func__); }
     }
-    utf_mem_init();
+    utf_mem_init(utf_info.nprocs);
     i = utf_getenvint("UTF_MSGMODE");
     utf_setmsgmode(i);
     i = utf_getenvint("UTF_INJECT_COUNT");

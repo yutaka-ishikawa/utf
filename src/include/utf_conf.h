@@ -30,7 +30,8 @@
 #define DLEVEL_FI		0x8000
 #define DLEVEL_INI		0x10000
 #define DLEVEL_ALL		0xffff
-#define ILEVEL_MSG		0x1
+#define ILEVEL_MSG		0x01
+#define ILEVEL_STAG		0x02
 
 #define SHMEM_KEY_VAL_FMT	"/tmp/MPICH-shm"
 #define PMIX_TOFU_SHMEM	"UTF_TOFU_SHM"

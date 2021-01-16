@@ -346,6 +346,11 @@ struct utf_send_msginfo { /* msg info */
 #define SCNTR_IS_CHN_NEXT_OFFST(off)	((off) == SCNTR_CHN_NEXT_OFFST + sizeof(uint64_t))
 #define SCNTR_IS_CHN_RDY_OFFST(off)	((off) == SCNTR_CHN_READY_OFFST + sizeof(uint64_t))
 
+struct utf_sndctr_svd {
+    uint32_t	valid:1,	/* valid or not this entry */
+		recvidx: 31;	/* saved recvidx */
+};
+
 #pragma pack(1)
 struct utf_send_cntr {	/* 500 Byte */
     uint32_t		rgetdone:1,	/* 0: ready for resetting recv offset */
@@ -367,13 +372,13 @@ struct utf_send_cntr {	/* 500 Byte */
     utofu_vcq_id_t	rvcqid;		/*  48 = +8 Byte */
     size_t		usize;		/*  56 = +8 user-level sent size */
     utfslist_t		smsginfo;	/*  64 = +8 Byte */
-    uint8_t		micur;		/*  72 = +8 Byte */
-    uint8_t		mient;		/*  80 = +4 Byte */
-    uint8_t		inflight;	/**/
-    uint8_t		npckt;		/* for eager */
-    struct utf_send_msginfo msginfo[COM_SCNTR_MINF_SZ];	/*  84 = +408 the first entry */
-    utfslist_entry_t	slst;		/* 492 = + 8 Byte for free list */
-					/* 500  */
+    uint8_t		micur;		/*  72 = +1 Byte */
+    uint8_t		mient;		/*  73 = +1 Byte */
+    uint8_t		inflight;	/*  74 = +1 Byte */
+    uint8_t		npckt;		/*  75 = +1 Byte for eager */
+    struct utf_send_msginfo msginfo[COM_SCNTR_MINF_SZ];	/*  76 = +408 the first entry */
+    utfslist_entry_t	slst;		/* 482 = + 8 Byte for free list */
+					/* 490  */
     /* for debugging */
     uint32_t	dbg_idx;
     uint8_t	dbg_ssize[COM_RBUF_SIZE];
