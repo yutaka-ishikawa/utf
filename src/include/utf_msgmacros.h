@@ -16,6 +16,7 @@ extern utfslist_t	utf_rndz_freelst;
 extern int	utf_tcq_count, utf_mrq_count;
 extern int	utf_sreq_count, utf_rreq_count;
 extern int	utf_asend_count;
+extern int	utf_rma_max_inflight;
 
 extern void	utf_tcqprogress();
 extern int	utf_mrqprogress();

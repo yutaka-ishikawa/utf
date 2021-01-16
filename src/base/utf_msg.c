@@ -158,6 +158,16 @@ utf_setasendcnt(int cnt)
     }
 }
 
+void
+utf_setarmacnt(int cnt)
+{
+    if (cnt > 0 && cnt < COM_RMACQ_SIZE) {
+	utf_rma_max_inflight = cnt;
+    } else {
+	utf_rma_max_inflight = COM_RMACQ_SIZE;
+    }
+}
+
 int
 utf_send(void *buf, size_t size, int dst, uint64_t tag, UTF_reqid *ridx)
 {
@@ -414,6 +424,7 @@ utf_infoshow(int lvl)
 
     utf_printf("UTF_INJECT_COUNT_MAX: %d\n", utf_injct_count);
     utf_printf("UTF_ASEND_COUNT_MAX: %d\n", utf_asend_count);
+    utf_printf("UTF_ARMA_COUNT_MAX: %d\n", utf_rma_max_inflight);
     utf_printf("UTF_SEND_REQ_COUNT: %d\n", MSGREQ_SEND_SZ);
     utf_printf("UTF_RECV_REQ_COUNT: %d\n", MSGREQ_RECV_SZ);
     utf_printf("sizeof(utf_egr_rbuf): %8.3f MiB\n", (float) sizeof(struct utf_egr_rbuf) /(float)(1024*1024));

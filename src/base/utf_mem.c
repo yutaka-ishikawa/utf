@@ -14,6 +14,7 @@
 int utf_tcq_count, utf_mrq_count, utf_injct_count;
 int utf_sreq_count, utf_rreq_count;
 int utf_asend_count;
+int utf_rma_max_inflight;
 int utf_dflag; /* debug */
 int utf_rflag; /* redirect */
 int utf_iflag; /* info */
@@ -22,6 +23,7 @@ int utf_mode_msg;
 int utf_mode_trans;
 int utf_mode_mrail;
 int utf_rma_cq_cnt;
+int utf_rma_cq_max_inflight;
 
 /*
  *	utf_egrmgt:       1863 kiB (sizeof(utf_egrmgt) * PROC_MAX = 3 * 635904)
@@ -203,7 +205,7 @@ utf_mem_init()
 	utfslist_append(&utf_rmacq_freelst, &utf_rmacq_pool[i].slst);
 	utf_rmacq_pool[i].mypos = i;
     }
-    utf_rma_cq_cnt = COM_RMACQ_SIZE;
+    utf_rma_cq_cnt = 0;
 
     memset(utf_zero256, 0, sizeof(utf_zero256));
     UTOFU_CALL(1, utofu_reg_mem_with_stag, utf_info.vcqh, (void*) utf_rcntr,
@@ -270,7 +272,7 @@ utf_rmacq_alloc()
 	return NULL;
     }
     cq = container_of(slst, struct utf_rma_cq, slst);
-    --utf_rma_cq_cnt;
+    utf_rma_cq_cnt++;
     //utf_printf("%s: YI++++++ cnt=%d cq=%p\n", __func__, utf_rma_cq_cnt, cq);
     return cq;
 }
@@ -278,7 +280,7 @@ utf_rmacq_alloc()
 void
 utf_rmacq_free(struct utf_rma_cq *cq)
 {
-    utf_rma_cq_cnt++;
+    --utf_rma_cq_cnt;
     //utf_printf("%s: YI------ cnt=%d cq=%p\n", __func__, utf_rma_cq_cnt, cq);
     utfslist_insert(&utf_rmacq_freelst, &cq->slst);
 }
