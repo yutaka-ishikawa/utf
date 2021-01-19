@@ -255,23 +255,43 @@ utf_mem_finalize()
 }
 
 void
-utf_scntr_free(int idx)
+utf_egr_sbuf_free(struct utf_egr_sbuf *uesp)
 {
-    struct utf_send_cntr *scntr;
+    utfslist_insert(&utf_egr_sbuf_freelst, &uesp->slst);
+}
+
+void
+utf_scntr_free(int rank)
+{
+    int i;
+    struct utf_send_cntr *usp;
     uint16_t	pos;
-    pos = utf_rank2scntridx[idx];
+    pos = utf_rank2scntridx[rank];
     if (pos != (uint16_t) -1) {
-	utf_printf("%s: savd-dst=%d recvidx=%d\n", __func__, idx, utf_scntr[idx].recvidx);
-	utf_scntr_svp[idx].recvidx = utf_scntr[pos].recvidx;
-	utf_scntr_svp[idx].valid = 1;
-	scntr = &utf_scntr[pos];
-	memset(scntr, 0, sizeof(struct utf_send_cntr));
-	utfslist_insert(&utf_scntr_freelst, &scntr->slst);
-	utf_rank2scntridx[idx] = -1;
+	if (IS_COMRBUF_FULL(&utf_scntr[pos])) {
+	    // utf_printf("%s: NOT-FREE dst=%d pos=%d recvidx=%d\n", __func__, rank, pos, utf_scntr[pos].recvidx);
+	    goto ext;
+	} else {
+	    // utf_printf("%s: savd-dst=%d pos=%d recvidx=%d\n", __func__, rank, pos, utf_scntr[pos].recvidx);
+	}
+	usp = &utf_scntr[pos];
+	utf_scntr_svp[rank].recvidx = usp->recvidx;
+	utf_scntr_svp[rank].valid = 1;
+	for (i = 0; i < COM_SCNTR_MINF_SZ; i++) {
+	    if (usp->msginfo[i].sndbuf != NULL) {
+		utf_egr_sbuf_free(usp->msginfo[i].sndbuf);
+	    }
+	}
+	memset(usp, 0, sizeof(struct utf_send_cntr));
+	usp->mypos = pos; /* re-initialization */
+	utfslist_insert(&utf_scntr_freelst, &usp->slst);
+	utf_rank2scntridx[rank] = -1; /* meaning that this destination rank does not use sendcntr */
     } else {
-	utf_printf("%s: internal error idx(%d)\n", __func__, idx);
+	utf_printf("%s: internal error rank(%d)\n", __func__, rank);
 	abort();
     }
+ext:
+    return;
 }
 
 struct utf_rma_cq *

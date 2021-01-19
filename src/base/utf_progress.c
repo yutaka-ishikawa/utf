@@ -29,7 +29,7 @@ utf_progress()
 
     if (utf_tcq_count) utf_tcqprogress();
 
-    if ((int64_t) utf_egr_rbuf.head.cntr < 0) {
+    if ((int64_t) utf_egr_rbuf.head.cntr < -1) {
 	utf_printf("%s: No more Eager Receiver Buffer in my rank. cntr(%ld)\n", __func__, (int64_t) utf_egr_rbuf.head.cntr);
 	utf_egrrbuf_show(stderr);
 	abort();
