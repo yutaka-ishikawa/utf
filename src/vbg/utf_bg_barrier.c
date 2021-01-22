@@ -14,6 +14,7 @@ void          *utf_bg_poll_grp_addr;
 #endif
 
 utf_bg_poll_info_t poll_info;
+uint64_t utf_bg_counter;
 
 int            utf_bg_poll_barrier_func;
 int           (*utf_bg_poll_reduce_func) (void **);
@@ -35,6 +36,7 @@ enum utf_bg_poll_barrier_index {
  */
 int utf_barrier(utf_coll_group_t group_struct)
 {
+    utf_bg_counter++;
     utf_coll_group_detail_t *utf_bg_grp = (utf_coll_group_detail_t *)group_struct;
 
 #if defined(DEBUGLOG2)
@@ -918,6 +920,7 @@ static inline int utf_bg_reduce_maxmin_loc(utf_coll_group_detail_t *utf_bg_grp,
  */
 int utf_broadcast(utf_coll_group_t group_struct, void *buf, size_t size, void *desc, int root)
 {
+    utf_bg_counter++;
     utf_coll_group_detail_t *utf_bg_grp = (utf_coll_group_detail_t *)group_struct;
     uint64_t *idata = poll_info.utf_bg_poll_idata;
     size_t num_count;
@@ -1143,6 +1146,7 @@ int utf_allreduce(utf_coll_group_t group_struct,
                   enum utf_datatype datatype,
                   enum utf_reduce_op op)
 {
+    utf_bg_counter++;
 #if defined(DEBUGLOG2)
     /* Check the arguments. */
     assert(group_struct != NULL);
@@ -1179,6 +1183,7 @@ int utf_reduce(utf_coll_group_t group_struct,
                enum utf_reduce_op op,
                int root)
 {
+    utf_bg_counter++;
 #if defined(DEBUGLOG2)
     /* Check the arguments. */
     assert(group_struct != NULL);
