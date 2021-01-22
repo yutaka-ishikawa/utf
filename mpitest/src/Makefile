@@ -3,9 +3,9 @@
 include mkdef.$(UTF_ARCH)
 
 INSTDIR = ../bin
-MPIPROGS = hello coll colld sendrecv shmem test_vbg test_collective_vbg pingpong test_mpi_utf sendone
+MPIPROGS = hello coll colld sendrecv shmem test_vbg test_collective_vbg pingpong test_mpi_utf sendone myscatter test_hook
 FJMPIPROGS =  colld-f pingpong-f
-MPISRCS = hello.c coll.c colld.c sendrecv.c shmem.c test_vbg.c test_collective_vbg.c pingpong.c test_mpi_utf.c sendone.c
+MPISRCS = hello.c coll.c colld.c sendrecv.c shmem.c test_vbg.c test_collective_vbg.c pingpong.c test_mpi_utf.c sendone.c myscatter.c test_hook.c
 MPIOBJS = $(MPISRCS:.c=.o)
 SRCS = testlib.c
 OBJS = $(SRCS:.c=.o)

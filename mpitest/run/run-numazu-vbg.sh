@@ -20,15 +20,6 @@
 #------- Program execution -------#
 MPIOPT="-of results/%n.%j.out -oferr results/%n.%j.err"
 
-#export UTF_DEBUG=12
-#export UTF_DEBUG=0xfffc
-
-export UTF_MSGMODE=1	# Rendezous
-#export UTF_TRANSMODE=0	# Chained
-export UTF_TRANSMODE=1	# Aggressive
-export TOFU_NAMED_AV=1
-###export TOFULOG_DIR=./results
-
 mpich_exec $MPIOPT ../src/test_vbg
 
 exit

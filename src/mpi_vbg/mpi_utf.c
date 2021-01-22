@@ -9,20 +9,39 @@
 #include <jtofu.h>
 #include <utf_bg.h>
 
+#define COMM_MPICHLEVEL_HANDLE
+
+extern int utf_progress();
+extern int utf_MPI_hook(MPI_Comm, uint32_t *addr_tab, uint32_t *count);
+
 #define UTF_BG_MIN_BARRIER_SIZE	4
 static int	mpi_bg_enabled = 0;
 static int	mpi_bg_disable = 0;
 static int	mpi_bg_dbg = 0;
 static int	mpi_bg_barrier = 0;
 static useconds_t	mpi_bg_iniwait = 0;
-static int	mpi_bg_utfprogress = 0;
 static int	mpi_bg_confirm = 0;
+static int	mpi_bg_warning = 0;
 static utf_coll_group_t mpi_world_grp;
 static utf_bg_info_t	*mpi_bg_bginfo;
 static int	mpi_bg_nprocs, mpi_bg_myrank;
 static int	mpi_init_nfirst = 0;
+static int	errprintf(int myrank, const char *fmt, ...);
 
+#ifdef COMM_MPICHLEVEL_HANDLE
+#include "commaddr.c"
+#else
 #include "commgroup.c"
+#endif /* COMM_MPICHLEVEL_HANDLE */
+
+#define MALLOC_CHECK(lbl, rc, func)			\
+{							\
+    rc = func;						\
+    if (rc == 0) {					\
+	errprintf(mpi_bg_myrank, "%s: Cannot allocate memory.", __func__); \
+	goto lbl;					\
+    }							\
+}
 
 #define UTFCALL_CHECK(lbl, rc, func)			\
 {							\
@@ -42,6 +61,14 @@ static int	mpi_init_nfirst = 0;
     if (ent == NULL) {					\
 	errprintf(mpi_bg_myrank, "%s: Internal error, cannot get info about Communicator (%lx)\n", __func__, comm);\
 	abort();					\
+    }							\
+}
+
+#define COMINFO_GET_CHECK_DO(lbl, ent, comm)		\
+{							\
+    ent = cominfo_get(comm);				\
+    if (ent != NULL) {					\
+	goto lbl;					\
     }							\
 }
 
@@ -109,10 +136,6 @@ option_get()
     if (cp && atoi(cp) != 0) {
 	mpi_bg_iniwait = atol(cp);
     }
-    cp = getenv("UTF_BG_UTFPROGRESS");
-    if (cp && atoi(cp) != 0) {
-	mpi_bg_utfprogress = 1;
-    }
     cp = getenv("UTF_BG_BARRIER");
     if (cp && atoi(cp) != 0) {
 	mpi_bg_barrier = 1;
@@ -121,16 +144,17 @@ option_get()
     if (cp && atoi(cp) != 0) {
 	mpi_bg_confirm = 1;
     }
+    cp = getenv("UTF_BG_WARNING");
+    if (cp && atoi(cp) != 0) {
+	mpi_bg_warning = 1;
+    }
 }
 
 static inline void
 mpi_bg_poll_barrier(utf_coll_group_t bg_grp)
 {
     while (utf_poll_barrier(bg_grp) == UTF_ERR_NOT_COMPLETED) {
-	if (mpi_bg_utfprogress) {
-	    extern int utf_progress();
-	    utf_progress();
-	}
+	utf_progress();
     }
 }
 
@@ -138,72 +162,98 @@ static inline void
 mpi_bg_poll_reduce(utf_coll_group_t bg_grp, void **data)
 {
     while (utf_poll_reduce(bg_grp, data) == UTF_ERR_NOT_COMPLETED) {
-	if (mpi_bg_utfprogress) {
-	    extern int utf_progress();
-	    utf_progress();
-	}
+	utf_progress();
     }
 }
 
 static inline int
-mpi_bg_init()
+mpi_bg_init(MPI_Comm comm, int nprocs, int myrank, uint32_t *rankset)
 {
-    int rc, i;
-    int		nprocs, myrank;
-    uint32_t	*grpidx;
+    int rc = 0;
     utf_bg_info_t	*lcl_bginfo, *rmt_bginfo;
 
-    PMPI_Comm_size(MPI_COMM_WORLD, &nprocs);
-    PMPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-    grpidx = malloc(sizeof(uint32_t)*nprocs);
     lcl_bginfo = malloc(sizeof(utf_bg_info_t) * nprocs);
     rmt_bginfo = malloc(sizeof(utf_bg_info_t) * nprocs);
-    if (grpidx == NULL || lcl_bginfo == NULL || rmt_bginfo == NULL) {
+    if (lcl_bginfo == NULL || rmt_bginfo == NULL) {
 	errprintf(myrank, "Cannot allocate working memory for VBG procs(%d)\n", nprocs);
 	goto ext;
     }
-    /* Group info */
-    for (i = 0; i < nprocs; i++) {
-	grpidx[i] = i;
-    }
-    UTFCALL_CHECK(err1, rc, utf_bg_alloc(grpidx, nprocs, myrank,
+    UTFCALL_CHECK(err1, rc, utf_bg_alloc(rankset, nprocs, myrank,
 					 jtofu_query_max_proc_per_node(),
 					 UTF_BG_TOFU, lcl_bginfo));
     MPICALL_CHECK(err2, rc, PMPI_Alltoall(lcl_bginfo, sizeof(utf_bg_info_t), MPI_BYTE,        
-					  rmt_bginfo, sizeof(utf_bg_info_t), MPI_BYTE, MPI_COMM_WORLD));
-    free(lcl_bginfo);
-    mpi_bg_bginfo = rmt_bginfo; mpi_bg_nprocs = nprocs; mpi_bg_myrank = myrank;
+					  rmt_bginfo, sizeof(utf_bg_info_t), MPI_BYTE, comm));
     /* Communicator related initialization */
-    comgrpinfo_init(GROUPINFO_SIZE);
+#ifdef COMM_MPICHLEVEL_HANDLE
+    {
+	static utf_coll_group_t collgrp;
+	/* setting up VBG */
+	rc = utf_bg_init(rankset, nprocs, myrank, rmt_bginfo, &collgrp);
+	if (rc == UTF_SUCCESS) {
+	    cominfo_reg(comm, (void*) collgrp, rankset);
+	    if (comm == MPI_COMM_WORLD) {
+		mpi_bg_bginfo = rmt_bginfo; mpi_world_grp = collgrp;
+		mpi_bg_nprocs = nprocs; mpi_bg_myrank = myrank;
+	    } else {
+		free(rmt_bginfo);
+	    }
+	} else {
+	    if (mpi_bg_warning) {
+		errprintf(mpi_bg_myrank, "VBG-WARNING: No more VBG resources\n");
+	    }
+	    goto ext;
+	}
+    }
+#else
     {
 	utfslist_entry_t *slst;
 	struct grpinfo_ent	*grpent;
 
+	comgrpinfo_init(GROUPINFO_SIZE);
 	/* setting up for MPI_COMM_WORLD */
 	rc = utf_bg_init(grpidx, nprocs, myrank, mpi_bg_bginfo, &mpi_world_grp);
-	slst = utfslist_remove(&grpinfo_freelst);
-	grpent = container_of(slst, struct grpinfo_ent, slst);
-	grpent->grp = 0;
-	grpent->size = nprocs;
-	grpent->ranks = grpidx;
-	cominfo_reg(MPI_COMM_WORLD, grpent, (void*) mpi_world_grp);
+	if (rc == UTF_SUCCESS) {
+	    slst = utfslist_remove(&grpinfo_freelst);
+	    grpent = container_of(slst, struct grpinfo_ent, slst);
+	    grpent->grp = 0;
+	    grpent->size = nprocs;
+	    grpent->ranks = grpidx;
+	    cominfo_reg(MPI_COMM_WORLD, grpent, (void*) mpi_world_grp);
+	    if (comm == MPI_COMM_WORLD) {
+		mpi_bg_bginfo = rmt_bginfo; mpi_world_grp = collgrp;
+		mpi_bg_nprocs = nprocs; mpi_bg_myrank = myrank;
+	    } else {
+		free(rmt_bginfo);
+	    }
+	} else {
+	    if (mpi_bg_warning) {
+		errprintf(mpi_bg_myrank, "VBG-WARNING: No more VBG resources\n");
+	    }
+	    goto ext;
+	}
     }
+#endif /* COMM_MPICHLEVEL_HANDLE */
     mpi_bg_enabled = 1;
+    free(lcl_bginfo);
     return MPI_SUCCESS;
+
     /* error handling */
 err1:
-    errprintf(myrank, "error on utf_bg_aloc(), rc = %d\n", rc); goto ext;
+    errprintf(myrank, "error on utf_bg_alloc(), rc = %d\n", rc); goto ext;
 err2:
     errprintf(myrank, "error on PMI_Alltoall(), rc = %d\n", rc);
+    free(rmt_bginfo);
 ext:
-    free(grpidx); free(lcl_bginfo); free(rmt_bginfo);
-    return -1;
+    free(lcl_bginfo);
+    return rc;
 }
 
 int
 MPI_Init(int *argc, char ***argv)
 {
-    int	rc;
+    int	rc, i;
+    int	nprocs, myrank;
+    uint32_t *rankset;
 
     if (mpi_init_nfirst > 0)  {
 	/* Already called, and thus no need to initialize VBG */
@@ -211,47 +261,52 @@ MPI_Init(int *argc, char ***argv)
     }
     mpi_init_nfirst++;
     option_get();
-    MPICALL_CHECK(err, rc, PMPI_Init(argc, argv));
-    DBG {
-	myprintf(0, "%s: 1\n", __func__);
-    }
+    MPICALL_CHECK(err0, rc, PMPI_Init(argc, argv));
     if (mpi_bg_disable == 1) {
 	if (mpi_bg_confirm) {
 	    myprintf(0, "[%d] *** UTF VBG is disabled **\n", mpi_bg_myrank);
 	}
 	return 0;
     }
-    MPICALL_CHECK(err, rc, mpi_bg_init());
-    DBG {
-	myprintf(0, "[%d] %s: 2\n", mpi_bg_myrank, __func__);
+    cominfo_init(COMINFO_SIZE);
+    PMPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+    PMPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+    MALLOC_CHECK(err0, rankset, malloc(sizeof(uint32_t)*nprocs));
+    /* Rank info */
+    for (i = 0; i < nprocs; i++) {
+	rankset[i] = i;
     }
+    MPICALL_CHECK(err1, rc, mpi_bg_init(MPI_COMM_WORLD, nprocs, myrank, rankset));
     if (mpi_bg_iniwait > 0) {
 	usleep(mpi_bg_iniwait);
 	if (mpi_bg_confirm) {
 	    myprintf(0, "[%d] *** UTF VBG (%d usec waited)**\n", mpi_bg_myrank, mpi_bg_iniwait);
 	}
     }
-    MPICALL_CHECK(err, rc, PMPI_Barrier(MPI_COMM_WORLD));
+    MPICALL_CHECK(err1, rc, PMPI_Barrier(MPI_COMM_WORLD));
     if (mpi_bg_barrier) {
 	if (mpi_bg_confirm) {
 	    myprintf(0, "[%d] PASS\n", mpi_bg_myrank);
 	}
-	MPICALL_CHECK(err, rc, PMPI_Barrier(MPI_COMM_WORLD));
-    }
-    DBG {
-	myprintf(0, "[%d] %s: 3 return\n", mpi_bg_myrank, __func__);
+	MPICALL_CHECK(err1, rc, PMPI_Barrier(MPI_COMM_WORLD));
     }
     if (mpi_bg_confirm) {
 	myprintf(0, "[%d] *** UTF VBG is enabled **\n", mpi_bg_myrank);
     }
-err:
+    return rc;
+err0:
+    return -1;
+err1:
+    free(rankset);
     return rc;
 }
 
 int
 MPI_Init_thread(int *argc, char ***argv, int required, int *provided)
 {
-    int	rc;
+    int	rc, i;
+    int	nprocs, myrank;
+    uint32_t *rankset;
 
     if (mpi_init_nfirst > 0)  {
 	/* Already called, and thus no need to initialize VBG */
@@ -259,9 +314,41 @@ MPI_Init_thread(int *argc, char ***argv, int required, int *provided)
     }
     mpi_init_nfirst++;
     option_get();
-    MPICALL_CHECK(err, rc, PMPI_Init_thread(argc, argv, required, provided));
-    rc = mpi_bg_init();
-err:
+    MPICALL_CHECK(err0, rc, PMPI_Init_thread(argc, argv, required, provided));
+    if (mpi_bg_disable == 1) {
+	if (mpi_bg_confirm) {
+	    myprintf(0, "[%d] *** UTF VBG is disabled **\n", mpi_bg_myrank);
+	}
+	return 0;
+    }
+    PMPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+    PMPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+    MALLOC_CHECK(err0, rankset, malloc(sizeof(uint32_t)*nprocs));
+    /* Rank info */
+    for (i = 0; i < nprocs; i++) {
+	rankset[i] = i;
+    }
+    MPICALL_CHECK(err1, rc, mpi_bg_init(MPI_COMM_WORLD, nprocs, myrank, rankset));
+    if (mpi_bg_iniwait > 0) {
+	usleep(mpi_bg_iniwait);
+	if (mpi_bg_confirm) {
+	    myprintf(0, "[%d] *** UTF VBG (%d usec waited)**\n", mpi_bg_myrank, mpi_bg_iniwait);
+	}
+    }
+    MPICALL_CHECK(err1, rc, PMPI_Barrier(MPI_COMM_WORLD));
+    if (mpi_bg_barrier) {
+	if (mpi_bg_confirm) {
+	    myprintf(0, "[%d] PASS\n", mpi_bg_myrank);
+	}
+	MPICALL_CHECK(err1, rc, PMPI_Barrier(MPI_COMM_WORLD));
+    }
+    if (mpi_bg_confirm) {
+	myprintf(0, "[%d] *** UTF VBG is enabled **\n", mpi_bg_myrank);
+    }
+err0:
+    return rc;
+err1:
+    free(rankset);
     return rc;
 }
 
@@ -278,7 +365,7 @@ ext:
     rc = PMPI_Finalize();
     return rc;
 err1:
-    errprintf(myrank, "error on utf_bg_free %d\n", rc);
+    errprintf(mpi_bg_myrank, "error on utf_bg_free %d\n", rc);
     goto ext;
 }
 
@@ -289,15 +376,28 @@ MPI_Barrier(MPI_Comm comm)
     struct cominfo_ent *ent;
 
     IF_BG_DISABLE(PMPI_Barrier(comm));
-    COMINFO_GET_CHECK_ABORT(ent, comm);
+    COMINFO_GET_CHECK_DO(cont, ent, comm);
+    /* VBG resource has not been allocated */
+    rc = PMPI_Barrier(comm);
+    goto ext;
+cont:
+#ifdef COMM_MPICHLEVEL_HANDLE
+    if (ent->nprocs < UTF_BG_MIN_BARRIER_SIZE) {
+	MPICALL_CHECK_RETURN(rc, PMPI_Barrier(comm));
+    } else {
+	UTFCALL_CHECK(ext, rc,  utf_barrier(ent->bgrp));
+	mpi_bg_poll_barrier(ent->bgrp);
+    }
+#else
     assert(ent->grp != NULL);
     if (ent->grp->size < UTF_BG_MIN_BARRIER_SIZE) {
 	MPICALL_CHECK_RETURN(rc, PMPI_Barrier(comm));
     } else {
-	UTFCALL_CHECK(err, rc,  utf_barrier(ent->bg_grp));
-	mpi_bg_poll_barrier(ent->bg_grp);
+	UTFCALL_CHECK(ext, rc,  utf_barrier(ent->bgrp));
+	mpi_bg_poll_barrier(ent->bgrp);
     }
-err:
+#endif
+ext:
     return rc;
 }
 
@@ -377,19 +477,23 @@ MPI_Bcast(void *buf, int count, MPI_Datatype datatype, int root, MPI_Comm comm)
     size_t	tsize;
 
     IF_BG_DISABLE(PMPI_Bcast(buf, count, datatype, root, comm));
-    COMINFO_GET_CHECK_ABORT(ent, comm);
-
+    COMINFO_GET_CHECK_DO(cont, ent, comm);
+    /* VBG resource has not been allocated */
+    rc = PMPI_Bcast(buf, count, datatype, root, comm);
+    goto ext;
+cont:
     rc = MPI_Type_size(datatype, &siz);
     tsize = siz * count;
     /* UTF_BG_REDUCE_ULMT_ELMS_48 48 */
-    rc = utf_broadcast(ent->bg_grp, buf, tsize, NULL, root);
+    rc = utf_broadcast(ent->bgrp, buf, tsize, NULL, root);
     if (rc == UTF_SUCCESS) {
 	double	data;
-	mpi_bg_poll_reduce(ent->bg_grp, (void**)&data);
+	mpi_bg_poll_reduce(ent->bgrp, (void**)&data);
     } else if (rc == UTF_ERR_NOT_AVAILABLE) {
 	//myprintf(0, "[%d] %s: calling PMPI_Bcast\n", mpi_bg_myrank, __func__);
 	rc = PMPI_Bcast(buf, count, datatype, root, comm);
     }
+ext:
     return rc;
 }
 
@@ -404,12 +508,16 @@ MPI_Reduce(const void *sbuf, void *rbuf, int count, MPI_Datatype datatype,
 
     // myprintf(root, "[%d] %s: datatype=%x op=%x\n", mpi_bg_myrank, __func__, datatype, op);
     IF_BG_DISABLE(PMPI_Reduce(sbuf, rbuf, count, datatype, op, root, comm));
+    COMINFO_GET_CHECK_DO(cont, ent, comm);
+    /* VBG resource has not been allocated */
+    rc = PMPI_Reduce(sbuf, rbuf, count, datatype, op, root, comm);
+    goto ext;
+cont:
     utf_type = mpitype_to_utf(datatype);
     utf_op = mpiop_to_utf(op);
     if (utf_type != 0 && utf_op != 0) {
 	double	data;
-	COMINFO_GET_CHECK_ABORT(ent, comm);
-	rc = utf_reduce(ent->bg_grp, sbuf, count, NULL, rbuf, NULL, utf_type, utf_op, root);
+	rc = utf_reduce(ent->bgrp, sbuf, count, NULL, rbuf, NULL, utf_type, utf_op, root);
 	if (rc == UTF_ERR_NOT_AVAILABLE) {
 	    goto pmpi_call;
 	} else if (rc != UTF_SUCCESS) {
@@ -417,7 +525,7 @@ MPI_Reduce(const void *sbuf, void *rbuf, int count, MPI_Datatype datatype,
 	    goto pmpi_call;
 	}
 	/* progress */
-	mpi_bg_poll_reduce(ent->bg_grp, (void**)&data);
+	mpi_bg_poll_reduce(ent->bgrp, (void**)&data);
 	goto ext;
     } else {
     pmpi_call:
@@ -439,12 +547,15 @@ MPI_Allreduce(const void *sbuf, void *rbuf, int count, MPI_Datatype datatype,
 
     //myprintf(mpi_bg_myrank, "[%d] %s: datatype=%x op=%x\n", mpi_bg_myrank, __func__, datatype, op);
     IF_BG_DISABLE(PMPI_Allreduce(sbuf, rbuf, count, datatype, op, comm));
+    COMINFO_GET_CHECK_DO(cont, ent, comm);
+    rc = PMPI_Allreduce(sbuf, rbuf, count, datatype, op, comm);
+    goto ext;
+cont:
     utf_type = mpitype_to_utf(datatype);
     utf_op = mpiop_to_utf(op);
     if (utf_type != 0 && utf_op != 0) {
 	double	data;
-	COMINFO_GET_CHECK_ABORT(ent, comm);
-	rc = utf_allreduce(ent->bg_grp, sbuf, count, NULL, rbuf, NULL, utf_type, utf_op);
+	rc = utf_allreduce(ent->bgrp, sbuf, count, NULL, rbuf, NULL, utf_type, utf_op);
 	if (rc == UTF_ERR_NOT_AVAILABLE) {
 	    goto pmpi_call;
 	} else if (rc != UTF_SUCCESS) {
@@ -452,7 +563,7 @@ MPI_Allreduce(const void *sbuf, void *rbuf, int count, MPI_Datatype datatype,
 	    goto pmpi_call;
 	}
 	/* progress */
-	mpi_bg_poll_reduce(ent->bg_grp, (void**)&data);
+	mpi_bg_poll_reduce(ent->bgrp, (void**)&data);
 	goto ext;
     } else {
     pmpi_call:
@@ -463,6 +574,159 @@ ext:
     return rc;
 }
 
+#ifdef COMM_MPICHLEVEL_HANDLE
+/*
+ * process rank numbers are obrained from MPICH hook function for Tofu
+ */
+static int
+mpi_comm_bg_init(MPI_Comm comm)
+{
+    int	rc = 0;
+    int	nprocs, myrank;
+    uint32_t	*rankset, count;
+    
+    size_t	sz;
+    if (comm == MPI_COMM_NULL) {
+	/* nothing */ goto ext;
+    }
+    PMPI_Comm_size(comm, &nprocs);
+    PMPI_Comm_rank(comm, &myrank);
+    sz = sizeof(uint32_t)*nprocs;
+    MALLOC_CHECK(err0, rankset, malloc(sz));
+    /* Rank info */
+    count = nprocs;
+    MPICALL_CHECK(err0, rc, utf_MPI_hook(comm, rankset, &count));
+    if (count != nprocs) {
+	errprintf(mpi_bg_myrank, "%s: internal error count must be %d (nprocs), but %d\n", __func__, nprocs, count);
+	goto err0;
+    }
+#if 0
+    {	int i;
+	for (i = 0; i < nprocs; i++) {
+	    errprintf(mpi_bg_myrank, "%s: rankset[%d] = %d\n", __func__, i, rankset[i]);
+	}
+    }
+#endif
+    rc = mpi_bg_init(comm, nprocs, myrank, rankset);
+    if (rc != 0) {
+	/* Cannot allocate VBG resources */
+	free(rankset);
+    }
+ext:
+    return rc;
+err0:
+    return -1;
+}
+
+int
+MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
+{
+    int rc;
+    MPICALL_CHECK_RETURN(rc, PMPI_Comm_create(comm, group, newcomm));
+    rc = mpi_comm_bg_init(*newcomm);
+    return rc;
+}
+
+int
+MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
+{
+    int rc;
+
+    MPICALL_CHECK_RETURN(rc, PMPI_Comm_dup(comm, newcomm));
+    rc = mpi_comm_bg_init(*newcomm);
+    return rc;
+}
+
+int
+MPI_Comm_dup_with_info(MPI_Comm comm, MPI_Info info, MPI_Comm *newcomm)
+{
+    int rc;
+    MPICALL_CHECK_RETURN(rc, PMPI_Comm_dup_with_info(comm, info, newcomm));
+    rc = mpi_comm_bg_init(*newcomm);
+    return rc;
+}
+
+int
+MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
+{
+    int rc;
+    MPICALL_CHECK_RETURN(rc, PMPI_Comm_split(comm, color, key, newcomm));
+    rc = mpi_comm_bg_init(*newcomm);
+    return rc;
+}
+
+int
+MPI_Comm_free(MPI_Comm *comm)
+{
+    int rc;
+    MPICALL_CHECK_RETURN(rc, PMPI_Comm_free(comm));
+    cominfo_unreg(*comm);
+    return rc;
+}
+
+int
+MPI_Cart_create(MPI_Comm comm_old, int ndims, const int dims[], const int periods[],
+		int reorder, MPI_Comm *comm_cart)
+{
+    int rc;
+    MPICALL_CHECK_RETURN(rc, PMPI_Cart_create(comm_old, ndims, dims, periods, reorder, comm_cart));
+    rc = mpi_comm_bg_init(*comm_cart);
+    return rc;
+}
+
+int
+MPI_Graph_create(MPI_Comm comm_old, int nnodes, const int indx[], const int edges[],
+		 int reorder, MPI_Comm *comm_graph)
+{
+    int rc;
+    MPICALL_CHECK_RETURN(rc, PMPI_Graph_create(comm_old, nnodes, indx, edges, reorder, comm_graph));
+    rc = mpi_comm_bg_init(*comm_graph);
+    return rc;
+}
+
+int
+MPI_Cart_sub(MPI_Comm comm, const int remain_dims[], MPI_Comm *newcomm)
+{
+    int rc;
+    MPICALL_CHECK_RETURN(rc, PMPI_Cart_sub(comm, remain_dims, newcomm));
+    rc = mpi_comm_bg_init(*newcomm);
+    return rc;
+}
+
+int
+MPI_Dist_graph_create_adjacent(MPI_Comm comm_old, int indegree, const int sources[],
+			       const int sourceweights[], int outdegree,
+			       const int destinations[], const int destweights[],
+			       MPI_Info info, int reorder, MPI_Comm *comm_dist_graph)
+{
+    int rc;
+    MPICALL_CHECK_RETURN(rc, PMPI_Dist_graph_create_adjacent(comm_old, indegree, sources,
+			sourceweights, outdegree, destinations, destweights,
+			info, reorder, comm_dist_graph));
+    rc = mpi_comm_bg_init(*comm_dist_graph);
+    return rc;
+}
+
+int
+MPI_Dist_graph_create(MPI_Comm comm_old, int n, const int sources[], const int degrees[],
+		      const int destinations[], const int weights[], MPI_Info info,
+		      int reorder, MPI_Comm *comm_dist_graph)
+{
+    int rc;
+    MPICALL_CHECK_RETURN(rc, PMPI_Dist_graph_create(comm_old, n, sources, degrees,
+			       destinations, weights, info,
+					     reorder, comm_dist_graph));
+    rc = mpi_comm_bg_init(*comm_dist_graph);
+    return rc;
+}
+
+#if 0
+MPI_Comm_idup
+#endif
+#else
+/*
+ * User-level handling process rank numbers in communicator
+ */
 int
 MPI_Comm_group(MPI_Comm comm, MPI_Group *group)
 {
@@ -696,7 +960,7 @@ MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
 	assert(coment != NULL);	assert(grpent != NULL);
 	newgrpent = grpinfo_dup(coment->grp, grpent->grp);
 	/* We must check how we copy or share ? */
-	cominfo_reg(*newcomm, newgrpent, (void*) coment->bg_grp);
+	cominfo_reg(*newcomm, newgrpent, (void*) coment->bgrp);
 	/* no need barrier synchronization in this case ? */
     }
 ext:
@@ -859,6 +1123,7 @@ MPI_Comm_idup(MPI_Comm comm, MPI_Comm *newcomm, MPI_Request *request)
     NOTYET_SUPPORT;
     return rc;
 }
+#endif /* !COMM_MPICHLEVEL_HANDLE */
 
 #ifdef COMMGROUP_TEST
 int

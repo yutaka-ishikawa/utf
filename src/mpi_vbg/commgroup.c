@@ -151,7 +151,7 @@ cominfo_reg(MPI_Comm comm, struct grpinfo_ent *grpent, void *bg_grp)
     coment = container_of(slst, struct cominfo_ent, slst);
     coment->comm = comm;
     coment->grp = grpent;
-    coment->bg_grp = bg_grp;
+    coment->bgrp = bg_grp;
     utfslist_append(&cominfo_lst, &coment->slst);
     return coment;
 }

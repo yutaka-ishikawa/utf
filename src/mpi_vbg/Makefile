@@ -21,7 +21,7 @@ CFLAGS += -DUTF_DEBUG
 TARGET   := $(BUILDDIR)/libmpi_vbg.so
 
 PROGS = mpi_vbg.so
-SRCS     := mpi_utf.c commgroup.c
+SRCS     := mpi_utf.c commgroup.c commaddr.c
 OBJS     := mpi_utf.o
 DEPS	 := mpi_utf.d
 
