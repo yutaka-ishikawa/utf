@@ -335,7 +335,18 @@ utf_remote_swap(utofu_vcq_hdl_t vcqh,
 		utofu_vcq_id_t rvcqid, unsigned long flgs, uint64_t val,
 		utofu_stadd_t rstadd, uint64_t edata, void *cbdata)
 {
-    utf_printf("%s: NOT YET\n", __func__); abort();
+    flgs |= 0    /*UTOFU_ONESIDED_FLAG_TCQ_NOTICE*/
+	| UTOFU_ONESIDED_FLAG_LOCAL_MRQ_NOTICE
+/*	| UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE 2021/01/23 */
+	| UTOFU_ONESIDED_FLAG_STRONG_ORDER;
+	    /* | UTOFU_MRQ_TYPE_LCL_ARMW; remote notification */
+    DEBUG(DLEVEL_PROTOCOL) {
+	utf_printf("remote_swap: val(%ld) rvcqid(%lx)\n", val, rvcqid);
+    }
+    UTOFU_CALL(1, utofu_armw8,
+	       vcqh, rvcqid,
+	       UTOFU_ARMW_OP_SWAP,
+	       val, rstadd, edata, flgs, cbdata);
     return NULL;
 }
 
@@ -345,7 +356,17 @@ utf_remote_cswap(utofu_vcq_hdl_t vcqh,
 		 uint64_t old_val, uint64_t new_val,
 		 utofu_stadd_t rstadd, uint64_t edata, void *cbdata)
 {
-    utf_printf("%s: NOT YET\n", __func__); abort();
+    flgs |= 0    /*UTOFU_ONESIDED_FLAG_TCQ_NOTICE*/
+	| UTOFU_ONESIDED_FLAG_LOCAL_MRQ_NOTICE
+/*	| UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE 2021/01/23 */
+	| UTOFU_ONESIDED_FLAG_STRONG_ORDER;
+	    /* | UTOFU_MRQ_TYPE_LCL_ARMW; remote notification */
+    DEBUG(DLEVEL_PROTOCOL) {
+	utf_printf("remote_cswap: old_val(%ld) new_val(%ld) rvcqid(%lx)\n", old_val, new_val, rvcqid);
+    }
+    UTOFU_CALL(1, utofu_cswap8,
+	       vcqh, rvcqid,
+	       old_val, new_val, rstadd, edata, flgs, cbdata);
     return NULL;
 }
 

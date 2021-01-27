@@ -14,6 +14,7 @@ extern int	utf_vcqh(utofu_vcq_hdl_t *vp);
 extern void	utf_req_wipe();
 extern void	utf_fence();
 extern void	utf_setmsgmode(int);
+extern void	utf_settransmode(int);
 extern void	utf_setinjcnt(int);
 extern void	utf_setasendcnt(int);
 extern void	utf_setarmacnt(int);

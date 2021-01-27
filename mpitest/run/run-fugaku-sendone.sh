@@ -23,5 +23,6 @@ export MPICH_TOFU_SHOW_PARAMS=1
 #export FI_LOG_PROV=tofu
 #export FI_LOG_LEVEL=Debug
 
+export UTF_TRANSMODE=1	# AGGRESSIVE
 mpich_exec -n 2 $MPIOPT ../bin/sendone
 exit

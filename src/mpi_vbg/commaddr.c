@@ -16,8 +16,10 @@ struct cominfo_ent {
     MPI_Comm		comm;
     int			nprocs;
     int			myrank;
+    int			refcnt;
     uint32_t		*rankset;
     void		*bgrp;
+    struct cominfo_ent	*parent;
 };
 static struct utfslist		cominfo_lst;
 static struct utfslist		cominfo_freelst;
@@ -43,7 +45,7 @@ cominfo_init(int entsize)
 }
 
 static struct cominfo_ent *
-cominfo_reg(MPI_Comm comm, void *bg_grp, uint32_t *rankset)
+cominfo_reg(MPI_Comm comm, void *bg_grp, uint32_t *rankset, struct cominfo_ent *parent)
 {
     utfslist_entry_t *slst;
     struct cominfo_ent	*coment;
@@ -59,6 +61,11 @@ cominfo_reg(MPI_Comm comm, void *bg_grp, uint32_t *rankset)
     MPI_Comm_rank(comm, &coment->myrank);
     coment->rankset = rankset;
     coment->bgrp = bg_grp;
+    coment->parent = parent;
+    coment->refcnt = 1;
+    if (parent) {
+	parent->refcnt++;
+    }
     utfslist_append(&cominfo_lst, &coment->slst);
     return coment;
 }
@@ -76,6 +83,13 @@ cominfo_unreg(MPI_Comm comm)
     /* not found */
     return -1;
 find:
+    --ent->refcnt;
+    if (ent->refcnt > 0) {
+	goto ext;
+    }
+    if (ent->parent) {
+	cominfo_unreg(ent->parent->comm);
+    }
     free(ent->rankset);
     free(ent->bgrp);
     ent->comm = 0;
@@ -83,6 +97,7 @@ find:
     ent->bgrp = 0;
     utfslist_remove2(&cominfo_lst, cur, prev);
     utfslist_insert(&cominfo_freelst, cur);
+ext:
     return 0;
 }
 

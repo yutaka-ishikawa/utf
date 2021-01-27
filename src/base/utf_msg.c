@@ -138,6 +138,7 @@ utf_setmsgmode(int mode)
     utf_mode_msg = mode;
 }
 
+
 void
 utf_setinjcnt(int cnt)
 {
@@ -403,6 +404,15 @@ utf_req_wipe()
 	utf_waitcmpl(reqid);
 	utf_printf("\tDone\n");
     }
+    /* checking sender control */
+retry:
+    for (i = 0; i < SND_CNTRL_MAX; i++) {
+	if (utf_scntr[i].state != S_NONE && utf_scntr[i].state != S_FREE) {
+	    // utf_printf("%s: utf_scntr[%d].state (%d)\n", __func__, i, utf_scntr[i].state);
+	    utf_progress();
+	    goto retry;
+	}
+    }
 }
 
 void
@@ -411,6 +421,7 @@ utf_infoshow(int lvl)
     if(utf_info.myrank != 0) return;
     utf_printf("UTF_DEBUG: 0x%x\n", utf_dflag);
     utf_printf("MSG MODE: %d (0:eager 1:rendezvous)\n", utf_mode_msg);
+    utf_printf("TRANS MODE: %d (0:chain 1:aggressive)\n", utf_mode_trans);
     utf_printf("MSG_PKTSZ: %d\n", MSG_PKTSZ);
     utf_printf("MSG_EAGER_PIGBACK_SZ: %ld\n", MSG_EAGER_PIGBACK_SZ);
     utf_printf("MSG_EAGER_SIZE: %ld\n", MSG_EAGER_SIZE);

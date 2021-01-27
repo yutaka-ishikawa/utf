@@ -121,13 +121,13 @@ struct utf_egr_sbuf {
 
 union utf_chain_addr {
     struct {
-	uint64_t rank:23,	/* = 8,388,608 > 7,962,624 */
-		 sidx:23,	/* = 8,388,608 > 7,962,624 */
-		 recvidx:18;	/* = 262,144 */
+	uint64_t rank:24,	/* = 16,777,216 > 7,962,624 > 663,552 */
+		 sidx:8,	/* */
+		 recvidx:32;	/* */
     };
     uint64_t	      rank_sidx;
 };
-#define RANK_ALL1	0x7fffff
+#define RANK_ALL1	0xffffff /* 24 bit */
 #define IS_CHAIN_EMPTY(val)    ((val).rank == RANK_ALL1)
 
 union utf_chain_rdy {
@@ -287,7 +287,10 @@ enum {
     S_RDVDONE		= 9,
     S_DONE		= 10,
     S_WAIT_BUFREADY	= 11,
-    S_WAIT_EGRSEND	= 12
+    S_WAIT_EGRSEND	= 12,
+    S_WAIT_RESETCHN	= 13,
+    S_WAIT_NEXTUPDT	= 14,
+    S_WAIT_BUFREADY_CHND= 15,
 };
 
 enum {
@@ -305,12 +308,14 @@ enum {
 #define EVT_START	0
 #define EVT_CONT	1
 #define EVT_LCL		2
-#define EVT_RMT_RGETDON	3	/* remote armw operation */
-#define EVT_RMT_RECVRST	4	/* remote armw operation */
-#define EVT_RMT_GET	5	/* remote get operation */
-#define EVT_RMT_CHNRDY	6	/* ready in request chain mode */
-#define EVT_RMT_CHNUPDT	7	/* next chain is set by remote */
-#define EVT_END		8
+#define EVT_LCL_CHNNXT	3
+#define EVT_LCL_EVT_ARM	4
+#define EVT_RMT_RGETDON	5	/* remote armw operation */
+#define EVT_RMT_RECVRST	6	/* remote armw operation */
+#define EVT_RMT_GET	7	/* remote get operation */
+#define EVT_RMT_CHNRDY	8	/* ready in request chain mode */
+#define EVT_RMT_CHNUPDT	9	/* next chain is set by remote */
+#define EVT_END		10
 
 struct utf_send_msginfo { /* msg info */
     uint32_t		rgetdone;
@@ -358,7 +363,11 @@ struct utf_send_cntr {	/* 500 Byte */
 			rgetwait:2,	/* */
 			state: 5,	/* upto 31 states */
 			ostate: 5,	/* upto 31 states */
-			mypos: 18;	/* */
+			smode: 1,       /* MSGMODE_CHND or MSGMODE_AGGR 2021/01/23 */
+			evtupdt: 1,     /* receive event update  2021/01/23 */
+			expevtupdt: 1,  /* expect receiving RMT_CHNUPDT event  2021/01/23 */
+			chn_informed:1, /* chain_inform_ready issued  2021/01/23 */
+			mypos: 14;	/* */
     uint32_t		rcvreset: 1,	/* position depends */
 			recvidx: 31;	/*  +4 =  8 Byte */
     uint32_t		rmareset: 1,	/* position depends. ready for reseting */
@@ -380,10 +389,25 @@ struct utf_send_cntr {	/* 500 Byte */
     utfslist_entry_t	slst;		/* 482 = + 8 Byte for free list */
 					/* 490  */
     /* for debugging */
-    uint32_t	dbg_idx;
-    uint8_t	dbg_ssize[COM_RBUF_SIZE];
+    uint32_t		waitfor;	/* wait-for chn_ready from rank */
+    //uint32_t	dbg_idx;
+    //uint8_t	dbg_ssize[COM_RBUF_SIZE];
 };
 #pragma pack()
+
+/*****************************************************
+ * CHAIN MODE
+ *****************************************************/
+#define EGRCHAIN_RECV_CHNTAIL (utf_egr_rbuf_stadd + (uint64_t) &((struct utf_egr_rbuf*)0)->head.chntail)
+#define EGRCHAIN_RECV_CNTR (utf_egr_rbuf_stadd + (uint64_t) &((struct utf_egr_rbuf*)0)->head.cntr)
+#define SCNTR_CHAIN_CNTR(pos)					\
+    (utf_sndctr_stadd + sizeof(struct utf_send_cntr)*(pos))
+#define SCNTR_CHN_NEXT_OFFST		0x10	/* 16B */
+#define SCNTR_CHN_READY_OFFST		0x18	/* 24B */
+#define SCNTR_CHAIN_NXT(pos)					\
+    (SCNTR_CHAIN_CNTR(pos) + SCNTR_CHN_NEXT_OFFST)
+#define SCNTR_CHAIN_READY(pos)					\
+    (SCNTR_CHAIN_CNTR(pos) + SCNTR_CHN_READY_OFFST)
 
 /*****************************************************
  *	RMA Completion

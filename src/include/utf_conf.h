@@ -16,20 +16,21 @@
 #define DLEVEL_UTOFU		0x2
 #define DLEVEL_PROTOCOL		0x4
 #define DLEVEL_PROTO_EAGER	0x8
-#define DLEVEL_PROTO_RENDEZOUS	0x10
-#define DLEVEL_PROTO_RMA	0x20	/* 32 */
-#define DLEVEL_PROTO_VBG	0x40	/* 64 */
-#define DLEVEL_PROTO_AM		0x80	/* 128 */
-#define DLEVEL_ADHOC		0x100	/* 128 */
-#define DLEVEL_ERR		0x200
-#define DLEVEL_INIFIN		0x400
-#define DLEVEL_MEMORY		0x800
-#define DLEVEL_COMM		0x1000
-#define DLEVEL_WARN		0x2000
-#define DLEVEL_STATISTICS	0x4000
-#define DLEVEL_FI		0x8000
-#define DLEVEL_INI		0x10000
-#define DLEVEL_ALL		0xffff
+#define DLEVEL_PROTO_RENDEZOUS	0x000010
+#define DLEVEL_PROTO_RMA	0x000020	/* 32 */
+#define DLEVEL_PROTO_VBG	0x000040	/* 64 */
+#define DLEVEL_PROTO_AM		0x000080	/* 128 */
+#define DLEVEL_ADHOC		0x000100	/* 128 */
+#define DLEVEL_ERR		0x000200
+#define DLEVEL_INIFIN		0x000400
+#define DLEVEL_MEMORY		0x000800
+#define DLEVEL_COMM		0x001000
+#define DLEVEL_WARN		0x002000
+#define DLEVEL_STATISTICS	0x004000
+#define DLEVEL_FI		0x008000
+#define DLEVEL_INI		0x010000
+#define DLEVEL_CHND		0x020000
+#define DLEVEL_ALL		0x0fffff
 #define ILEVEL_MSG		0x01
 #define ILEVEL_STAG		0x02
 
@@ -45,6 +46,7 @@
 #define SND_CNTRL_MAX	128	/* shorter than 2^7 (sidx) */
 #define RCV_CNTRL_MAX	128	/* shorter than 2^7 (sidx) */
 #define RCV_CNTRL_INIT	(RCV_CNTRL_MAX - 2) /* reserved for the chain mode */
+#define EGRCHAIN_RECVPOS (RCV_CNTRL_MAX - 1)
 #define COM_PEERS	128	/* sidx, must be smaller than 2^8 (edata) */
 #define COM_RBUF_SIZE	1024	/* # of packet for receive buffer per process */
 //#define COM_RBUF_SIZE	8*1024	/* # of packet for receive buffer per process */

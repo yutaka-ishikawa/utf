@@ -41,7 +41,7 @@ utf_progress()
     }
 #endif /* UTF_POLLING_WAIT */
     /* here is peeking memory */
-    for (j = utf_egr_rbuf.head.cntr + 1; j <= RCV_CNTRL_INIT/*RCV_CNTRL_MAX*/ ; j++) {
+    for (j = utf_egr_rbuf.head.cntr + 1; j <= EGRCHAIN_RECVPOS; j++) {
 	struct utf_packet	*msgbase = utf_recvbuf_get(j);
 	struct utf_recv_cntr	*urp = &utf_rcntr[j];
 	volatile struct utf_packet	*pktp;

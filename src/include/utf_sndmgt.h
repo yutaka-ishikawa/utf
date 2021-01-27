@@ -59,6 +59,12 @@ utf_sndmgt_get_smode(int pos, utf_sndmgt_t *bp)
 }
 
 static inline int
+utf_sndmgt_set_smode(int pos, utf_sndmgt_t *bp, unsigned mode)
+{
+    return bp[pos].mode = mode;
+}
+
+static inline int
 sndmg_update_chainmode(int pos, utf_sndmgt_t *bp)
 {
     bp[pos].count++;

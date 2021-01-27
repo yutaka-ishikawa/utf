@@ -45,8 +45,9 @@ static char *notice_symbol[] =
 
 static char *sstate_symbol[] =
 {	"S_FREE", "S_NONE", "S_REQ_ROOM", "S_HAS_ROOM",
-	"S_DO_EGR", "S_DO_EGR_WAITCMPL", "S_DONE_EGR",
-	"S_REQ_RDVR", "S_RDVDON", "S_DONE", "S_WAIT_BUFREADY" };
+	"S_DO_EGR", "S_DO_EGR_WAITCMPL", "S_DONE_EGR", "S_REQ_RDVR",
+	"S_DO_RDVR", "S_RDVDONE", "S_DONE", "S_WAIT_BUFREADY",
+	"S_WAIT_EGRSEND", "S_WAIT_RESETCHN", "S_WAIT_NEXTUPDT", "S_WAIT_BUFREADY_CHND" };
 
 static char *str_evnt[EVT_END] = {
     "EVT_START", "EVT_CONT", "EVT_LCL", "EVT_LCL_CHNNXT", "EVT_LCL_EVT_ARM",
@@ -156,12 +157,16 @@ chain_inform_ready(struct utf_send_cntr *usp)
     remote_piggysend2(utf_info.vcqh, rvcqid, &ready,
 		      SCNTR_CHAIN_READY(usp->chn_next.sidx),
 		      sizeof(uint64_t),  usp->chn_next.sidx, flgs, NULL);
+    DEBUG(DLEVEL_CHND) {
+	utf_printf("%s:[CHND] INFORM-TO rank(%d)\n", __func__, usp->chn_next.rank);
+    }
 }
 
 void
 utf_settransmode(int mode)
 {
     int	dst;
+    utf_mode_trans = mode;
     for (dst = 0; dst < PROC_MAX;  dst++) {
 	utf_sndmgt_set_smode(dst, utf_egrmgt, mode);
     }
@@ -170,7 +175,7 @@ utf_settransmode(int mode)
 static inline void
 chain_set_recvinfo(struct utf_send_cntr *usp, int recvidx)
 {
-    utf_sndmgt_set_sndok(usp->dst, utf_egrmgt);
+    // utf_sndmgt_set_sndok(usp->dst, utf_egrmgt);
     utf_sndmgt_set_index(usp->dst, utf_egrmgt, EGRCHAIN_RECVPOS);
     usp->recvidx = recvidx;
 }
@@ -185,6 +190,7 @@ static inline int
 chain_prog_room(struct utf_send_cntr *usp, uint64_t rslt)
 {
     int	rc;
+
     if (IS_CHAIN_EMPTY((union utf_chain_addr)rslt)) { /* success */
 	chain_set_recvinfo(usp, ((union utf_chain_addr)rslt).recvidx);
 	usp->state = S_HAS_ROOM;
@@ -209,6 +215,10 @@ chain_prog_room(struct utf_send_cntr *usp, uint64_t rslt)
 	remote_piggysend2(utf_info.vcqh, rvcqid, &data, SCNTR_CHAIN_NXT(last_rank.sidx),
 			  sizeof(uint64_t), last_rank.sidx, flags, NULL);
 	rc = PROG_CHAIN_NONE;
+	DEBUG(DLEVEL_CHND) {
+	    utf_printf("%s:[CHND] WAIT-FOR rank(%d)\n", __func__, last_rank.rank);
+	}
+	usp->waitfor = last_rank.rank;
     }
     return rc;
 }
@@ -223,8 +233,8 @@ static inline int
 chain_check_resetchain(struct utf_send_cntr *usp, uint64_t rslt)
 {
     int	rc;
-    if (IS_CHAIN_EMPTY((union utf_chain_addr)rslt)) {
-	/* receiver's chain-tail field is empty */
+    if (((union utf_chain_addr)rslt).rank == utf_info.myrank) {
+	/* receiver's chain-tail field is the same of my rank */
 	rc = PROG_CHAIN_NONE;
     } else {
 	/* This happens when this rank, the last rank of this chain,
@@ -252,22 +262,29 @@ chain_progress(struct utf_send_cntr *usp, uint64_t rslt, int evtype)
 {
     int	rc = PROG_CHAIN_NONE;
     switch (evtype) {
-    case EVT_LCL_CHNNXT: /* called from sendengine at the end of send */
+    case EVT_LCL_CHNNXT: /* called from sendengine at the end of send (S_NODE state)
+			  * or mrqprogress (in case of S_WAIT_BUFREADY_CHND state) */
 	/* (usp->state == S_NONE) and (usp->inflight == 0) */
-	if (IS_CHAIN_EMPTY(usp->chn_next)) {
-	    /* I'm the last entry at this moment, reset the remote entry */
-	    chain_reset_recv_chntail(usp);
-	    usp->state = S_WAIT_RESETCHN;
-	    /* EVT_LCL_ARM will be generated in the sendengine */
-	} else { /* usp->chn_next has been filled in */
-	    if (usp->evtupdt) {
-		/* inform ready to the next rank */
-		chain_inform_ready(usp);
-		/* no event will be generated */
-		/* The usp entry can be freed now */
-	    } else {
-		usp->state = S_WAIT_NEXTUPDT;
-		/* wait for EVT_RMT_CHNUPDT */
+	usp->ostate = usp->state;
+	if (usp->inflight > 0) {
+	    usp->state = S_HAS_ROOM;
+	    rc = PROG_CHAIN_SENDENGINE;
+	} else {
+	    if (IS_CHAIN_EMPTY(usp->chn_next)) {
+		/* I'm the last entry at this moment, reset the remote entry */
+		chain_reset_recv_chntail(usp);
+		usp->state = S_WAIT_RESETCHN;
+		/* EVT_LCL_ARM will be generated in the sendengine */
+	    } else { /* usp->chn_next has been filled in */
+		if (usp->evtupdt) {
+		    /* inform ready to the next rank */
+		    chain_inform_ready(usp);
+		    /* no event will be generated */
+		    usp->state = S_NONE;
+		} else {
+		    usp->state = S_WAIT_NEXTUPDT;
+		    /* wait for EVT_RMT_CHNUPDT */
+		}
 	    }
 	}
 	/* return to the sendengine */
@@ -280,25 +297,34 @@ chain_progress(struct utf_send_cntr *usp, uint64_t rslt, int evtype)
 	} else if (usp->state == S_WAIT_RESETCHN) {
 	    /* result of utf_reset_recv_chntail() */
 	    rc = chain_check_resetchain(usp, rslt);
+	    // utf_printf("%s: rc(%d) from chain_check_resetchain\n", __func__, rc);
 	    switch (rc) {
 	    case PROG_CHAIN_INFORM:
 		/* inform ready to the next rank */
 		chain_inform_ready(usp);
 		/* Falls through. */
 	    case PROG_CHAIN_NONE:
+		usp->ostate = usp->state;
 		usp->state = S_NONE;
 		if (usp->inflight > 0) {
+		    /* the right of send has been released by
+		     * resetchain, so send_start again  */
 		    rc = PROG_CHAIN_SENDSTART;
 		}
 		break;
 	    case PROG_CHAIN_WAIT_NEXTUPDT:
+		usp->ostate = usp->state;
 		usp->state = S_WAIT_NEXTUPDT;
 		rc = PROG_CHAIN_NONE;
 		break;
 	    default: /* never comes */
+		utf_printf("%s: EVT_LCL_EVT_ARM: rc %d\n", __func__, rc);
 		INTERNAL_ERROR;
 	    }
 	} else {
+	    /* 2021/01/26 state == DONE_EGR (6) */
+	    utf_printf("%s: EVT_LCL_EVT_ARM: state = %d\n", __func__, usp->state);
+	    utf_sendctr_show();
 	    INTERNAL_ERROR;
 	}
 	break;
@@ -314,6 +340,7 @@ chain_progress(struct utf_send_cntr *usp, uint64_t rslt, int evtype)
 	if (usp->state == S_WAIT_NEXTUPDT) {
 	    /* inform ready to the next rank */
 	    chain_inform_ready(usp);
+	    usp->ostate = usp->state;
 	    usp->state = S_NONE;
 	    if (usp->inflight > 0) {
 		rc = PROG_CHAIN_SENDSTART;
@@ -535,8 +562,8 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 	utofu_stadd_t	recvstadd;
 
 	recvstadd = calc_recvstadd(usp, ridx);
-	DEBUG(DLEVEL_PROTOCOL) {
-	    utf_printf("%s: Going to send rvcqid(%lx) recvidx(%ld) recvstadd(%lx) "
+	DEBUG(DLEVEL_PROTOCOL|DLEVEL_CHND) {
+	    utf_printf("%s: [CHND] Going to send rvcqid(%lx) recvidx(%ld) recvstadd(%lx) "
 		     "type(%d) sidx(%d) ridx(%d) MSGHDR(%s)\n",
 		       __func__, rvcqid, usp->recvidx, recvstadd, minfo->cntrtype, usp->mypos, ridx,
 		       pkt2string(pkt, NULL, 0));
@@ -707,6 +734,7 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
     next_entry:
 	minfo->mreq = NULL;
 	minfo->cntrtype = SNDCNTR_NONE;
+	usp->ostate = usp->state;
 	usp->state = S_NONE;
 	{ /* checking the next entry */
 	    int	idx = (usp->micur + 1)%COM_SCNTR_MINF_SZ;
@@ -729,10 +757,22 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 	}
 	if (usp->state == S_NONE && usp->smode == TRANSMODE_CHND) {
 	    int	rc;
-	    /* state will be changed to S_WAIT_RESETCHN or not */
-	    rc = chain_progress(usp, 0, EVT_LCL_CHNNXT);
-	    if (rc != PROG_CHAIN_NONE) {
-		INTERNAL_ERROR;
+	    if (IS_COMRBUF_FULL(usp)) {
+		/* MUST WAIT for reseting by the receiver */
+		/* In case of TRANSMODE_AGGRESSIVE, utf_scntr_free takes care of
+		 * this condition */
+		usp->ostate = S_NONE;
+		usp->state = S_WAIT_BUFREADY_CHND;
+	    } else {
+		/* state will be changed to S_WAIT_RESETCHN, S_WAIT_NEXTUPDT, or not */
+		rc = chain_progress(usp, 0, EVT_LCL_CHNNXT);
+		if (rc != PROG_CHAIN_NONE) {
+		    INTERNAL_ERROR;
+		}
+		if (usp->inflight > 0) {
+		    utf_printf("%s: usp->state(%d) usp->inflight(%d)\n", __func__, usp->state, usp->inflight);
+		    INTERNAL_ERROR;
+		}
 	    }
 	}
 	break;
@@ -763,6 +803,9 @@ utf_send_start(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo)
 {
     struct utf_send_cntr *newusp;
     int	dst = usp->dst;
+    DEBUG(DLEVEL_CHND) {
+	utf_printf("%s: [CHND] DST(%d)\n", __func__, usp->dst);
+    }
     if (utf_sndmgt_isset_sndok(dst, utf_egrmgt) != 0) {
 	DEBUG(DLEVEL_PROTOCOL) {
 	    utf_printf("%s: Has a received room in rank %d: send control(%d)\n",
@@ -786,15 +829,18 @@ utf_send_start(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo)
 	    uint64_t	val = make_chain_addr(utf_info.myrank, usp->mypos, 0);
 	    /* initialize */
 	    usp->chn_next.rank_sidx = make_chain_addr(-1, usp->mypos, 0);
+	    usp->chn_ready.recvidx = 0xffffffff;
+	    usp->evtupdt = 0;
+	    usp->chn_informed = 0;
 	    utf_remote_swap(utf_info.vcqh, usp->rvcqid, flgs,
 			    val, EGRCHAIN_RECV_CHNTAIL, usp->mypos, usp);
 	} else {
 	    newusp = utf_remote_add(utf_info.vcqh, usp->rvcqid,
 				    UTOFU_ONESIDED_FLAG_LOCAL_MRQ_NOTICE,
 				    (uint64_t) -1, utf_egr_rbuf_stadd, usp->mypos, 0);
+	    utf_sndmgt_set_examed(dst, utf_egrmgt);
 	}
 	usp->state = S_REQ_ROOM;
-	utf_sndmgt_set_examed(dst, utf_egrmgt);
 	return 0;
     } else {
 	utf_printf("%s: UTF Internal ERROR!!!!\n", __func__);
@@ -1105,6 +1151,7 @@ utf_mrqprogress()
 	minfo = &usp->msginfo[usp->micur];
 	if (usp->smode == TRANSMODE_CHND) {
 	    /* EVT_RMT_CHUNUPD or EVT_RMT_CHNRDY */
+	    int	ostate = usp->state;
 	    if (is_scntr(mrq_notice.rmt_value, &evtype) == 0) {
 		INTERNAL_ERROR;
 	    }
@@ -1120,8 +1167,22 @@ utf_mrqprogress()
 	    } else if (rc == PROG_CHAIN_SENDENGINE) {
 		/* S_REQ_ROOM --> S_HAS_ROOM */
 		utf_sendengine(usp, minfo, 0, EVT_LCL);
+	    } else {
+		/*
+		 * S_WAIT_NEXTUPDT --> S_NONE triggered by EVT_RMT_CHNUPDT(9)
+		 * 
+		 */
+		/* must be removed 2021/01/27 */
+		if (!(usp->state == S_REQ_ROOM && usp->inflight > 0)
+		    && !(usp->state == S_WAIT_RESETCHN && evtype == EVT_RMT_CHNUPDT)
+		    && !(usp->state == S_DONE_EGR && evtype == EVT_RMT_CHNUPDT)
+		    && !(ostate == S_WAIT_NEXTUPDT && evtype == EVT_RMT_CHNUPDT)) {
+		    utf_printf("%s: RMT_PUT evtype(%d) rc(%d) usp->state(%d) usp->inflight(%d)\n", __func__, evtype, rc, usp->state, usp->inflight);
+		    INTERNAL_ERROR;
+		}
 	    }
 	} else { /* never comes */
+	    utf_printf("%s: RMT_PUT usp->state(%d) usp->inflight(%d)\n", __func__, usp->state, usp->inflight);
 	    INTERNAL_ERROR;
 	}
 #if 0
@@ -1186,8 +1247,24 @@ utf_mrqprogress()
 		     __func__, mrq_notice.edata, mrq_notice.rmt_value, usp);
 	}
 	if (usp->smode == TRANSMODE_CHND) {
+	    int rc, ostate = usp->state;
 	    /* utf_send_start() or utf_reset_recv_chntail() */
-	    chain_progress(usp, mrq_notice.rmt_value, EVT_LCL_EVT_ARM);
+	    rc = chain_progress(usp, mrq_notice.rmt_value, EVT_LCL_EVT_ARM);
+	    if (rc == PROG_CHAIN_SENDENGINE) {
+		/* S_REQ_ROOM --> S_HAS_ROOM */
+		utf_sendengine(usp, minfo, 0, EVT_LCL);
+	    } else if (rc == PROG_CHAIN_SENDSTART) {
+		utf_send_start(usp, minfo);
+	    } else {
+		/* keeping the state S_REQ_ROOM */
+		if (!(usp->state == S_REQ_ROOM && usp->inflight > 0)
+		    && !(usp->state == S_WAIT_NEXTUPDT && ostate == S_WAIT_RESETCHN)
+		    && !(usp->state == S_NONE && ostate == S_WAIT_RESETCHN)) {
+		    /* S_WAIT_NEXTUPDT */
+		    utf_printf("%s: LCL_ARMW usp->state(%d) ostate(%d) usp->inflight(%d)\n", __func__, usp->state, ostate, usp->inflight);
+		    INTERNAL_ERROR;
+		}
+	    }
 	} else {
 	    /* utf_send_start() */
 	    utf_sendengine(usp, minfo, mrq_notice.rmt_value, EVT_LCL);
@@ -1197,9 +1274,10 @@ utf_mrqprogress()
     case UTOFU_MRQ_TYPE_RMT_ARMW:/* 5 */
     {
 	int	evtype = -1;
-	/* Sender side:
-	 * rmt_value is the stadd address changed by the remote
-	 * edata represents the sender's index of sender engine */
+	/* Sender side: rmt_value is the stadd address changed by the remote
+	 * edata represents the sender's index of sender engine.
+	 *  event type is only EVT_RMT_RECVRST
+	 */
 	if (is_scntr(mrq_notice.rmt_value, &evtype)) {
 	    /* access my send control structure */
 	    int			sidx = mrq_notice.edata;
@@ -1207,18 +1285,37 @@ utf_mrqprogress()
 	    struct utf_send_msginfo	*minfo;
 	    usp = utf_idx2scntr(sidx);
 	    minfo = &usp->msginfo[usp->micur];
-	    if (evtype == EVT_RMT_RECVRST) {
+	    if (evtype != EVT_RMT_RECVRST) {
+		utf_printf("%s: TOFU ???? evtype(%d)\n", __func__, evtype);
+		INTERNAL_ERROR;
+	    }
+	    if (usp->smode == TRANSMODE_AGGR) {
 		usp->rcvreset = 0; usp->recvidx = 0;
 		if (usp->state == S_WAIT_BUFREADY) {
 		    usp->state = usp->ostate;
 		    utf_sendengine(usp, minfo, mrq_notice.rmt_value, evtype);
 		}
-	    } else { /* other type, EVT_RMT_CHNUPDT, EVT_RMT_CHNRDY */
-		chain_progress(usp, mrq_notice.rmt_value, evtype);
+	    } else if (usp->smode == TRANSMODE_CHND) {
+		/* recvidx is reset */
+		usp->rcvreset = 0; usp->recvidx = 0;
+		if (usp->state == S_WAIT_BUFREADY) {
+		    usp->state = usp->ostate;
+		    utf_sendengine(usp, minfo, mrq_notice.rmt_value, evtype);
+		} else if (usp->state == S_WAIT_BUFREADY_CHND) {
+		    int rc;
+		    rc = chain_progress(usp, 0, EVT_LCL_CHNNXT);
+		    if (rc == PROG_CHAIN_SENDENGINE) {
+			/* during waiting for BUFREADY, a new send post
+			 * has been posted 2021/01/26 */
+			utf_sendengine(usp, minfo, 0, EVT_LCL);
+		    } else if (rc != PROG_CHAIN_NONE) {
+			utf_printf("%s: RMT_ARMW rc(%d) usp->state(%d) usp->inflight(%d)\n", __func__, rc, usp->state, usp->inflight);
+			INTERNAL_ERROR;
+		    }
+		}
 	    }
-	    fflush(NULL);
 	} else if (is_msginfo(mrq_notice.rmt_value)) {
-	    int			pos = mrq_notice.edata;
+	    int	pos = mrq_notice.edata;
 	    utf_rndz_done(pos);
 	} else {
 	    /* receive buffer is accessedd by the sender */
@@ -1287,10 +1384,13 @@ utf_sendctr_show()
 	usp = &utf_scntr[headpos];
 	ridx = utf_sndmgt_get_index(usp->dst, utf_egrmgt);
 	utf_printf(" snd-dst(%d) s-ridx(%d) s-recvidx(%d) usp(%p)(state(%s:%d) ostate(%s:%d)"
-		   " usize(%d) inflight(%d) micur(%d) mient(%d))",
+		   " usize(%d) inflight(%d) micur(%d) mient(%d)"
+		   " evtupdt(%d) chn_informed(%d) chn_next(%d:%d:%d) chn_ready(%d) wait-for(%d))\n",
 		   dst, ridx, usp->recvidx, usp, sstate_symbol[usp->state], usp->state,
 		   sstate_symbol[usp->ostate], usp->ostate,
-		   usp->usize, usp->inflight, usp->micur, usp->mient);
+		   usp->usize, usp->inflight, usp->micur, usp->mient,
+		   usp->evtupdt, usp->chn_informed, usp->chn_next.rank, usp->chn_next.sidx, usp->chn_next.recvidx,
+		   usp->chn_ready.recvidx, usp->waitfor);
 	for (i = 0; i < COM_SCNTR_MINF_SZ; i++) {
 	    minfo = &usp->msginfo[i];
 	    utf_printf("\tminfo[%d] msghdr(size(%d) tag(0x%lx) req(%p))\n",

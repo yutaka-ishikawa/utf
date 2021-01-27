@@ -18,7 +18,9 @@ CFLAGS += -DUTF_DEBUG -g
 TARGET   := $(BUILDDIR)/libutf.so
 
 PROGS = utf.so
-SRCS     := $(wildcard $(SRCDIR)/*.c) $(wildcard $(SRC_VBGDIR)/*.c)
+#SRCS     := $(wildcard $(SRCDIR)/*.c) $(wildcard $(SRC_VBGDIR)/*.c)
+#SRCS     := $(filter-out $(SRCDIR)/utf_newengine.c, $(wildcard $(SRCDIR)/*.c)) $(wildcard $(SRC_VBGDIR)/*.c)
+SRCS     := $(filter-out $(SRCDIR)/utf_engine.c, $(wildcard $(SRCDIR)/*.c)) $(wildcard $(SRC_VBGDIR)/*.c)
 OBJS     := $(addprefix $(BUILDDIR)/, $(SRCS:.c=.o))
 DEPS	 := $(addprefix $(BUILDDIR)/, $(SRCS:.c=.d))
 

@@ -190,7 +190,7 @@ mpi_bg_init(MPI_Comm comm, int nprocs, int myrank, uint32_t *rankset)
 	/* setting up VBG */
 	rc = utf_bg_init(rankset, nprocs, myrank, rmt_bginfo, &collgrp);
 	if (rc == UTF_SUCCESS) {
-	    cominfo_reg(comm, (void*) collgrp, rankset);
+	    cominfo_reg(comm, (void*) collgrp, rankset, 0);
 	    if (comm == MPI_COMM_WORLD) {
 		mpi_bg_bginfo = rmt_bginfo; mpi_world_grp = collgrp;
 		mpi_bg_nprocs = nprocs; mpi_bg_myrank = myrank;
@@ -218,7 +218,7 @@ mpi_bg_init(MPI_Comm comm, int nprocs, int myrank, uint32_t *rankset)
 	    grpent->grp = 0;
 	    grpent->size = nprocs;
 	    grpent->ranks = grpidx;
-	    cominfo_reg(MPI_COMM_WORLD, grpent, (void*) mpi_world_grp);
+	    cominfo_reg(MPI_COMM_WORLD, grpent, (void*) mpi_world_grp, 0);
 	    if (comm == MPI_COMM_WORLD) {
 		mpi_bg_bginfo = rmt_bginfo; mpi_world_grp = collgrp;
 		mpi_bg_nprocs = nprocs; mpi_bg_myrank = myrank;
@@ -631,9 +631,14 @@ int
 MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
 {
     int rc;
-
+    struct cominfo_ent *parent;
     MPICALL_CHECK_RETURN(rc, PMPI_Comm_dup(comm, newcomm));
-    rc = mpi_comm_bg_init(*newcomm);
+    COMINFO_GET_CHECK_DO(cont, parent, comm);
+    /* Cannot find the original communicator */
+    goto ext;
+cont:
+    cominfo_reg(*newcomm, parent->bgrp, parent->rankset, parent);
+ext:
     return rc;
 }
 
@@ -641,8 +646,14 @@ int
 MPI_Comm_dup_with_info(MPI_Comm comm, MPI_Info info, MPI_Comm *newcomm)
 {
     int rc;
+    struct cominfo_ent *parent;
     MPICALL_CHECK_RETURN(rc, PMPI_Comm_dup_with_info(comm, info, newcomm));
-    rc = mpi_comm_bg_init(*newcomm);
+    COMINFO_GET_CHECK_DO(cont, parent, comm);
+    /* Cannot find the original communicator */
+    goto ext;
+cont:
+    cominfo_reg(*newcomm, parent->bgrp, parent->rankset, parent);
+ext:
     return rc;
 }
 
@@ -960,7 +971,7 @@ MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
 	assert(coment != NULL);	assert(grpent != NULL);
 	newgrpent = grpinfo_dup(coment->grp, grpent->grp);
 	/* We must check how we copy or share ? */
-	cominfo_reg(*newcomm, newgrpent, (void*) coment->bgrp);
+	cominfo_reg(*newcomm, newgrpent, (void*) coment->bgrp, 0);
 	/* no need barrier synchronization in this case ? */
     }
 ext:
@@ -1037,7 +1048,7 @@ MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
 	grpent->size = nprocs;
 	grpent->ranks = grpidx;
 	UTFCALL_CHECK(err1, rc, utf_bg_init(grpidx, nprocs, myrank, mpi_bg_bginfo, &bg_grp));
-	cominfo_reg(*newcomm, grpent, (void*) bg_grp);
+	cominfo_reg(*newcomm, grpent, (void*) bg_grp, 0);
 	free(inf1); free(inf2);
 	MPICALL_CHECK(err2, rc, PMPI_Barrier(MPI_COMM_WORLD));
     }
