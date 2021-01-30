@@ -1,0 +1,16 @@
+coll
+colld
+colld-f
+hello
+gather
+myscatter
+mygather
+pingpong
+pingpong-f
+sendone
+sendrecv
+shmem
+test_collective_vbg
+test_hook
+test_mpi_utf
+test_vbg

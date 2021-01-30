@@ -49,14 +49,26 @@ extern void utofu_get_last_error(const char*);
 
 #define UTOFU_MSGCALL(abrt, cbdata, vcqh, func, ...) do {		\
 	int rc;								\
+	int count = 0;							\
 	cbdata = NULL;							\
     retry:								\
 	rc = func(__VA_ARGS__);						\
 	if (rc == UTOFU_ERR_BUSY) {					\
-	    do {							\
+	    if (utf_tcq_count > 0) {					\
+		count++;						\
+		do {							\
+		    rc = utofu_poll_tcq(vcqh, 0, (void*) &cbdata);	\
+		} while (rc == UTOFU_ERR_NOT_FOUND);			\
+		--utf_tcq_count;					\
+		goto retry;						\
+	    } else {							\
+		/* just polling */					\
 		rc = utofu_poll_tcq(vcqh, 0, (void*) &cbdata);		\
-	    } while (rc == UTOFU_ERR_BUSY);				\
-	    goto retry;							\
+		goto retry;						\
+	    }								\
+	}								\
+	if (count >= 2) {						\
+	    utf_printf("%s: cannot handle tcq count %d\n", __func__, count); \
 	}								\
 	UTOFU_ERRCHECK_EXIT_IF(abrt, rc);				\
 } while(0);

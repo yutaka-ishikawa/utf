@@ -77,13 +77,14 @@ utf_progress()
 	    if (IS_COMRBUF_FULL(urp)) {
 		utofu_stadd_t	stadd = SCNTR_ADDR_CNTR_FIELD(sidx);
 		urp->recvidx = 0;
-		if (urp->svcqid == 0) {
+		if (j == EGRCHAIN_RECVPOS || urp->svcqid == 0) {
 		    urp->svcqid = utf_info.vname[pktp->hdr.src].vcqid;
 		    urp->src = pktp->hdr.src;
 		}
 		utf_remote_armw4(utf_info.vcqh, urp->svcqid, urp->flags,
 				 UTOFU_ARMW_OP_OR, SCNTR_OK,
 				 stadd + SCNTR_RST_RECVRESET_OFFST, sidx, 0);
+		// utf_printf("RST(%d:%d:%d)\n", pktp->hdr.src, urp->src, sidx);
 	    } else {
 		goto try_again;
 	    }

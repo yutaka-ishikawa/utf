@@ -210,7 +210,7 @@ utf_remote_add(utofu_vcq_hdl_t vcqh,
 	       uint64_t val, utofu_stadd_t rstadd,
 	       uint64_t edata, void *cbdata)
 {
-    struct utf_send_cntr *usp;
+    struct utf_send_cntr *usp = 0;
     flgs |= UTOFU_ONESIDED_FLAG_STRONG_ORDER;
     DEBUG(DLEVEL_PROTOCOL) {
 	utf_printf("remote_add: val(0x%lx) rvcqid(0x%lx)\n", val, rvcqid);
@@ -229,7 +229,7 @@ utf_remote_armw4(utofu_vcq_hdl_t vcqh,
 		 utofu_stadd_t rstadd,
 		 uint64_t edata, void *cbdata)
 {
-    struct utf_send_cntr *usp;
+    struct utf_send_cntr *usp = 0;
     /* local mrq notification is supressed */
     flgs |= UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE
 	| UTOFU_ONESIDED_FLAG_STRONG_ORDER;
@@ -244,7 +244,7 @@ remote_piggysend8(utofu_vcq_hdl_t vcqh,
 		 utofu_vcq_id_t rvcqid, uint64_t data,  utofu_stadd_t rstadd,
 		 size_t len, uint64_t edata, unsigned long flgs, void *cbdata)
 {
-    struct utf_send_cntr *usp;
+    struct utf_send_cntr *usp = 0;
     flgs |= UTOFU_ONESIDED_FLAG_TCQ_NOTICE
 	 | UTOFU_ONESIDED_FLAG_CACHE_INJECTION
 	 | UTOFU_ONESIDED_FLAG_PADDING
@@ -260,7 +260,7 @@ remote_piggysend(utofu_vcq_hdl_t vcqh,
 		 utofu_vcq_id_t rvcqid, void *data,  utofu_stadd_t rstadd,
 		 size_t len, uint64_t edata, unsigned long flgs, void *cbdata)
 {
-    struct utf_send_cntr *usp;
+    struct utf_send_cntr *usp = 0;
     flgs |= UTOFU_ONESIDED_FLAG_TCQ_NOTICE
 	 | UTOFU_ONESIDED_FLAG_CACHE_INJECTION
 	 | UTOFU_ONESIDED_FLAG_PADDING
@@ -276,7 +276,7 @@ remote_piggysend2(utofu_vcq_hdl_t vcqh,
 		 utofu_vcq_id_t rvcqid, void *data,  utofu_stadd_t rstadd,
 		 size_t len, uint64_t edata, unsigned long flgs, void *cbdata)
 {
-    struct utf_send_cntr *usp;
+    struct utf_send_cntr *usp = 0;
     flgs |= UTOFU_ONESIDED_FLAG_STRONG_ORDER
 	 | UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE;
     UTOFU_MSGCALL(1, usp, vcqh, utofu_put_piggyback,
@@ -286,7 +286,8 @@ remote_piggysend2(utofu_vcq_hdl_t vcqh,
 
 //#define USE_PUT_TCQ_NOTICE
 /*
- * TCQ_NOTICE event driven is employed in the current implementation
+ * MRQ_LOCAL_PUT event driven is employed in the current implementation
+ * for remote_put, but piggysend is TCQ_NOTICE driven
  */
 static inline struct utf_send_cntr *
 remote_put(utofu_vcq_hdl_t vcqh,
@@ -294,7 +295,7 @@ remote_put(utofu_vcq_hdl_t vcqh,
 	   utofu_stadd_t rstadd, size_t len, uint64_t edata,
 	   unsigned long flgs, void *cbdata)
 {
-    struct utf_send_cntr *usp;
+    struct utf_send_cntr *usp = 0;
 #ifdef USE_PUT_TCQ_NOTICE
     flgs |= UTOFU_ONESIDED_FLAG_TCQ_NOTICE
 /*	 | UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE */ /* 2020/12/20 */
@@ -322,7 +323,7 @@ remote_get(utofu_vcq_hdl_t vcqh,
 	   utofu_stadd_t rstadd, size_t len, uint64_t edata,
 	   unsigned long flgs, void *cbdata)
 {
-    struct utf_send_cntr *usp;
+    struct utf_send_cntr *usp = 0;
     flgs |= UTOFU_ONESIDED_FLAG_LOCAL_MRQ_NOTICE
 	 | UTOFU_ONESIDED_FLAG_STRONG_ORDER;
     UTOFU_MSGCALL(1, usp, vcqh, utofu_get,
@@ -335,6 +336,7 @@ utf_remote_swap(utofu_vcq_hdl_t vcqh,
 		utofu_vcq_id_t rvcqid, unsigned long flgs, uint64_t val,
 		utofu_stadd_t rstadd, uint64_t edata, void *cbdata)
 {
+    struct utf_send_cntr *usp = 0;
     flgs |= 0    /*UTOFU_ONESIDED_FLAG_TCQ_NOTICE*/
 	| UTOFU_ONESIDED_FLAG_LOCAL_MRQ_NOTICE
 /*	| UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE 2021/01/23 */
@@ -343,11 +345,17 @@ utf_remote_swap(utofu_vcq_hdl_t vcqh,
     DEBUG(DLEVEL_PROTOCOL) {
 	utf_printf("remote_swap: val(%ld) rvcqid(%lx)\n", val, rvcqid);
     }
+    UTOFU_MSGCALL(1, usp, vcqh, utofu_armw8,
+		  vcqh, rvcqid,
+		  UTOFU_ARMW_OP_SWAP,
+		  val, rstadd, edata, flgs, cbdata);
+#if 0
     UTOFU_CALL(1, utofu_armw8,
 	       vcqh, rvcqid,
 	       UTOFU_ARMW_OP_SWAP,
 	       val, rstadd, edata, flgs, cbdata);
-    return NULL;
+#endif
+    return usp;
 }
 
 static inline struct utf_send_cntr *
@@ -356,6 +364,7 @@ utf_remote_cswap(utofu_vcq_hdl_t vcqh,
 		 uint64_t old_val, uint64_t new_val,
 		 utofu_stadd_t rstadd, uint64_t edata, void *cbdata)
 {
+    struct utf_send_cntr *usp = 0;
     flgs |= 0    /*UTOFU_ONESIDED_FLAG_TCQ_NOTICE*/
 	| UTOFU_ONESIDED_FLAG_LOCAL_MRQ_NOTICE
 /*	| UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE 2021/01/23 */
@@ -364,10 +373,15 @@ utf_remote_cswap(utofu_vcq_hdl_t vcqh,
     DEBUG(DLEVEL_PROTOCOL) {
 	utf_printf("remote_cswap: old_val(%ld) new_val(%ld) rvcqid(%lx)\n", old_val, new_val, rvcqid);
     }
+    UTOFU_MSGCALL(1, usp, vcqh, utofu_cswap8,
+		  vcqh, rvcqid,
+		  old_val, new_val, rstadd, edata, flgs, cbdata);
+#if 0
     UTOFU_CALL(1, utofu_cswap8,
 	       vcqh, rvcqid,
 	       old_val, new_val, rstadd, edata, flgs, cbdata);
-    return NULL;
+#endif
+    return usp;
 }
 
 static inline struct utf_packet	*

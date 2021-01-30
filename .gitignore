@@ -1,0 +1,9 @@
+*~
+*.o
+*#
+*.sav
+GPATH
+GRTAGS
+GTAGS
+results/
+build/
