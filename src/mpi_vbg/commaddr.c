@@ -70,18 +70,19 @@ cominfo_reg(MPI_Comm comm, void *bg_grp, uint32_t *rankset, struct cominfo_ent *
     return coment;
 }
 
-static int
+static void *
 cominfo_unreg(MPI_Comm comm)
 {
     utfslist_entry_t	*cur, *prev;
     struct cominfo_ent *ent;
+    void	*bgrp = NULL;
 
     utfslist_foreach2(&cominfo_lst, cur, prev) {
 	ent = container_of(cur, struct cominfo_ent, slst);
 	if (ent->comm == comm) goto find;
     }
     /* not found */
-    return -1;
+    return NULL;
 find:
     --ent->refcnt;
     if (ent->refcnt > 0) {
@@ -94,11 +95,12 @@ find:
     free(ent->bgrp);
     ent->comm = 0;
     ent->rankset = 0;
+    bgrp = ent->bgrp;
     ent->bgrp = 0;
     utfslist_remove2(&cominfo_lst, cur, prev);
     utfslist_insert(&cominfo_freelst, cur);
 ext:
-    return 0;
+    return bgrp;
 }
 
 static struct cominfo_ent *

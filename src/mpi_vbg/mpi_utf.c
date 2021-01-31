@@ -670,8 +670,12 @@ int
 MPI_Comm_free(MPI_Comm *comm)
 {
     int rc;
+    utf_coll_group_t	grp;
     MPICALL_CHECK_RETURN(rc, PMPI_Comm_free(comm));
-    cominfo_unreg(*comm);
+    grp = (utf_coll_group_t) cominfo_unreg(*comm);
+    if (grp != NULL) {
+	utf_bg_free(grp);
+    }
     return rc;
 }
 
@@ -1065,8 +1069,12 @@ int
 MPI_Comm_free(MPI_Comm *comm)
 {
     int rc;
+    utf_coll_group_t	grp;
     MPICALL_CHECK_RETURN(rc, PMPI_Comm_free(comm));
-    cominfo_unreg(*comm);
+    grp = (utf_coll_group_t) cominfo_unreg(*comm);
+    if (grp != NULL) {
+	utf_bg_free(grp);
+    }
     return rc;
 }
 
