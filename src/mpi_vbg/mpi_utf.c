@@ -671,9 +671,14 @@ MPI_Comm_free(MPI_Comm *comm)
 {
     int rc;
     utf_coll_group_t	grp;
+    MPI_Comm	svd_comm = *comm;
+
     MPICALL_CHECK_RETURN(rc, PMPI_Comm_free(comm));
-    grp = (utf_coll_group_t) cominfo_unreg(*comm);
+    grp = (utf_coll_group_t) cominfo_unreg(svd_comm);
     if (grp != NULL) {
+	if (mpi_bg_confirm) {
+	    utf_printf("%s: FREE grp(%p)\n", __func__, grp);
+	}
 	utf_bg_free(grp);
     }
     return rc;
@@ -1070,9 +1075,14 @@ MPI_Comm_free(MPI_Comm *comm)
 {
     int rc;
     utf_coll_group_t	grp;
+    MPI_Comm	svd_comm = *comm;
+
     MPICALL_CHECK_RETURN(rc, PMPI_Comm_free(comm));
-    grp = (utf_coll_group_t) cominfo_unreg(*comm);
+    grp = (utf_coll_group_t) cominfo_unreg(svd_comm);
     if (grp != NULL) {
+	if (mpi_bg_confirm) {
+	    utf_printf("%s: FREE grp(%p)\n", __func__, grp);
+	}
 	utf_bg_free(grp);
     }
     return rc;

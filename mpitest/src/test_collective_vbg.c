@@ -231,6 +231,8 @@ main(int argc, char *argv[])
 	myprintf(myrank, "\t--- All Barrier Start --\n");
 	MPICALL_CHECK(ext, rc, MPI_Barrier(MPI_COMM_WORLD));
 	myprintf(myrank, "\t--- All Barrier Done --\n");
+	myprintf(myrank, "\t--- Calling MPI_Comm_free --\n");
+	MPICALL_CHECK(ext, rc, MPI_Comm_free(&newcomm));
     }
     myprintf(myrank, "DONE\n");
 ext:

@@ -91,12 +91,12 @@ find:
     if (ent->parent) {
 	cominfo_unreg(ent->parent->comm);
     }
+    bgrp = ent->bgrp;
     free(ent->rankset);
-    free(ent->bgrp);
     ent->comm = 0;
     ent->rankset = 0;
-    bgrp = ent->bgrp;
     ent->bgrp = 0;
+    /* ent->bgrp will be releseased by utf_bg_free */
     utfslist_remove2(&cominfo_lst, cur, prev);
     utfslist_insert(&cominfo_freelst, cur);
 ext:
