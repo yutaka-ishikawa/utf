@@ -324,11 +324,9 @@ int utf_poll_reduce_double_sm(void **data)
         case sizeof(float):
             UTF_BG_SET_RESULT_FLOAT();
             break;
-#if defined(__clang__)
         case sizeof(_Float16):
             UTF_BG_SET_RESULT_FLOAT16();
             break;
-#endif
         default:
             utf_printf("%s: Invalid data size: intra_index=%zu size=%zu\n",
                        __func__, poll_info.sm_intra_index, poll_info.utf_bg_poll_size);
