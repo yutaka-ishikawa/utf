@@ -154,7 +154,6 @@ static int utf_poll_reduce_float(void **data)
 }
 
 
-#if defined(__clang__)
 /**
  *
  * utf_poll_reduce_float16
@@ -185,7 +184,6 @@ static int utf_poll_reduce_float16(void **data)
 
     return UTF_SUCCESS;
 }
-#endif
 
 
 /**
@@ -532,13 +530,11 @@ static inline int utf_bg_reduce_double(utf_coll_group_detail_t *utf_bg_grp,
             }
             utf_bg_poll_reduce_func = utf_poll_reduce_float;
             break;
-#if defined(__clang__)
         case sizeof(_Float16):
             for(i=0;i<count;i++){
                 *(idata + i) = (double)*((_Float16 *)buf + i);
             }
             utf_bg_poll_reduce_func = utf_poll_reduce_float16;
-#endif
     }
 
     /* Check the algorithm. */
@@ -662,10 +658,8 @@ static inline int utf_bg_reduce_double_max_min(utf_coll_group_detail_t *utf_bg_g
             case sizeof(float):
                 *(idata + i) += UTF_BG_REDUCE_MASK_NAN_FP32;
                 break;
-#if defined(__clang__)
             case sizeof(_Float16):
                 *(idata + i) += UTF_BG_REDUCE_MASK_NAN_FP16;
-#endif
         }
     }
 
@@ -920,7 +914,6 @@ static inline int utf_bg_reduce_maxmin_loc(utf_coll_group_detail_t *utf_bg_grp,
  */
 int utf_broadcast(utf_coll_group_t group_struct, void *buf, size_t size, void *desc, int root)
 {
-    utf_bg_counter++;
     utf_coll_group_detail_t *utf_bg_grp = (utf_coll_group_detail_t *)group_struct;
     uint64_t *idata = poll_info.utf_bg_poll_idata;
     size_t num_count;
@@ -935,6 +928,7 @@ int utf_broadcast(utf_coll_group_t group_struct, void *buf, size_t size, void *d
     if((size_t)UTF_BG_REDUCE_ULMT_ELMS_48 < size){
         return UTF_ERR_NOT_AVAILABLE;
     }
+    utf_bg_counter++;
 
     /* Calculates the count when packed in uint64_t idata. */
     num_count = (size + (sizeof(uint64_t) - 1)) / sizeof(uint64_t);
@@ -1010,6 +1004,7 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
                    datatype_div == UTF_DATATYPE_DIV_REAL ||
                    datatype_div == UTF_DATATYPE_DIV_COMP);
 
+            /* UTF_ERR_NOT_AVAILABLE is returned for data types that do not match the reduction operation. */
             if(datatype_div == UTF_DATATYPE_DIV_REAL){
                 /* The datatype is a floating-point datatype. */
 
@@ -1017,6 +1012,7 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
                 if(UTF_BG_REDUCE_ULMT_ELMS_3 < count){
                     return UTF_ERR_NOT_AVAILABLE;
                 }
+                utf_bg_counter++;
                 /* Saves information for use in the poll function. */
                 UTF_BG_REDUCE_INFO_SET(result, op, count, datatype, reduce_root);
                 return utf_bg_reduce_double(utf_bg_grp, sbuf, count, poll_info.utf_bg_poll_size);
@@ -1027,6 +1023,7 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
                 if(UTF_BG_REDUCE_ULMT_ELMS_6 < count){
                     return UTF_ERR_NOT_AVAILABLE;
                 }
+                utf_bg_counter++;
                 /* Saves information for use in the poll function. */
                 UTF_BG_REDUCE_INFO_SET(result, op, count, datatype, reduce_root);
                 return utf_bg_reduce_uint64(utf_bg_grp, sbuf, count, poll_info.utf_bg_poll_size);
@@ -1037,6 +1034,7 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
                 if (UTF_BG_REDUCE_ULMT_ELMS_1 < count){
                     return UTF_ERR_NOT_AVAILABLE;
                 }
+                utf_bg_counter++;
                 /* Saves information for use in the poll function. */
                 UTF_BG_REDUCE_INFO_SET(result, op, 2, datatype, reduce_root);
 
@@ -1054,7 +1052,9 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
             if(UTF_BG_REDUCE_ULMT_ELMS_6 < count){
                 return UTF_ERR_NOT_AVAILABLE;
             }
+            /* UTF_ERR_NOT_AVAILABLE is returned for data types that do not match the reduction operation. */
             if(datatype_div == UTF_DATATYPE_DIV_REAL){
+                utf_bg_counter++;
                 /* The datatype is a floating-point datatype. */
 
                 /* Saves information for use in the poll function. */
@@ -1062,6 +1062,7 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
 
                 return utf_bg_reduce_double_max_min(utf_bg_grp, sbuf, count, poll_info.utf_bg_poll_size, op);
             }else if(datatype_div == UTF_DATATYPE_DIV_INT){
+                utf_bg_counter++;
                 /* The datatype is an integer datatype. */
 
                 /* Saves information for use in the poll function. */
@@ -1081,13 +1082,13 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
             if(UTF_BG_REDUCE_ULMT_ELMS_3 < count){
                 return UTF_ERR_NOT_AVAILABLE;
             }
+            /* UTF_ERR_NOT_AVAILABLE is returned for data types that do not match the reduction operation. */
             if(datatype_div == UTF_DATATYPE_DIV_PAIR){
+                utf_bg_counter++;
                 /* Saves information for use in the poll function. */
                 UTF_BG_REDUCE_INFO_SET(result, op, count, datatype, reduce_root);
 
                 return utf_bg_reduce_maxmin_loc(utf_bg_grp, sbuf, count, poll_info.utf_bg_poll_size, op);
-            }else{
-                return UTF_ERR_NOT_AVAILABLE;
             }
             break;
         case UTF_REDUCE_OP_BAND:
@@ -1100,6 +1101,7 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
             if(UTF_BG_REDUCE_ULMT_ELMS_48 < (int)(datatype & UTF_DATATYPE_SIZE) * count){
                 return UTF_ERR_NOT_AVAILABLE;
             }
+            utf_bg_counter++;
             /* Saves information for use in the poll function. */
             UTF_BG_REDUCE_INFO_SET(result, op, count, datatype, reduce_root);
 
@@ -1114,6 +1116,7 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
             if (UTF_BG_REDUCE_ULMT_ELMS_384 < count){
                 return UTF_ERR_NOT_AVAILABLE;
             }
+            utf_bg_counter++;
             /* Saves information for use in the poll function. */
             UTF_BG_REDUCE_INFO_SET(result, op, count, datatype, reduce_root);
 
@@ -1146,7 +1149,6 @@ int utf_allreduce(utf_coll_group_t group_struct,
                   enum utf_datatype datatype,
                   enum utf_reduce_op op)
 {
-    utf_bg_counter++;
 #if defined(DEBUGLOG2)
     /* Check the arguments. */
     assert(group_struct != NULL);
@@ -1183,7 +1185,6 @@ int utf_reduce(utf_coll_group_t group_struct,
                enum utf_reduce_op op,
                int root)
 {
-    utf_bg_counter++;
 #if defined(DEBUGLOG2)
     /* Check the arguments. */
     assert(group_struct != NULL);

@@ -133,7 +133,6 @@ enum utf_datatype_div{
     }                                                                                                       \
 }
 
-#if defined(__clang__)
 /** Set the reduction results(SUM:_Float16) */
 #define UTF_BG_SET_RESULT_FLOAT16()                                                                               \
 {                                                                                                                 \
@@ -142,7 +141,6 @@ enum utf_datatype_div{
         *((_Float16 *)poll_info.utf_bg_poll_result + i) = (_Float16)*((double *)poll_info.utf_bg_poll_odata + i); \
     }                                                                                                             \
 }
-#endif
 
 /** Set the reduction results(SUM:uint64_t) */
 #define UTF_BG_SET_RESULT_UINT64()                                                                  \
@@ -156,36 +154,6 @@ enum utf_datatype_div{
     }                                                                                               \
 }
 
-#if !defined(__clang__)
-/** Set the reduction results(MAX/MIN:double) */
-#define UTF_BG_SET_RESULT_DOUBLE_MAX_MIN()                                                          \
-{                                                                                                   \
-    UTF_BG_SET_RESULT_COMMON()                                                                      \
-    for(i = 0; i < poll_info.utf_bg_poll_count; i++){                                               \
-        switch(poll_info.utf_bg_poll_size){                                                         \
-            case sizeof(double):                                                                    \
-                *((uint64_t *)poll_info.utf_bg_poll_odata + i) -= UTF_BG_REDUCE_MASK_NAN_FP64;      \
-                break;                                                                              \
-            case sizeof(float):                                                                     \
-                *((uint64_t *)poll_info.utf_bg_poll_odata + i) -= UTF_BG_REDUCE_MASK_NAN_FP32;      \
-                break;                                                                              \
-        }                                                                                           \
-        if(UTF_REDUCE_OP_MAX == poll_info.utf_bg_poll_op){                                          \
-            *((uint64_t *)poll_info.utf_bg_poll_odata + i) ^=                                       \
-                (*((uint64_t *)poll_info.utf_bg_poll_odata + i) & UTF_BG_REDUCE_MASK_HB ?           \
-                 UTF_BG_REDUCE_MASK_HB : UTF_BG_REDUCE_MASK_MAX);                                   \
-        }else{                                                                                      \
-            if(!(*((uint64_t *)poll_info.utf_bg_poll_odata + i) & UTF_BG_REDUCE_MASK_HB)){          \
-                *((uint64_t *)poll_info.utf_bg_poll_odata + i) ^= UTF_BG_REDUCE_MASK_MIN;           \
-            }                                                                                       \
-        }                                                                                           \
-        memcpy((char *)poll_info.utf_bg_poll_result + i * poll_info.utf_bg_poll_size,               \
-               (char *)poll_info.utf_bg_poll_odata + i * sizeof(uint64_t) + sizeof(uint64_t) -      \
-                                                                        poll_info.utf_bg_poll_size, \
-               poll_info.utf_bg_poll_size);                                                         \
-    }                                                                                               \
-}
-#else
 /** Set the reduction results(MAX/MIN:double) */
 #define UTF_BG_SET_RESULT_DOUBLE_MAX_MIN()                                                          \
 {                                                                                                   \
@@ -216,7 +184,6 @@ enum utf_datatype_div{
                poll_info.utf_bg_poll_size);                                                         \
     }                                                                                               \
 }
-#endif 
 
 /** Set the reduction results(MAX/MIN:uint64_t) */
 #define UTF_BG_SET_RESULT_UINT64_MAX_MIN()                                                                      \
