@@ -426,6 +426,7 @@ mpitype_to_utf(MPI_Datatype datatype)
     case MPI_FLOAT:
 	return UTF_DATATYPE_FLOAT;
     case MPI_LONG_DOUBLE:
+	return UTF_DATATYPE_DOUBLE;
     default:
 	return 0;
 #if 0	/* MUST CHECK those types */
@@ -456,11 +457,16 @@ mpiop_to_utf(MPI_Op op)
     case MPI_BXOR:
 	return UTF_REDUCE_OP_BXOR;
     case MPI_MIN:
-    case MPI_PROD:
+	return UTF_REDUCE_OP_MIN;
     case MPI_LAND:
+	return UTF_REDUCE_OP_LAND;
     case MPI_LOR:
+	return UTF_REDUCE_OP_LOR;
     case MPI_LXOR:
+	return UTF_REDUCE_OP_LXOR;
     case MPI_MINLOC:
+	return UTF_REDUCE_OP_MINLOC;
+    case MPI_PROD:
     case MPI_REPLACE:
     case MPI_NO_OP:
     default:
