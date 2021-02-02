@@ -618,6 +618,8 @@ mpi_comm_bg_init(MPI_Comm comm)
 	/* Cannot allocate VBG resources */
 	free(rankset);
     }
+    /* Goging to barrier synchronization in any return cases */
+    MPICALL_CHECK(ext, rc, PMPI_Barrier(comm));
 ext:
     return rc;
 err0:
