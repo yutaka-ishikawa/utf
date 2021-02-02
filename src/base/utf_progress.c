@@ -62,6 +62,7 @@ utf_progress()
 	    /* for debugging */
 	    //urp->dbg_rsize[urp->dbg_idx] = PKT_PYLDSZ(pktp);
 	    //urp->dbg_idx = (urp->dbg_idx + 1) % COM_RBUF_SIZE;
+	    urp->src = pktp->hdr.src;
 	    if (utf_recvengine(urp, (struct utf_packet*) pktp, sidx) < 0) {
 		utf_printf("%s: j(%d) protocol error urp(%p)->state(%d:%s) sidx(%d) pkt(%p) MSG(%s)\n",
 			   __func__, j, urp, urp->state, rstate_symbol[urp->state],

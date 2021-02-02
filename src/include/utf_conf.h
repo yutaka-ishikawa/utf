@@ -70,7 +70,7 @@
 #define DEBUG_20201231
 #ifdef DEBUG_20201231
 #define MSGREQ_SEND_SZ	1024 /* MUST BE CHANGED to handle maximum */
-#define MSGREQ_RECV_SZ	1024 /* MUST BE CHANGED to handle maximum, fi_rx_attr.size specifies this value */
+#define MSGREQ_RECV_SZ	(1024*256) /* MUST BE CHANGED to handle maximum, fi_rx_attr.size specifies this value */
 #else
 #define MSGREQ_SEND_SZ	256	/* MUST BE CHANGED to handle maximum */
 #define MSGREQ_RECV_SZ	256	/* MUST BE CHANGED to handle maximum, COM_PEERS * MSGREQ_SEND_SZ */
@@ -79,7 +79,7 @@
 #define MSGREQ_SENDMAX_INFLIGHT	200 /* pending rendezvous messages */
 /* exp/uexp message list */
 #ifdef DEBUG_20201231
-#define MSGLST_SIZE	(1024*2)
+#define MSGLST_SIZE	(1024*256)
 #else
 #define MSGLST_SIZE	512
 #endif

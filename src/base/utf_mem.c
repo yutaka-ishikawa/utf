@@ -316,6 +316,7 @@ utf_rmacq_free(struct utf_rma_cq *cq)
 {
     --utf_rma_cq_cnt;
     //utf_printf("%s: YI------ cnt=%d cq=%p\n", __func__, utf_rma_cq_cnt, cq);
+    cq->ctx = NULL;
     utfslist_insert(&utf_rmacq_freelst, &cq->slst);
 }
 

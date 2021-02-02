@@ -1015,10 +1015,8 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 	    req = utf_recvreq_alloc();
 	    if (req == NULL) {
 		/* Cannot handle this message at this time */
-		DEBUG(DLEVEL_PROTOCOL) {
-		    utf_printf("%s: Unexepected Lack of free utf_msgreq\n", __func__);
-		}
-		return 1;
+		utf_printf("%s: Unexepected Lack of free utf_msgreq\n", __func__);
+		abort();
 	    }
 	    req->allflgs = 0;
 	    req->fi_data = PKT_FI_DATA(pkt);
@@ -1400,7 +1398,8 @@ utf_recvcntr_show(FILE *fp)
     //extern struct erecv_buf	*erbuf;
     uint64_t		cntr = utf_egr_rbuf.head.cntr;
     int	i;
-    utf_printf("***** RECV_CNTR (PEERS: %d) *****\n", RCV_CNTRL_INIT - cntr);
+    utf_printf("***** RECV_CNTR (PEERS: %d) chain(rank(%d) sidx(%d) recvidx(%d)) *****\n", RCV_CNTRL_INIT - cntr,
+	       utf_egr_rbuf.head.chntail.rank, utf_egr_rbuf.head.chntail.sidx, utf_egr_rbuf.head.chntail.recvidx);
     for (i = COM_PEERS - 1; i > cntr; --i) {
 	struct utf_recv_cntr	*urp = &utf_rcntr[i]; 
 	if (urp->req) {
@@ -1413,9 +1412,46 @@ utf_recvcntr_show(FILE *fp)
 		       i, urp->src, urp->recvidx, urp->svcqid, rstate_symbol[urp->state], urp->state);
 	}
     }
+    if (utf_rcntr[EGRCHAIN_RECVPOS].recvidx > 0) {
+	struct utf_packet	*msgbase = utf_recvbuf_get(EGRCHAIN_RECVPOS);
+	struct utf_recv_cntr	*urp = &utf_rcntr[EGRCHAIN_RECVPOS];
+	volatile struct utf_packet	*pktp;
+	int	idx;
+	if (utf_egr_rbuf.head.chntail.recvidx != urp->recvidx) {
+	    utf_printf(" ---- CHAINED_RECV ERROR (head.recvidx(%d) recvidx(%d)----\n",
+		       utf_egr_rbuf.head.chntail.recvidx, urp->recvidx);
+	} else {
+	    utf_printf(" ---- CHAINED_RECV ----\n");
+	}
+	for (idx = 0; idx < COM_RBUF_SIZE; idx++) {
+	    pktp = msgbase + idx;
+	    if (idx == urp->recvidx) {
+		utf_printf("* chn-recvidx(%d) pktp(0x%x) src(%d) sidx(%d) tag(0x%lx) size(%ld) flgs(0x%x)\n",
+			   idx, pktp->hdr.marker, pktp->hdr.src, pktp->hdr.sidx, pktp->hdr.tag, pktp->hdr.size, pktp->hdr.flgs);
+	    } else {
+		utf_printf(" chn-recvidx(%d) pktp(0x%x) src(%d) sidx(%d) tag(0x%lx) size(%ld) flgs(0x%x)\n",
+			   idx, pktp->hdr.marker, pktp->hdr.src, pktp->hdr.sidx, pktp->hdr.tag, pktp->hdr.size, pktp->hdr.flgs);
+	    }
+	}
+    }
 }
 
 extern uint8_t		utf_rank2scntridx[PROC_MAX]; /* dest. rank to sender control index (sidx) */
+extern int utf_rma_cq_cnt;
+
+void
+utf_rmacq_show()
+{
+    int	i;
+
+    utf_printf("**** UTF RMA CQ (utf_rma_cq_cnt(%d)) ****\n", utf_rma_cq_cnt);
+    for (i = 0; i < COM_RMACQ_SIZE; i++) {
+	struct utf_rma_cq	*rma_cq = &utf_rmacq_pool[i];
+	if (rma_cq->ctx != NULL) {
+	    utf_printf("\t[%d] rvcqid(%ld) len(%ld) data(%ld)\n", i, rma_cq->rvcqid, rma_cq->len, rma_cq->data);
+	}
+    }
+}
 
 void
 utf_sendctr_show()
