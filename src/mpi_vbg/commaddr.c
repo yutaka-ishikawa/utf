@@ -70,6 +70,7 @@ cominfo_reg(MPI_Comm comm, void *bg_grp, uint32_t *rankset, struct cominfo_ent *
     return coment;
 }
 
+
 static void *
 cominfo_unreg(MPI_Comm comm)
 {
@@ -89,10 +90,12 @@ find:
 	goto ext;
     }
     if (ent->parent) {
-	cominfo_unreg(ent->parent->comm);
+	bgrp = cominfo_unreg(ent->parent->comm);
+    } else {
+	/* This is the root of parent */
+	bgrp = ent->bgrp;
+	free(ent->rankset);
     }
-    bgrp = ent->bgrp;
-    free(ent->rankset);
     ent->comm = 0;
     ent->rankset = 0;
     ent->bgrp = 0;

@@ -645,6 +645,10 @@ MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
     /* Cannot find the original communicator */
     goto ext;
 cont:
+    /* find the root of parent */
+    while (parent->parent) {
+	parent = parent->parent;
+    }
     cominfo_reg(*newcomm, parent->bgrp, parent->rankset, parent);
 ext:
     return rc;
