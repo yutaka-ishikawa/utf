@@ -91,6 +91,11 @@ find:
     }
     if (ent->parent) {
 	bgrp = cominfo_unreg(ent->parent->comm);
+	/*
+	 * bgrp == NULL: parent is still used.
+	 * bgrp != NULL: parent is released, and thus
+	 *		 the bgrp must be released.
+	 */
     } else {
 	/* This is the root of parent */
 	bgrp = ent->bgrp;
