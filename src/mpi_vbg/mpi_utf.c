@@ -405,37 +405,46 @@ static enum utf_datatype
 mpitype_to_utf(MPI_Datatype datatype)
 {
     switch(datatype) {
-    case MPI_DOUBLE:
-	return UTF_DATATYPE_DOUBLE;
-    case MPI_LONG: case MPI_LONG_LONG: /* MPI_LONG_LONG_INT */
-	return UTF_DATATYPE_INT64_T;
-    case MPI_UNSIGNED_CHAR: case MPI_BYTE:
+    case MPI_UNSIGNED_CHAR: case MPI_BYTE: case MPI_UINT8_T:
 	return UTF_DATATYPE_UINT8_T;
-    case MPI_WCHAR: case MPI_UNSIGNED_SHORT:
+    case MPI_WCHAR: case MPI_UNSIGNED_SHORT: case MPI_UINT16_T:
 	return UTF_DATATYPE_UINT16_T;
-    case MPI_UNSIGNED:
+    case MPI_UNSIGNED: case MPI_UINT32_T:
 	return UTF_DATATYPE_UINT32_T;
-    case MPI_UNSIGNED_LONG: case MPI_UNSIGNED_LONG_LONG:
+    case MPI_UNSIGNED_LONG: case MPI_UNSIGNED_LONG_LONG:  case MPI_UINT64_T:
 	return UTF_DATATYPE_UINT64_T;
-    case MPI_CHAR: case MPI_SIGNED_CHAR:
+    case MPI_CHAR: case MPI_SIGNED_CHAR: case MPI_INTEGER1: case MPI_INT8_T:
 	return UTF_DATATYPE_INT8_T;
-    case MPI_SHORT:
+    case MPI_SHORT: case MPI_INTEGER2: case MPI_INT16_T:
 	return UTF_DATATYPE_INT16_T;
-    case MPI_INT:
+    case MPI_INT: case MPI_INTEGER4: case MPI_INT32_T:
 	return UTF_DATATYPE_INT32_T;
-    case MPI_FLOAT:
+    case MPI_LONG: case MPI_LONG_LONG: /* MPI_LONG_LONG_INT is MPI_LONG_LONG in mpich */
+    case MPI_INTEGER16: case MPI_INT64_T:
+	return UTF_DATATYPE_INT64_T;
+    case MPI_FLOAT: case MPI_REAL4:
 	return UTF_DATATYPE_FLOAT;
-    case MPI_LONG_DOUBLE:
+    case MPI_DOUBLE: case MPI_REAL8:
 	return UTF_DATATYPE_DOUBLE;
+    case MPIX_C_FLOAT16:
+	return UTF_DATATYPE_FLOAT16;
+    case MPI_C_FLOAT_COMPLEX: /* MPI_C_COMPLEX (The same value in mpich) */
+	return UTF_DATATYPE_FLOAT_COMPLEX;
+    case MPI_C_DOUBLE_COMPLEX:
+	return UTF_DATATYPE_DOUBLE_COMPLEX;
+    case MPI_C_BOOL:
+	return UTF_DATATYPE_UINT8_T; /* Is this true ? */
+    case MPI_SHORT_INT:	/* MPI_MAXLOC, MPI_MINLOC */
+	return UTF_DATATYPE_SHORT_INT;
+    case MPI_2INT:	/* MPI_MAXLOC, MPI_MINLOC */
+	return UTF_DATATYPE_2INT;
+    case MPI_LONG_INT:	/* MPI_MAXLOC, MPI_MINLOC */
+	return UTF_DATATYPE_LONG_INT;
+    case MPI_LONG_DOUBLE: case MPI_REAL16: /* long double does not support */
     default:
 	return 0;
-#if 0	/* MUST CHECK those types */
-	return UTF_DATATYPE_FLOAT16;
+#if 0	/* No MPI data type */
 	return UTF_DATATYPE_FLOAT16_COMPLEX;
-	return UTF_DATATYPE_FLOAT_COMPLEX;
-	return UTF_DATATYPE_DOUBLE_COMPLEX;
-	return UTF_DATATYPE_SHORT_INT;
-	return UTF_DATATYPE_2INT;
 #endif
     }
 }
