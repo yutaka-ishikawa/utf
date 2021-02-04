@@ -208,7 +208,7 @@ main(int argc, char *argv[])
     MPICALL_CHECK(ext, rc, testAll(MPI_COMM_WORLD, myrank, nprocs, 12, 6, 6));
     /* Testing User-defined communicator */
     {
-	MPI_Comm	newcomm;
+	MPI_Comm	newcomm, newcomm2;
 	int	color  = myrank % 2;
 	int	key    = myrank / 2;
 	int	new_nprocs, new_myrank;
@@ -231,8 +231,15 @@ main(int argc, char *argv[])
 	myprintf(myrank, "\t--- All Barrier Start --\n");
 	MPICALL_CHECK(ext, rc, MPI_Barrier(MPI_COMM_WORLD));
 	myprintf(myrank, "\t--- All Barrier Done --\n");
-	myprintf(myrank, "\t--- Calling MPI_Comm_free --\n");
+
+	myprintf(myrank, "\t--- Calling MPI_Comm_dup --\n");
+	MPICALL_CHECK(ext, rc, MPI_Comm_dup(newcomm, &newcomm2));
+
+	myprintf(myrank, "\t--- Calling MPI_Comm_free for newcomm --\n");
 	MPICALL_CHECK(ext, rc, MPI_Comm_free(&newcomm));
+
+	myprintf(myrank, "\t--- Calling MPI_Comm_free for newcomm2 --\n");
+	MPICALL_CHECK(ext, rc, MPI_Comm_free(&newcomm2));
     }
     myprintf(myrank, "DONE\n");
 ext:
