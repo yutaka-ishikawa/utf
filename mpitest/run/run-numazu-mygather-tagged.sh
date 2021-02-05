@@ -1,16 +1,17 @@
 #!/bin/bash
 #------ pjsub option --------#
-#PJM -N "MPICH-MYGATHER" # jobname
+#PJM -N "MPICH-MYGATHER-TAGGED" # jobname
 #PJM -S		# output statistics
 #PJM --spath "results/mygather/%n.%j.stat"
 #PJM -o "results/mygather/%n.%j.out"
 #PJM -e "results/mygather/%n.%j.err"
 #
 #	PJM -L "node=16:noncont"
-#PJM -L "node=4:noncont"
-#	PJM -L "node=8:noncont"
+#	PJM -L "node=4:noncont"
+#PJM -L "node=12:noncont"
 #	PJM --mpi "max-proc-per-node=20"
-#PJM --mpi "max-proc-per-node=8"
+#PJM --mpi "max-proc-per-node=48"
+#	PJM --mpi "max-proc-per-node=8"
 #	PJM --mpi "max-proc-per-node=4"
 #	PJM -L "elapse=00:02:50"
 #PJM -L "elapse=00:12:20"
@@ -36,33 +37,35 @@ export UTF_ASEND_COUNT=1	# added on 2020/01/01 20:05
 #export UTF_DEBUG=0x020000
 export TFI_FIN_WIPE=1
 
-NP=32
+#NP=192
+#NP=512
+NP=576
 
-export MPIR_CVAR_CH4_OFI_ENABLE_TAGGED=1
+export MPIR_CVAR_CH4_OFI_ENABLE_TAGGED=1	# TAGGED
+export UTF_TRANSMODE=0				# CHAINED
+
 #export UTF_DBGTIMER_INTERVAL=6
 #export UTF_DBGTIMER_ACTION=1
 
-#LEN=1
+LEN=1
 #ITER=200
 #ITER=30
 #ITER=70 # OK
 #ITER=100 # OK 03sec
 #ITER=1000 # OK 03sec
-#ITER=10000 # OK 04sec
+ITER=10000 # OK 04sec
 #ITER=100000 # OK 14sec
 
 #LEN=1024
 #ITER=1000 # OK 03sec
-#ITER=10000 # OK 14sec
+#ITER=10000 # OK 14sec, 1:02 in 512 node
+#ITER=100000 # OK 35sec, 9:53 in 512 node
 #ITER=100000 # OK 35sec
 
-LEN=1048576 # 1 MiB
+#LEN=1048576 # 1 MiB
 #ITER=1000 # OK 8sec
 #ITER=10000 # OK 1:05 
-ITER=100000 # OK 09:35
-
-#export UTF_DBGTIMER_INTERVAL=15
-#export UTF_DBGTIMER_ACTION=1
+#ITER=100000 # OK 09:35
 
 mpich_exec -n $NP $MPIOPT ../src/mygather -l $LEN -i $ITER
 

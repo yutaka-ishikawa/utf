@@ -29,7 +29,8 @@ run(int th)
 	for (i = 1; i < nprocs; i++) {
 	    VERBOSE("%dth  ****** Issue MPI_Recv\n", th);
 	    MPI_Recv(rbuf, length, MPI_BYTE, MPI_ANY_SOURCE, tag, MPI_COMM_WORLD, &stat);
-	    VERBOSE("%d\n", stat.MPI_SOURCE);
+	    //VERBOSE("%d\n", stat.MPI_SOURCE);
+	    //printf("%04d\n", stat.MPI_SOURCE); fflush(stdout);
 	}
 	VERBOSE("%dth  ****** MPI_Recv done\n", th);
     } else {
@@ -60,7 +61,7 @@ main(int argc, char** argv)
     for (iter = 0; iter < iteration; iter++) {
 	run(iter);
     }
-    // printf(">%d : Going-to-BARRIER\n", myrank);  fflush(stdout);
+    //printf(">%d : Going-to-BARRIER\n", myrank);  fflush(stdout);
     MPI_Barrier(MPI_COMM_WORLD);
     if (myrank == 0) {
 	printf("DONE:\n"); fflush(stdout);

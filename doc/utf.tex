@@ -1,0 +1,35 @@
+\documentclass{jarticle}
+\usepackage{amsmath,amssymb}
+%%\usepackage{graphicx} for pdflatex
+\usepackage[dvipdfmx]{graphicx} % for platex
+\usepackage{listings}
+
+\setlength{\textwidth}{17cm}
+\setlength{\textheight}{24cm}
+\setlength{\oddsidemargin}{-1cm}
+\setlength{\evensidemargin}{-1cm}
+\setlength{\topmargin}{-1cm}
+\def\cvar#1{``#1''}
+
+\title{Implementation Document of Simple Message Passing Interface using Utofu}
+\author{}
+\date{
+Draft 0.0 -- 2019/12/15}
+\def\ficommand#1{\tt #1}
+\lstset{
+  basicstyle=\small,            % print whole listing small
+  keywordstyle=\color{black}\bfseries\underbar,
+  identifierstyle=,             % nothing happens
+  commentstyle=\color{white},   % white comments
+  stringstyle=\ttfamily,        % typewriter type for strings
+  showstringspaces=false        % no special string spaces
+}
+
+\def\Fugaku{\it Fugaku}
+  
+\begin{document}
+\maketitle
+\input overview
+\input utofu
+\input design
+\end{document}

@@ -1,0 +1,144 @@
+
+
+[1] Sender engine
+(1) State transition in the sender buffer control
+
+                   EVR_ARMW
+                     +==+
+1)       EVR_ARMW 2) v  "
+REQ_ROOM ==+===> HAS_ROOM -+--------------------------+
+                   v  ^    |                          |
+           "       |  "    v       4)              3) v          EVL_PUT 2)
+           v       |  "    +->+-+-> DO_EGR--+---+-> DONE_EGR====+=====> HAS_ROOM
+          ERR      |  "    |  ^ ^           "   |    ^          v
+                   |  "    |  " "  EVL_PUT  |   |    " EVR_ARMW v
+                   |  "    |  " " EVR_WRMW  v   |    +<~~~~~~~~~+
+                   |  "    |  " +-==========+   |
+                   |  "    |  "                 |
+                   |  +    |  "  5)             |         
+                   |  +<======+== EVR_ARMW      |
+                   +>-----------> WAIT_BUFRDY <-+
+                           v      ^ EVL_PUT v
+                           |      +<========+
+                           |
+                           |                       EVR_GET
+                           v                       EVR_GETDON
+                           +-> REQ_RDVR --> DO_RNDZ========> HAS_ROOM
+
+(2) Possible events for sender engine
+        EVL_PUT (MRQ_TYPE_LCL_PUT)   - done of remote put
+        EVR_GET (MRQ_TYPE_RMT_GET)   - done of receiver's get
+        EVR_GETDN (MRQ_TYPE_RMT_ARMW)- done of receiver's get ack
+        EVL_ARMW (MRQ_TYPE_LCL_ARMW) - done of room info:index (remote_add)
+        EVR_ARMW (MRQ_TYPE_RMT_ARMW) - done of recv_off reset by remote
+
+(3) Possible events in each state
+    1) REQ_ROOM    - EVR_ARMW (room info) ==> HAS_ROOM (progress)
+    2) HAS_ROOM    - EVR_ARMW (recv_off reset) ==> HAS_ROOM (progress)
+    3) DONE_EGR    - EVR_ARMW (recv_off reset) ==> no handling/just reset
+                     EVL_PUT ==> HAS_ROOM (progress)
+    4) DO_EGR      - EVR_ARMW (recv_off reset) ==> no handlint/just reset
+                     EVL_PUT ==> DO_EGR (progress)
+    5) WAIT_BUFRDY - EVL_ARM (recv_offset)
+                        DO_EGR   ==> WAIT_BUFRDY ==> DO_EGR
+                        HAS_RROM ==> WAIT_BUFRDY ==> HAS_ROOM
+                     EVL_PUT
+                        DO_EGR ==> WAIT_BUFDRDY ==> WAIT_BUFDRY
+
+(5) Important Sequences
+   EVL_PUT              EVR_WRMW        EVL_PUT
+  +=======>+DO_EGR--put+=======>+(rest)+========>+DO_EGR--put
+
+   EVL_PUT              EVL_PUT                    EVR_WRMW
+  +=======>+DO_EGR--put+=======>+ DO_EGR---+WAIT +========> + DO_EGR--put
+
+   EVL_PUT                EVL_WRMW
+  +=======>+DO_EGR--+WAIT+========>+ DO_EGR--put
+
+
+[2] Receive engine
+(1) State transition in the receiver buffer control
+    Each req structure keeps state transition for indivisual message transfer.
+
+       EVR_PUT
+R_NONE+===+
+          + if expected msg
+	  |        / wrong implementation */
+          |      - //  if msg is rendzvous, enqueue ursp->rget_cqlst ---> R_NONE
+          |        //     this state is handled in the req structure.
+	  |          
+	  |        +---> R_DO_RNDZ+=+
+	  |        v                "
+          |        otherwise        " EVL_GET
+          |        |                v
+          |        +----> R_BODY    +---> R_DONE --> R_NONE
+          |               ^ EVR_PUT "
+          |               +=========+
+          +  if unexpected msg
+                 - enqueue unexpected msg.
+                 - //if msg is rendzvous, enqueue ursp->rget_cqlst ---> R_NONE
+                   //     this state is handled in the req structure.
+                   +if msg is rendzcous, 
+                   +-------------> R_WAIT_RNDZ
+                                        | by recv_post
+                                        +~~~~~~~>R_DO_RNDZ
+                   otherwise                        +
+                   |                                " EVL_GET
+                   |                                v
+                   +------> R_BODY --+----------> R_DONE --> R_NONE
+                           ^ EVR_PUT "
+                           +=========+
+
+[3] State transition in the Req (utf_msgreq)
+The original design was that all states related to message passing is
+in the sender/receiver buffer control. But when 
+
+(2) Possible events for receiver buffer control
+	EVR_PUT (MRQ_TYPE_RMT_PUT) - done of packet arriving
+	EVL_ARMW (MRQ_TYPE_LCL_ARM) - done of remote get operation
+				      done of remote recv reset
+
+(3) Possible events in each state
+	EVR_PUT (MRQ_TYPE_RMT_PUT) - done of packet arriving
+        EVL_GET (MRQ_TYPE_LCT_GET) - done of remote get for rendzvous
+    - Note that BUFFER FULL is not represented by an explicit state.
+      The recvengine does not recognize this state, but mrqprogress
+      handles this state.
+
+[4] mrqprogress
+(1) UTOFU_MRQ_TYPE_LCL_PUT
+     	- this event happens only in the sender side
+	    - message send
+	    - completion of "utofu_put" command in the sender.
+(2) UTOFU_MRQ_TYPE_RMT_PUT
+     	- this event happens only in the receiver side
+	    - message receive
+	    - completion of "utofu_put" command by the sender.
+(3) UTOFU_MRQ_TYPE_LCL_GET
+     	- this event happens only in the receiver side
+	    - implementation of rendzvous protocol and
+	      fi_writemsg
+	    - completion of "utofu_get" command by the receiver.
+(4) UTOFU_MRQ_TYPE_RMT_GET
+     	- this event happens only in the sender side
+	    - implementation of rendzvous protocol and
+	      fi_writemsg
+	    - completion of "utofu_get" command by the receiver.
+(5) UTOFU_MRQ_TYPE_LCL_ARMW
+     	- this event happens only in both sides.
+	  Sender-side
+	    - implementation of room info in the sender side
+	  Receiver-side (see is_scntr functio in utf_mem.c)
+	    - implementation of remote get
+	    - implementation of recvoff reset
+(6) UTOFU_MRQ_TYPE_RMT_ARMW
+	  Sender-side
+	    - implementation of remote get by receiver
+	        address: stadd + SCNTR_RGETDONE_OFFST
+	    - implementation of recvoff reset
+	        address: stadd + SCNTR_
+	  Receiver-side
+	    - ignore this event
+
+
+

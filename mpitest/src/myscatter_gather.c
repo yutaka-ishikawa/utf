@@ -45,7 +45,7 @@ void
 gather_run(int th)
 {
     int	dst = th % nprocs;
-    int	tag = 20 + th;
+    int	tag = 50000 + th;
 
     if (myrank == dst) {
 	int	i;

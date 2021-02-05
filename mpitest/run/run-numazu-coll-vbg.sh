@@ -19,7 +19,7 @@
 #PJM -L proc-core=unlimited
 #------- Program execution -------#
 
-#MPIOPT="-of results/vbg/%n.%j.out -oferr results/vbg/%n.%j.err"
+MPIOPT="-of results/vbg/%n.%j.out -oferr results/vbg/%n.%j.err"
 VBGLOAD="env LD_PRELOAD=../../build/libmpi_vbg.so"
 
 export UTF_BG_CONFIRM=1
@@ -38,6 +38,7 @@ echo "UTF_BG_UTFPROGRESS" $UTF_BG_UTFPROGRESS
 
 export MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG=1
 
+export MPIR_CVAR_SCATTERV_INTRA_ALGORITHM=linear
 mpich_exec $MPIOPT $VBGLOAD ../src/test_collective_vbg
 
 exit

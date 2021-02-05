@@ -1,0 +1,21 @@
+\section{An Overview of Utofu}
+
+remote primitive、put/get primitive発行時に非同期に情報を保持する方法：
+\begin{enumerate}
+\item コマンド終了通知\\
+  UTOFU\_ONESIDED\_FLAG\_TCQ\_NOTICEならびにcbdataを設定するとプリミティブ操作完了時にこの値を取り出せる。操作完了はutofu\_poll\_tcq関数を使う。
+MPIのMPI\_Isendではローカル操作が完了するまではMPI\_Wait関数では待ち状態にするひつようがある。
+
+\item メモリ操作通知\\
+  UTOFU\_ONESIDED\_FLAG\_LOCAL\_MRQ\_NOTICEあるいはUTOFU\_ONESIDED\_FLAG\_REMOTE\_MRQ\_NOTICEを設定するとプリミティブ発行側あるいはリモート側でメモリ操作通知を受信できる。
+プリミティブ発行時にedataが設定できる。edataのタイプは64bit長であるがutofuで使えるデータ長は8bitしかない。
+  Memory operation Completion通知はutofu\_poll\_mrq関数を使う。
+  以下の情報を得ることが出来る。
+  \begin{enumerate}
+  \item プリミティブ発行時に指定したedata
+  \item メモリ操作結果の値。mrq\_notice.rmt\_value
+  \end{enumerate}
+\end{enumerate}
+
+MRQ (Message Receive Queue)
+
