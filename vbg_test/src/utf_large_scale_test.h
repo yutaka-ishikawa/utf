@@ -53,7 +53,7 @@ enum OP_ID
 
 enum DATATYPE_ID
 {
-    DT_CHAR,
+    DT_SIGNED_CHAR,
     DT_SHORT,
     DT_INT,
     DT_LONG,
@@ -78,7 +78,7 @@ enum DATATYPE_ID
     DT_FLOAT,
     DT_DOUBLE,
     DT_LONG_DOUBLE,
-#if defined(__clang__)
+#if defined(MPIX_C_FLOAT16)
     DT_C_FLOAT16,
 #endif
     DT_C_FLOAT_COMPLEX,
@@ -129,7 +129,7 @@ const char *OP_STR[] =
 
 const char *DATATYPE_STR[] =
 {
-    "MPI_CHAR",
+    "MPI_SIGNED_CHAR",
     "MPI_SHORT",
     "MPI_INT",
     "MPI_LONG",
@@ -154,8 +154,8 @@ const char *DATATYPE_STR[] =
     "MPI_FLOAT",
     "MPI_DOUBLE",
     "MPI_LONG_DOUBLE",
-#if defined(__clang__)
-    "MPI_C_FLOAT16",
+#if defined(MPIX_C_FLOAT16)
+    "MPIX_C_FLOAT16",
 #endif
     "MPI_C_FLOAT_COMPLEX",
     "MPI_C_COMPLEX",
@@ -175,7 +175,7 @@ const int test_func_tbl[] =
     FUNC_MPI_BARRIER,
     FUNC_MPI_BCAST,
     FUNC_MPI_REDUCE,
-    FUNC_MPI_ALLREDUCE 
+    FUNC_MPI_ALLREDUCE
 };
 
 const int test_comm_tbl[] =
@@ -209,7 +209,7 @@ const MPI_Op test_op_tbl[] =
 
 const MPI_Datatype test_datatype_tbl[] =
 {
-    MPI_CHAR,
+    MPI_SIGNED_CHAR,
     MPI_SHORT,
     MPI_INT,
     MPI_LONG,
@@ -234,7 +234,7 @@ const MPI_Datatype test_datatype_tbl[] =
     MPI_FLOAT,
     MPI_DOUBLE,
     MPI_LONG_DOUBLE,
-#if defined(__clang__)
+#if defined(MPIX_C_FLOAT16)
     MPIX_C_FLOAT16,
 #endif
     MPI_C_FLOAT_COMPLEX,
@@ -266,12 +266,4 @@ typedef struct _long_int  { long  val; int ind; } long_int;
 #else
     typedef uint64_t utf_timer_t;
 #endif
-
-
-/*
- * Macros
- */
-#define ANS_LAND(a, b)    ((a) && (b))
-#define ANS_LOR(a, b)     ((a) || (b))
-#define ANS_LXOR(a, b)    (((a) && !(b)) || (!(a) && (b)))
 

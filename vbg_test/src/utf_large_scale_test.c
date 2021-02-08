@@ -8,6 +8,7 @@
 /*
  * header files
  */
+#include <complex.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -78,7 +79,7 @@ static void init_val(void)
     test_datatype_n  = DT_LONG;
     test_count       = 1;
     iter             = 1;
-    comm_count       = 2;
+    comm_count       = 3;
     root_rank        = 0;
     flg_measure      = true;
     flg_use_in_place = false;
@@ -164,12 +165,6 @@ static int check_args(int argc, char **argv)
                     test_datatype = test_datatype_tbl[j];
                     test_datatype_n = j;
                     break;
-#if 0
-                }
-                else {
-                    fprintf(stderr, "[%s] datatype %s\n",
-                            __func__, DATATYPE_STR[j]);
-#endif
                 }
             }
             if (j == MAX_DATATYPE) {
@@ -302,10 +297,9 @@ static int create_comm(MPI_Comm base_comm, int base_rank, int base_procs, MPI_Gr
 #endif
                 ret = MPI_Comm_split(base_comm, color, base_rank, &tcomm);
                 if (ret != MPI_SUCCESS) {
-                    fprintf(stderr,
-                            "[%s:%d] MPI_Comm_split error: ret=%d base_comm=%s rank(w/c)=%d/%d color=%d\n",
-                            __func__, __LINE__, ret, (base_comm==MPI_COMM_WORLD?"WORLD":"other"),
-                            wrank, base_rank, color);
+                    fprintf(stderr, "[%s:%d] MPI_Comm_split error: ret=%d base_comm=%d rank(w/c)=%d/%d"
+                            " color=%d split_size=%d\n",
+                            __func__, __LINE__, ret, (int)base_comm, wrank, base_rank, color, split_size);
                     return FUNC_ERROR;
                 }
             }
@@ -349,8 +343,9 @@ static int create_comm(MPI_Comm base_comm, int base_rank, int base_procs, MPI_Gr
                 // Create the new group
                 ret = MPI_Group_incl(base_group, gsize, ranks, &tgroup);
                 if (ret != MPI_SUCCESS) {
-                    fprintf(stderr, "[%s:%d] MPI_Group_incl error: ret=%d rank(w/c)=%d/%d gsize=%d\n",
-                            __func__, __LINE__, ret, wrank, base_rank, gsize);
+                    fprintf(stderr, "[%s:%d] MPI_Group_incl error: ret=%d rank(w/c)=%d/%d"
+                            " base_group=%d base_procs=%d gsize=%d\n",
+                            __func__, __LINE__, ret, wrank, base_rank, (int)base_group, base_procs, gsize);
                     free(ranks);
                     return FUNC_ERROR;
                 }
@@ -361,8 +356,9 @@ static int create_comm(MPI_Comm base_comm, int base_rank, int base_procs, MPI_Gr
 #endif
                 ret = MPI_Comm_create(base_comm, tgroup, &tcomm);
                 if (ret != MPI_SUCCESS) {
-                    fprintf(stderr, "[%s:%d] MPI_Comm_create error: ret=%d rank(w/c)=%d/%d\n",
-                            __func__, __LINE__, ret, wrank, base_rank);
+                    fprintf(stderr, "[%s:%d] MPI_Comm_create error: ret=%d rank(w/c)=%d/%d\n"
+                            " base_comm=%d tgroup=%d",
+                            __func__, __LINE__, ret, wrank, base_rank, (int)base_comm, (int)tgroup);
                     free(ranks);
                     return FUNC_ERROR;
                 }
@@ -371,21 +367,21 @@ static int create_comm(MPI_Comm base_comm, int base_rank, int base_procs, MPI_Gr
             break;
 
         default:
-            fprintf(stderr, "[%s] Invalid communicator type: wrank=%d test_comm=%d\n",
-                    __func__, wrank, test_comm);
+            fprintf(stderr, "[%s] Invalid communicator type: rank(w/c)=%d/%d test_comm=%d\n",
+                    __func__, wrank, base_rank, test_comm);
             return FUNC_ERROR;
     }
- 
+
     ret = MPI_Comm_size(tcomm, &comm_procs);
     if (ret != MPI_SUCCESS) {
-        fprintf(stderr, "[%s:%d] MPI_Comm_size error: ret=%d wrank=%d\n",
-                __func__, __LINE__, ret, wrank);
+        fprintf(stderr, "[%s:%d] MPI_Comm_size error: ret=%d rank(w/c)=%d/%d test_comm=%d tcomm=%d\n",
+                __func__, __LINE__, ret, wrank, base_rank, test_comm, (int)tcomm);
         return FUNC_ERROR;
     }
     ret = MPI_Comm_rank(tcomm, &comm_rank);
     if (ret != MPI_SUCCESS) {
-        fprintf(stderr, "[%s:%d] MPI_Comm_rank error: ret=%d wrank=%d\n",
-                __func__, __LINE__, ret, wrank);
+        fprintf(stderr, "[%s:%d] MPI_Comm_rank error: ret=%d rank(w/c)=%d/%d test_comm=%d tcomm=%d\n",
+                __func__, __LINE__, ret, wrank, base_rank, test_comm, (int)tcomm);
         return FUNC_ERROR;
     }
     return FUNC_SUCCESS;
@@ -400,8 +396,8 @@ static int free_comm(void)
     int ret = MPI_SUCCESS;
 
 #if TPDEBUG
-    fprintf(stderr, "[%s:%d] start: rank(w/c)=%d/%d test_comm=%d tcomm=%p\n",
-            __func__, __LINE__, wrank, comm_rank, test_comm, tcomm);
+    fprintf(stderr, "[%s:%d] start: rank(w/c)=%d/%d test_comm=%d tcomm=%d\n",
+            __func__, __LINE__, wrank, comm_rank, test_comm, (int)tcomm);
 #endif
     if (test_comm == COMM_WORLD) {
         return FUNC_SUCCESS;
@@ -409,13 +405,13 @@ static int free_comm(void)
 
     if (tcomm != 0) {
 #if TPDEBUG
-        fprintf(stderr, "[%s:%d] call MPI_Comm_free: rank(w/c)=%d/%d tcomm=%p\n",
-                __func__, __LINE__, wrank, comm_rank, tcomm);
+        fprintf(stderr, "[%s:%d] call MPI_Comm_free: rank(w/c)=%d/%d tcomm=%d\n",
+                __func__, __LINE__, wrank, comm_rank, (int)tcomm);
 #endif
         ret = MPI_Comm_free(&tcomm);
         if (ret != MPI_SUCCESS) {
-            fprintf(stderr, "[%s] MPI_Comm_free error: ret=%d rank(w/c)=%d/%d\n",
-                    __func__, ret, wrank, comm_rank);
+            fprintf(stderr, "[%s] MPI_Comm_free error: ret=%d rank(w/c)=%d/%d tcomm=%d\n",
+                    __func__, ret, wrank, comm_rank, (int)tcomm);
             return FUNC_ERROR;
         }
         tcomm = 0;
@@ -428,8 +424,8 @@ static int free_comm(void)
 #endif
         ret = MPI_Group_free(&tgroup);
         if (ret != MPI_SUCCESS) {
-            fprintf(stderr, "[%s] MPI_Group_free error: ret=%d rank(w/c)=%d/%d\n",
-                    __func__, ret, wrank, comm_rank);
+            fprintf(stderr, "[%s] MPI_Group_free error: ret=%d rank(w/c)=%d/%d tgroup=%d\n",
+                    __func__, ret, wrank, comm_rank, (int)tgroup);
             return FUNC_ERROR;
         }
         tgroup = 0;
@@ -555,18 +551,18 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
     memset(ansbuf, 0x00, buf_size);
 
     switch (test_datatype_n) {
-        case DT_CHAR:
+        case DT_SIGNED_CHAR:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((char *)sbuf+n) = (char)n; 
+                    *((signed char *)sbuf+n) = (signed char)n;
                 }
-                *((char *)ansbuf+n) = (char)n;
+                *((signed char *)ansbuf+n) = (signed char)n;
             }
             break;
         case DT_SHORT:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((short *)sbuf+n) = (short)n; 
+                    *((short *)sbuf+n) = (short)n;
                 }
                 *((short *)ansbuf+n) = (short)n;
             }
@@ -574,7 +570,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_INT:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((int *)sbuf+n) = n; 
+                    *((int *)sbuf+n) = n;
                 }
                 *((int *)ansbuf+n) = n;
             }
@@ -582,7 +578,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_LONG:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((long *)sbuf+n) = n + 1; 
+                    *((long *)sbuf+n) = n + 1;
                 }
                 *((long *)ansbuf+n) = n + 1;
             }
@@ -591,7 +587,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_LONG_LONG_INT:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((long long *)sbuf+n) = n + 1; 
+                    *((long long *)sbuf+n) = n + 1;
                 }
                 *((long long *)ansbuf+n) = n + 1;
             }
@@ -600,7 +596,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_UNSIGNED_CHAR:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((unsigned char *)sbuf+n) = (unsigned char)n; 
+                    *((unsigned char *)sbuf+n) = (unsigned char)n;
                 }
                 *((unsigned char *)ansbuf+n) = (unsigned char)n;
             }
@@ -608,7 +604,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_UNSIGNED_SHORT:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((unsigned short *)sbuf+n) = (unsigned short)n; 
+                    *((unsigned short *)sbuf+n) = (unsigned short)n;
                 }
                 *((unsigned short *)ansbuf+n) = (unsigned short)n;
             }
@@ -616,7 +612,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_UNSIGNED:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((unsigned int *)sbuf+n) = (unsigned int)n; 
+                    *((unsigned int *)sbuf+n) = (unsigned int)n;
                 }
                 *((unsigned int *)ansbuf+n) = (unsigned int)n;
             }
@@ -624,7 +620,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_UNSIGNED_LONG:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((unsigned long *)sbuf+n) = n + 1; 
+                    *((unsigned long *)sbuf+n) = n + 1;
                 }
                 *((unsigned long *)ansbuf+n) = n + 1;
             }
@@ -632,7 +628,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_UNSIGNED_LONG_LONG:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((unsigned long long *)sbuf+n) = n + 1; 
+                    *((unsigned long long *)sbuf+n) = n + 1;
                 }
                 *((unsigned long long *)ansbuf+n) = n + 1;
             }
@@ -640,7 +636,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_INT8_T:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((int8_t *)sbuf+n) = (int8_t)n; 
+                    *((int8_t *)sbuf+n) = (int8_t)n;
                 }
                 *((int8_t *)ansbuf+n) = (int8_t)n;
             }
@@ -648,7 +644,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_INT16_T:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((int16_t *)sbuf+n) = (int16_t)n; 
+                    *((int16_t *)sbuf+n) = (int16_t)n;
                 }
                 *((int16_t *)ansbuf+n) = (int16_t)n;
             }
@@ -656,7 +652,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_INT32_T:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((int32_t *)sbuf+n) = (int32_t)n; 
+                    *((int32_t *)sbuf+n) = (int32_t)n;
                 }
                 *((int32_t *)ansbuf+n) = (int32_t)n;
             }
@@ -664,7 +660,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_INT64_T:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((int64_t *)sbuf+n) = (int64_t)n + 1; 
+                    *((int64_t *)sbuf+n) = (int64_t)n + 1;
                 }
                 *((int64_t *)ansbuf+n) = (int64_t)n + 1;
             }
@@ -672,7 +668,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_UINT8_T:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((uint8_t *)sbuf+n) = (uint8_t)n; 
+                    *((uint8_t *)sbuf+n) = (uint8_t)n;
                 }
                 *((uint8_t *)ansbuf+n) = (uint8_t)n;
             }
@@ -680,7 +676,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_UINT16_T:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((uint16_t *)sbuf+n) = (uint16_t)n; 
+                    *((uint16_t *)sbuf+n) = (uint16_t)n;
                 }
                 *((uint16_t *)ansbuf+n) = (uint16_t)n;
             }
@@ -688,7 +684,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_UINT32_T:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((uint32_t *)sbuf+n) = (uint32_t)n; 
+                    *((uint32_t *)sbuf+n) = (uint32_t)n;
                 }
                 *((uint32_t *)ansbuf+n) = (uint32_t)n;
             }
@@ -696,7 +692,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_UINT64_T:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((uint64_t *)sbuf+n) = (uint64_t)n + 1; 
+                    *((uint64_t *)sbuf+n) = (uint64_t)n + 1;
                 }
                 *((uint64_t *)ansbuf+n) = (uint64_t)n + 1;
             }
@@ -704,7 +700,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_WCHAR:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((wchar_t *)sbuf+n) = (wchar_t)n; 
+                    *((wchar_t *)sbuf+n) = (wchar_t)n;
                 }
                 *((wchar_t *)ansbuf+n) = (wchar_t)n;
             }
@@ -712,7 +708,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_C_BOOL:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((_Bool *)sbuf+n) = true; 
+                    *((_Bool *)sbuf+n) = true;
                 }
                 *((_Bool *)ansbuf+n) = true;
             }
@@ -720,7 +716,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_FLOAT:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((float *)sbuf+n) = (float)n; 
+                    *((float *)sbuf+n) = (float)n;
                 }
                 *((float *)ansbuf+n) = (float)n;
             }
@@ -728,7 +724,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_DOUBLE:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((double *)sbuf+n) = (double)n; 
+                    *((double *)sbuf+n) = (double)n;
                 }
                 *((double *)ansbuf+n) = (double)n;
             }
@@ -736,16 +732,16 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_LONG_DOUBLE:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((long double *)sbuf+n) = (long double)n; 
+                    *((long double *)sbuf+n) = (long double)n;
                 }
                 *((long double *)ansbuf+n) = (long double)n;
             }
             break;
-#if defined(__clang__)
+#if defined(MPIX_C_FLOAT16)
         case DT_C_FLOAT16:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((_Float16 *)sbuf+n) = (_Float16)n; 
+                    *((_Float16 *)sbuf+n) = (_Float16)n;
                 }
                 *((_Float16 *)ansbuf+n) = (_Float16)n;
             }
@@ -755,7 +751,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_C_FLOAT_COMPLEX:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((float _Complex *)sbuf+n) = n + 1.0i; 
+                    *((float _Complex *)sbuf+n) = n + 1.0i;
                 }
                 *((float _Complex *)ansbuf+n) = n + 1.0i;
             }
@@ -763,7 +759,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_C_DOUBLE_COMPLEX:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((double _Complex *)sbuf+n) = n + 1.0i; 
+                    *((double _Complex *)sbuf+n) = n + 1.0i;
                 }
                 *((double _Complex *)ansbuf+n) = n + 1.0i;
             }
@@ -771,7 +767,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
         case DT_C_LONG_DOUBLE_COMPLEX:
             for (n=0; n<test_count; n++) {
                 if (comm_rank == root_rank) {
-                    *((long double _Complex *)sbuf+n) = n + 1.0i; 
+                    *((long double _Complex *)sbuf+n) = n + 1.0i;
                 }
                 *((long double _Complex *)ansbuf+n) = n + 1.0i;
             }
@@ -808,10 +804,10 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
             break;
         default:
             fprintf(stderr,
-                    "[%s] invalid datatype: rank(w/c)=%d/%d func=%s datatype=%s\n",
-                    __func__, wrank, comm_rank, FUNC_STR[test_func], DATATYPE_STR[test_datatype_n]);
+                    "[%s] invalid datatype: rank(w/c)=%d/%d func=%s datatype=%d\n",
+                    __func__, wrank, comm_rank, FUNC_STR[test_func], test_datatype_n);
             return FUNC_ERROR;
-    } 
+    }
     return FUNC_SUCCESS;
 }
 
@@ -821,7 +817,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
  */
 static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long buf_size) {
 
-    int n, cn;
+    int n, cn, ans_n;
 
     if (sbuf == NULL || ansbuf == NULL) {
         fprintf(stderr, "[%s] no buffer specified: rank(w/c)=%d/%d sbuf=%p ansbuf=%p\n",
@@ -835,19 +831,19 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
     }
 
     switch (test_datatype_n) {
-        case DT_CHAR:
+        case DT_SIGNED_CHAR:
             for (n=0; n<test_count; n++) {
-                *((char *)sbuf+n) = (char)comm_rank;
+                *((signed char *)sbuf+n) = (signed char)comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
-                        *((char *)ansbuf+n) += (char)cn;
+                        *((signed char *)ansbuf+n) += (signed char)cn;
                     }
                 }
             }
             break;
         case DT_SHORT:
             for (n=0; n<test_count; n++) {
-                *((short *)sbuf+n) = (short)comm_rank; 
+                *((short *)sbuf+n) = (short)comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((short *)ansbuf+n) += (short)cn;
@@ -857,7 +853,7 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
             break;
         case DT_INT:
             for (n=0; n<test_count; n++) {
-                *((int *)sbuf+n) = (int)comm_rank; 
+                *((int *)sbuf+n) = (int)comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((int *)ansbuf+n) += cn;
@@ -867,7 +863,7 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
             break;
         case DT_LONG:
             for (n=0; n<test_count; n++) {
-                *((long *)sbuf+n) = comm_rank; 
+                *((long *)sbuf+n) = comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((long *)ansbuf+n) += cn;
@@ -878,7 +874,7 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
         case DT_LONG_LONG:
         case DT_LONG_LONG_INT:
             for (n=0; n<test_count; n++) {
-                *((long long *)sbuf+n) = comm_rank; 
+                *((long long *)sbuf+n) = comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((long long *)ansbuf+n) += cn;
@@ -889,7 +885,7 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
         case DT_BYTE:
         case DT_UNSIGNED_CHAR:
             for (n=0; n<test_count; n++) {
-                *((unsigned char *)sbuf+n) = (unsigned char)comm_rank; 
+                *((unsigned char *)sbuf+n) = (unsigned char)comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((unsigned char *)ansbuf+n) += (unsigned char)cn;
@@ -899,7 +895,7 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
             break;
         case DT_UNSIGNED_SHORT:
             for (n=0; n<test_count; n++) {
-                *((unsigned short *)sbuf+n) = (unsigned short)comm_rank; 
+                *((unsigned short *)sbuf+n) = (unsigned short)comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((unsigned short *)ansbuf+n) += (unsigned short)cn;
@@ -909,7 +905,7 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
             break;
         case DT_UNSIGNED:
             for (n=0; n<test_count; n++) {
-                *((unsigned int *)sbuf+n) = (unsigned int)comm_rank; 
+                *((unsigned int *)sbuf+n) = (unsigned int)comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((unsigned int *)ansbuf+n) += (unsigned int)cn;
@@ -919,7 +915,7 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
             break;
         case DT_UNSIGNED_LONG:
             for (n=0; n<test_count; n++) {
-                *((unsigned long *)sbuf+n) = comm_rank; 
+                *((unsigned long *)sbuf+n) = comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((unsigned long *)ansbuf+n) += cn;
@@ -929,7 +925,7 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
             break;
         case DT_UNSIGNED_LONG_LONG:
             for (n=0; n<test_count; n++) {
-                *((unsigned long long *)sbuf+n) = comm_rank; 
+                *((unsigned long long *)sbuf+n) = comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((unsigned long long *)ansbuf+n) += cn;
@@ -939,7 +935,7 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
             break;
         case DT_INT8_T:
             for (n=0; n<test_count; n++) {
-                *((int8_t *)sbuf+n) = (int8_t)comm_rank; 
+                *((int8_t *)sbuf+n) = (int8_t)comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((int8_t *)ansbuf+n) += (int8_t)cn;
@@ -949,7 +945,7 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
             break;
         case DT_INT16_T:
             for (n=0; n<test_count; n++) {
-                *((int16_t *)sbuf+n) = (int16_t)comm_rank; 
+                *((int16_t *)sbuf+n) = (int16_t)comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((int16_t *)ansbuf+n) += (int16_t)cn;
@@ -959,7 +955,7 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
             break;
         case DT_INT32_T:
             for (n=0; n<test_count; n++) {
-                *((int32_t *)sbuf+n) = (int32_t)comm_rank; 
+                *((int32_t *)sbuf+n) = (int32_t)comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((int32_t *)ansbuf+n) += (int32_t)cn;
@@ -969,7 +965,7 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
             break;
         case DT_INT64_T:
             for (n=0; n<test_count; n++) {
-                *((int64_t *)sbuf+n) = comm_rank; 
+                *((int64_t *)sbuf+n) = comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((int64_t *)ansbuf+n) += cn;
@@ -979,7 +975,7 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
             break;
         case DT_UINT8_T:
             for (n=0; n<test_count; n++) {
-                *((uint8_t *)sbuf+n) = (uint8_t)comm_rank; 
+                *((uint8_t *)sbuf+n) = (uint8_t)comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((uint8_t *)ansbuf+n) += (uint8_t)cn;
@@ -989,7 +985,7 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
             break;
         case DT_UINT16_T:
             for (n=0; n<test_count; n++) {
-                *((uint16_t *)sbuf+n) = (uint16_t)comm_rank; 
+                *((uint16_t *)sbuf+n) = (uint16_t)comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((uint16_t *)ansbuf+n) += (uint16_t)cn;
@@ -999,7 +995,7 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
             break;
         case DT_UINT32_T:
             for (n=0; n<test_count; n++) {
-                *((uint32_t *)sbuf+n) = (uint32_t)comm_rank; 
+                *((uint32_t *)sbuf+n) = (uint32_t)comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((uint32_t *)ansbuf+n) += (uint32_t)cn;
@@ -1009,7 +1005,7 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
             break;
         case DT_UINT64_T:
             for (n=0; n<test_count; n++) {
-                *((uint64_t *)sbuf+n) = comm_rank; 
+                *((uint64_t *)sbuf+n) = comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((uint64_t *)ansbuf+n) += cn;
@@ -1017,39 +1013,20 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
                 }
             }
             break;
-        case DT_WCHAR:
-            for (n=0; n<test_count; n++) {
-                *((wchar_t *)sbuf+n) = (wchar_t)comm_rank; 
-                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                    for (cn=0; cn<comm_procs; cn++) {
-                        *((wchar_t *)ansbuf+n) += (wchar_t)comm_rank;
-                    }
-                }
-            }
-            break;
-        case DT_C_BOOL:
-            for (n=0; n<test_count; n++) {
-                *((_Bool *)sbuf+n) = true; 
-                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                    for (cn=0; cn<comm_procs; cn++) {
-                        *((_Bool *)ansbuf+n) = true;
-                    }
-                }
-            }
-            break;
         case DT_FLOAT:
             for (n=0; n<test_count; n++) {
-                *((float *)sbuf+n) = (float)comm_rank; 
+                *((float *)sbuf+n) = (float)comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                    for (cn=0; cn<comm_procs; cn++) {
-                        *((float *)ansbuf+n) += (float)cn;
+                    for (cn=0, ans_n=0; cn<comm_procs; cn++) {
+                        ans_n += cn;
                     }
+                    *((float *)ansbuf+n) = (float)ans_n;
                 }
             }
             break;
         case DT_DOUBLE:
             for (n=0; n<test_count; n++) {
-                *((double *)sbuf+n) = (double)comm_rank; 
+                *((double *)sbuf+n) = (double)comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((double *)ansbuf+n) += (double)cn;
@@ -1059,7 +1036,7 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
             break;
         case DT_LONG_DOUBLE:
             for (n=0; n<test_count; n++) {
-                *((long double *)sbuf+n) = (long double)comm_rank; 
+                *((long double *)sbuf+n) = (long double)comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((long double *)ansbuf+n) += (long double)cn;
@@ -1067,14 +1044,19 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
                 }
             }
             break;
-#if defined(__clang__)
+#if defined(MPIX_C_FLOAT16)
         case DT_C_FLOAT16:
             for (n=0; n<test_count; n++) {
                 *((_Float16 *)sbuf+n) = (_Float16)comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                    for (cn=0; cn<comm_procs; cn++) {
-                        *((_Float16 *)ansbuf+n) += (_Float16)cn;
+                    for (cn=0, ans_n=0; cn<comm_procs; cn++) {
+                        ans_n += cn;
                     }
+                    *((_Float16 *)ansbuf+n) = (_Float16)ans_n;
+#if defined(TPDEBUG)
+                    fprintf(stderr, "[%s] rank(w/c)=%d/%d ans_n=%d, ansbuf[%d]=%f\n",
+                            __func__, wrank, comm_rank, ans_n, n, (double)*((_Float16 *)ansbuf+n));
+#endif
                 }
             }
             break;
@@ -1082,17 +1064,18 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
         case DT_C_COMPLEX:
         case DT_C_FLOAT_COMPLEX:
             for (n=0; n<test_count; n++) {
-                *((float _Complex *)sbuf+n) = comm_rank + 1.0i; 
+                *((float _Complex *)sbuf+n) = comm_rank + 1.0i;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                    for (cn=0; cn<comm_procs; cn++) {
-                        *((float _Complex *)ansbuf+n) += cn + 1.0i;
+                    for (cn=0, ans_n=0; cn<comm_procs; cn++) {
+                        ans_n += cn;
                     }
+                    *((float _Complex *)ansbuf+n) = (float _Complex)(ans_n + comm_procs * I);
                 }
             }
             break;
         case DT_C_DOUBLE_COMPLEX:
             for (n=0; n<test_count; n++) {
-                *((double _Complex *)sbuf+n) = comm_rank + 1.0i; 
+                *((double _Complex *)sbuf+n) = comm_rank + 1.0i;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((double _Complex *)ansbuf+n) += cn + 1.0i;
@@ -1102,10 +1085,32 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
             break;
         case DT_C_LONG_DOUBLE_COMPLEX:
             for (n=0; n<test_count; n++) {
-                *((long double _Complex *)sbuf+n) = comm_rank + 1.0i; 
+                *((long double _Complex *)sbuf+n) = comm_rank + 1.0i;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     for (cn=0; cn<comm_procs; cn++) {
                         *((long double _Complex *)ansbuf+n) += cn + 1.0i;
+                    }
+                }
+            }
+            break;
+
+        // Following types cannot be used in these reduction operations.
+        case DT_WCHAR:
+            for (n=0; n<test_count; n++) {
+                *((wchar_t *)sbuf+n) = (wchar_t)comm_rank;
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (cn=0; cn<comm_procs; cn++) {
+                        *((wchar_t *)ansbuf+n) += (wchar_t)comm_rank;
+                    }
+                }
+            }
+            break;
+        case DT_C_BOOL:
+            for (n=0; n<test_count; n++) {
+                *((_Bool *)sbuf+n) = true;
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (cn=0; cn<comm_procs; cn++) {
+                        *((_Bool *)ansbuf+n) = true;
                     }
                 }
             }
@@ -1147,10 +1152,10 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
             }
             break;
         default:
-            fprintf(stderr, "[%s] invalid datatype: rank(w/c)=%d/%d func=%s datatype=%s\n",
-                    __func__, wrank, comm_rank, FUNC_STR[test_func], DATATYPE_STR[test_datatype_n]);
+            fprintf(stderr, "[%s] invalid datatype: rank(w/c)=%d/%d func=%s datatype=%d\n",
+                    __func__, wrank, comm_rank, FUNC_STR[test_func], test_datatype_n);
             return FUNC_ERROR;
-    } 
+    }
     return FUNC_SUCCESS;
 }
 
@@ -1174,9 +1179,9 @@ static int set_data_for_reduce_bit(void *sbuf, void *rbuf, void *ansbuf, long bu
     }
 
     switch (test_datatype_n) {
-        case DT_CHAR:
+        case DT_SIGNED_CHAR:
             for (n=0; n<test_count; n++) {
-                *((char *)sbuf+n) = (char)comm_rank; 
+                *((signed char *)sbuf+n) = (signed char)comm_rank;
             }
             if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                 if (test_op_n == OP_BAND) {
@@ -1204,7 +1209,7 @@ static int set_data_for_reduce_bit(void *sbuf, void *rbuf, void *ansbuf, long bu
             break;
         case DT_SHORT:
             for (n=0; n<test_count; n++) {
-                *((short *)sbuf+n) = (short)comm_rank; 
+                *((short *)sbuf+n) = (short)comm_rank;
             }
             if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                 if (test_op_n == OP_BAND) {
@@ -1232,7 +1237,7 @@ static int set_data_for_reduce_bit(void *sbuf, void *rbuf, void *ansbuf, long bu
             break;
         case DT_INT:
             for (n=0; n<test_count; n++) {
-                *((int *)sbuf+n) = comm_rank; 
+                *((int *)sbuf+n) = comm_rank;
             }
             if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                 if (test_op_n == OP_BAND) {
@@ -1260,7 +1265,7 @@ static int set_data_for_reduce_bit(void *sbuf, void *rbuf, void *ansbuf, long bu
             break;
         case DT_LONG:
             for (n=0; n<test_count; n++) {
-                *((long *)sbuf+n) = comm_rank; 
+                *((long *)sbuf+n) = comm_rank;
             }
             if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                 if (test_op_n == OP_BAND) {
@@ -1289,7 +1294,7 @@ static int set_data_for_reduce_bit(void *sbuf, void *rbuf, void *ansbuf, long bu
         case DT_LONG_LONG:
         case DT_LONG_LONG_INT:
             for (n=0; n<test_count; n++) {
-                *((long long *)sbuf+n) = comm_rank; 
+                *((long long *)sbuf+n) = comm_rank;
             }
             if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                 if (test_op_n == OP_BAND) {
@@ -1318,7 +1323,7 @@ static int set_data_for_reduce_bit(void *sbuf, void *rbuf, void *ansbuf, long bu
         case DT_BYTE:
         case DT_UNSIGNED_CHAR:
             for (n=0; n<test_count; n++) {
-                *((unsigned char *)sbuf+n) = (unsigned char)comm_rank; 
+                *((unsigned char *)sbuf+n) = (unsigned char)comm_rank;
             }
             if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                 if (test_op_n == OP_BAND) {
@@ -1654,7 +1659,7 @@ static int set_data_for_reduce_bit(void *sbuf, void *rbuf, void *ansbuf, long bu
             break;
         case DT_UINT64_T:
             for (n=0; n<test_count; n++) {
-                *((uint64_t *)sbuf+n) = comm_rank; 
+                *((uint64_t *)sbuf+n) = comm_rank;
             }
             if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                 if (test_op_n == OP_BAND) {
@@ -1684,50 +1689,50 @@ static int set_data_for_reduce_bit(void *sbuf, void *rbuf, void *ansbuf, long bu
         // Following types cannot be used in these reduction operations.
         case DT_WCHAR:
             for (n=0; n<test_count; n++) {
-                *((wchar_t *)sbuf+n) = (wchar_t)comm_rank; 
+                *((wchar_t *)sbuf+n) = (wchar_t)comm_rank;
             }
             break;
         case DT_C_BOOL:
             for (n=0; n<test_count; n++) {
-                *((bool *)sbuf+n) = (bool)comm_rank; 
+                *((bool *)sbuf+n) = (bool)comm_rank;
             }
             break;
         case DT_FLOAT:
             for (n=0; n<test_count; n++) {
-                *((float *)sbuf+n) = (float)comm_rank; 
+                *((float *)sbuf+n) = (float)comm_rank;
             }
             break;
         case DT_DOUBLE:
             for (n=0; n<test_count; n++) {
-                *((double *)sbuf+n) = (double)comm_rank; 
+                *((double *)sbuf+n) = (double)comm_rank;
             }
             break;
         case DT_LONG_DOUBLE:
             for (n=0; n<test_count; n++) {
-                *((long double *)sbuf+n) = (long double)comm_rank; 
+                *((long double *)sbuf+n) = (long double)comm_rank;
             }
             break;
-#if defined(__clang__)
+#if defined(MPIX_C_FLOAT16)
         case DT_C_FLOAT16:
             for (n=0; n<test_count; n++) {
-                *((_Float16 *)sbuf+n) = (_Float16)comm_rank; 
+                *((_Float16 *)sbuf+n) = (_Float16)comm_rank;
             }
             break;
 #endif
         case DT_C_COMPLEX:
         case DT_C_FLOAT_COMPLEX:
             for (n=0; n<test_count; n++) {
-                *((float _Complex *)sbuf+n) = comm_rank + 1.0i; 
+                *((float _Complex *)sbuf+n) = comm_rank + 1.0i;
             }
             break;
         case DT_C_DOUBLE_COMPLEX:
             for (n=0; n<test_count; n++) {
-                *((double _Complex *)sbuf+n) = comm_rank + 1.0i; 
+                *((double _Complex *)sbuf+n) = comm_rank + 1.0i;
             }
             break;
         case DT_C_LONG_DOUBLE_COMPLEX:
             for (n=0; n<test_count; n++) {
-                *((long double _Complex *)sbuf+n) = comm_rank + 1.0i; 
+                *((long double _Complex *)sbuf+n) = comm_rank + 1.0i;
             }
             break;
         case DT_SHORT_INT:
@@ -1749,10 +1754,10 @@ static int set_data_for_reduce_bit(void *sbuf, void *rbuf, void *ansbuf, long bu
             };
             break;
         default:
-            fprintf(stderr, "[%s] invalid datatype: rank(w/c)=%d/%d func=%s datatype=%s\n",
-                    __func__, wrank, comm_rank, FUNC_STR[test_func], DATATYPE_STR[test_datatype_n]);
+            fprintf(stderr, "[%s] invalid datatype: rank(w/c)=%d/%d func=%s datatype=%d\n",
+                    __func__, wrank, comm_rank, FUNC_STR[test_func], test_datatype_n);
             return FUNC_ERROR;
-    } 
+    }
     return FUNC_SUCCESS;
 }
 
@@ -1762,7 +1767,7 @@ static int set_data_for_reduce_bit(void *sbuf, void *rbuf, void *ansbuf, long bu
  */
 static int set_data_for_reduce_logical(void *sbuf, void *rbuf, void *ansbuf, long buf_size) {
 
-    int n, cn;
+    int n;
 
     if (sbuf == NULL || ansbuf == NULL) {
         fprintf(stderr, "[%s] no buffer specified: rank(w/c)=%d/%d sbuf=%p ansbuf=%p\n",
@@ -1775,126 +1780,173 @@ static int set_data_for_reduce_logical(void *sbuf, void *rbuf, void *ansbuf, lon
         memset(rbuf, 0x00, buf_size);
     }
 
+    //     test data      answer
+    //   n  root other     LXOR
+    //  ---+------------+---------
+    //  [0]    1     0        1
+    //  [1]    0     0        0
+    //   : <repeat>
+    //
+    //   n  root other   LAND  LOR
+    //  ---+------------+---------
+    //  [0]    1     1      1    1
+    //  [1]    1     0      0    1
+    //  [2]    0     1      0    1
+    //  [3]    0     0      0    0
+    //   : <repeat>
+
     switch (test_datatype_n) {
-        case DT_CHAR:
-            for (n=0; n<test_count; n++) {
-                *((char *)sbuf+n) = (comm_rank%2==0 ? 1:3); 
+        case DT_SIGNED_CHAR:
+            if (test_op_n == OP_LXOR) {
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((signed char *)sbuf+n) = (n%2==0 ? 1:0);
+                    }
+                    else {
+                        *((signed char *)sbuf+n) = 0;
+                    }
+                }
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (n=0; n<test_count; n++) {
+                        *((signed char *)ansbuf+n) = ((n%2==0) ? 1:0);
+                    }
+                }
             }
-            if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                if (test_op_n == OP_LAND) {
-                    for (n=0; n<test_count; n++) {
-                        *((char *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((char *)ansbuf+n) = ANS_LAND(*((char *)ansbuf+n), (cn%2==0 ? 1:3));
-                        }
+            else { // OP_LAND, OP_LOR
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((signed char *)sbuf+n) = ((n%4==0 || (n-1)%4==0) ? 1:0);
+                    }
+                    else {
+                        *((signed char *)sbuf+n) = (signed char)((n+1)%2);
                     }
                 }
-                else if (test_op_n == OP_LOR) {
-                    for (n=0; n<test_count; n++) {
-                        *((char *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((char *)ansbuf+n) = ANS_LOR(*((char *)ansbuf+n), (cn%2==0 ? 1:3));
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    if (test_op_n == OP_LAND) {
+                        for (n=0; n<test_count; n++) {
+                            *((signed char *)ansbuf+n) = ((n%4==0) ? 1:0);
                         }
                     }
-                }
-                else { // OP_LXOR
-                    for (n=0; n<test_count; n++) {
-                        *((char *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((char *)ansbuf+n) = ANS_LXOR(*((char *)ansbuf+n), (cn%2==0 ? 1:3));
+                    else { // OP_LOR
+                        for (n=0; n<test_count; n++) {
+                            *((signed char *)ansbuf+n) = ((n!=0 && (n+1)%4==0) ? 0:1);
                         }
                     }
                 }
             }
             break;
         case DT_SHORT:
-            for (n=0; n<test_count; n++) {
-                *((short *)sbuf+n) = (comm_rank%2==0 ? 1:3); 
+            if (test_op_n == OP_LXOR) {
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((short *)sbuf+n) = (n%2==0 ? 1:0);
+                    }
+                    else {
+                        *((short *)sbuf+n) = 0;
+                    }
+                }
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (n=0; n<test_count; n++) {
+                        *((short *)ansbuf+n) = ((n%2==0) ? 1:0);
+                    }
+                }
             }
-            if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                if (test_op_n == OP_LAND) {
-                    for (n=0; n<test_count; n++) {
-                        *((short *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((short *)ansbuf+n) = ANS_LAND(*((short *)ansbuf+n), (cn%2==0 ? 1:3));
-                        }
+            else { // OP_LAND, OP_LOR
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((short *)sbuf+n) = ((n%4==0 || (n-1)%4==0) ? 1:0);
+                    }
+                    else {
+                        *((short *)sbuf+n) = (short)((n+1)%2);
                     }
                 }
-                else if (test_op_n == OP_LOR) {
-                    for (n=0; n<test_count; n++) {
-                        *((short *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((short *)ansbuf+n) = ANS_LOR(*((short *)ansbuf+n), (cn%2==0 ? 1:3));
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    if (test_op_n == OP_LAND) {
+                        for (n=0; n<test_count; n++) {
+                            *((short *)ansbuf+n) = ((n%4==0) ? 1:0);
                         }
                     }
-                }
-                else { // OP_LXOR
-                    for (n=0; n<test_count; n++) {
-                        *((short *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((short *)ansbuf+n) = ANS_LXOR(*((short *)ansbuf+n), (cn%2==0 ? 1:3));
+                    else { // OP_LOR
+                        for (n=0; n<test_count; n++) {
+                            *((short *)ansbuf+n) = ((n!=0 && (n+1)%4==0) ? 0:1);
                         }
                     }
                 }
             }
             break;
         case DT_INT:
-            for (n=0; n<test_count; n++) {
-                *((int *)sbuf+n) = (comm_rank%2==0 ? 1:3); 
+            if (test_op_n == OP_LXOR) {
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((int *)sbuf+n) = (n%2==0 ? 1:0);
+                    }
+                    else {
+                        *((int *)sbuf+n) = 0;
+                    }
+                }
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (n=0; n<test_count; n++) {
+                        *((int *)ansbuf+n) = ((n%2==0) ? 1:0);
+                    }
+                }
             }
-            if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                if (test_op_n == OP_LAND) {
-                    for (n=0; n<test_count; n++) {
-                        *((int *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((int *)ansbuf+n) = ANS_LAND(*((int *)ansbuf+n), (cn%2==0 ? 1:3));
-                        }
+            else { // OP_LAND, OP_LOR
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((int *)sbuf+n) = ((n%4==0 || (n-1)%4==0) ? 1:0);
+                    }
+                    else {
+                        *((int *)sbuf+n) = ((n+1)%2);
                     }
                 }
-                else if (test_op_n == OP_LOR) {
-                    for (n=0; n<test_count; n++) {
-                        *((int *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((int *)ansbuf+n) = ANS_LOR(*((int *)ansbuf+n), (cn%2==0 ? 1:3));
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    if (test_op_n == OP_LAND) {
+                        for (n=0; n<test_count; n++) {
+                            *((int *)ansbuf+n) = ((n%4==0) ? 1:0);
                         }
                     }
-                }
-                else { // OP_LXOR
-                    for (n=0; n<test_count; n++) {
-                        *((int *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((int *)ansbuf+n) = ANS_LXOR(*((int *)ansbuf+n), (cn%2==0 ? 1:3));
+                    else { // OP_LOR
+                        for (n=0; n<test_count; n++) {
+                            *((int *)ansbuf+n) = ((n!=0 && (n+1)%4==0) ? 0:1);
                         }
                     }
                 }
             }
             break;
         case DT_LONG:
-            for (n=0; n<test_count; n++) {
-                *((long *)sbuf+n) = (comm_rank%2==0 ? 1:3); 
+            if (test_op_n == OP_LXOR) {
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((long *)sbuf+n) = (n%2==0 ? 1:0);
+                    }
+                    else {
+                        *((long *)sbuf+n) = 0;
+                    }
+                }
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (n=0; n<test_count; n++) {
+                        *((long *)ansbuf+n) = ((n%2==0) ? 1:0);
+                    }
+                }
             }
-            if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                if (test_op_n == OP_LAND) {
-                    for (n=0; n<test_count; n++) {
-                        *((long *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((long *)ansbuf+n) = ANS_LAND(*((long *)ansbuf+n), (cn%2==0 ? 1:3));
-                        }
+            else { // OP_LAND, OP_LOR
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((long *)sbuf+n) = ((n%4==0 || (n-1)%4==0) ? 1:0);
+                    }
+                    else {
+                        *((long *)sbuf+n) = ((n+1)%2);
                     }
                 }
-                else if (test_op_n == OP_LOR) {
-                    for (n=0; n<test_count; n++) {
-                        *((long *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((long *)ansbuf+n) = ANS_LOR(*((long *)ansbuf+n), (cn%2==0 ? 1:3));
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    if (test_op_n == OP_LAND) {
+                        for (n=0; n<test_count; n++) {
+                            *((long *)ansbuf+n) = ((n%4==0) ? 1:0);
                         }
                     }
-                }
-                else { // OP_LXOR
-                    for (n=0; n<test_count; n++) {
-                        *((long *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((long *)ansbuf+n) = ANS_LXOR(*((long *)ansbuf+n), (cn%2==0 ? 1:3));
+                    else { // OP_LOR
+                        for (n=0; n<test_count; n++) {
+                            *((long *)ansbuf+n) = ((n!=0 && (n+1)%4==0) ? 0:1);
                         }
                     }
                 }
@@ -1902,31 +1954,39 @@ static int set_data_for_reduce_logical(void *sbuf, void *rbuf, void *ansbuf, lon
             break;
         case DT_LONG_LONG:
         case DT_LONG_LONG_INT:
-            for (n=0; n<test_count; n++) {
-                *((long long *)sbuf+n) = (comm_rank%2==0 ? 1:3); 
+            if (test_op_n == OP_LXOR) {
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((long long *)sbuf+n) = (n%2==0 ? 1:0);
+                    }
+                    else {
+                        *((long long *)sbuf+n) = 0;
+                    }
+                }
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (n=0; n<test_count; n++) {
+                        *((long long *)ansbuf+n) = ((n%2==0) ? 1:0);
+                    }
+                }
             }
-            if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                if (test_op_n == OP_LAND) {
-                    for (n=0; n<test_count; n++) {
-                        *((long long *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((long long *)ansbuf+n) = ANS_LAND(*((long long *)ansbuf+n), (cn%2==0 ? 1:3));
-                        }
+            else { // OP_LAND, OP_LOR
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((long long *)sbuf+n) = ((n%4==0 || (n-1)%4==0) ? 1:0);
+                    }
+                    else {
+                        *((long long *)sbuf+n) = ((n+1)%2);
                     }
                 }
-                else if (test_op_n == OP_LOR) {
-                    for (n=0; n<test_count; n++) {
-                        *((long long *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((long long *)ansbuf+n) = ANS_LOR(*((long long *)ansbuf+n), (cn%2==0 ? 1:3));
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    if (test_op_n == OP_LAND) {
+                        for (n=0; n<test_count; n++) {
+                            *((long long *)ansbuf+n) = ((n%4==0) ? 1:0);
                         }
                     }
-                }
-                else { // OP_LXOR
-                    for (n=0; n<test_count; n++) {
-                        *((long long *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((long long *)ansbuf+n) = ANS_LXOR(*((long long *)ansbuf+n), (cn%2==0 ? 1:3));
+                    else { // OP_LOR
+                        for (n=0; n<test_count; n++) {
+                            *((long long *)ansbuf+n) = ((n!=0 && (n+1)%4==0) ? 0:1);
                         }
                     }
                 }
@@ -1934,449 +1994,546 @@ static int set_data_for_reduce_logical(void *sbuf, void *rbuf, void *ansbuf, lon
             break;
         case DT_BYTE:
         case DT_UNSIGNED_CHAR:
-            for (n=0; n<test_count; n++) {
-                *((unsigned char *)sbuf+n) = (comm_rank%2==0 ? 1:3); 
+            if (test_op_n == OP_LXOR) {
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((unsigned char *)sbuf+n) = (n%2==0 ? 1:0);
+                    }
+                    else {
+                        *((unsigned char *)sbuf+n) = 0;
+                    }
+                }
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (n=0; n<test_count; n++) {
+                        *((unsigned char *)ansbuf+n) = ((n%2==0) ? 1:0);
+                    }
+                }
             }
-            if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                if (test_op_n == OP_LAND) {
-                    for (n=0; n<test_count; n++) {
-                        *((unsigned char *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((unsigned char *)ansbuf+n) =
-                                ANS_LAND(*((unsigned char *)ansbuf+n), (cn%2==0 ? 1:3));
-                        }
+            else { // OP_LAND, OP_LOR
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((unsigned char *)sbuf+n) = ((n%4==0 || (n-1)%4==0) ? 1:0);
+                    }
+                    else {
+                        *((unsigned char *)sbuf+n) = (unsigned char)((n+1)%2);
                     }
                 }
-                else if (test_op_n == OP_LOR) {
-                    for (n=0; n<test_count; n++) {
-                        *((unsigned char *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((unsigned char *)ansbuf+n) =
-                                ANS_LOR(*((unsigned char *)ansbuf+n), (cn%2==0 ? 1:3));
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    if (test_op_n == OP_LAND) {
+                        for (n=0; n<test_count; n++) {
+                            *((unsigned char *)ansbuf+n) = ((n%4==0) ? 1:0);
                         }
                     }
-                }
-                else { // OP_LXOR
-                    for (n=0; n<test_count; n++) {
-                        *((unsigned char *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((unsigned char *)ansbuf+n) =
-                                ANS_LXOR(*((unsigned char *)ansbuf+n), (cn%2==0 ? 1:3));
+                    else { // OP_LOR
+                        for (n=0; n<test_count; n++) {
+                            *((unsigned char *)ansbuf+n) = ((n!=0 && (n+1)%4==0) ? 0:1);
                         }
                     }
                 }
             }
             break;
         case DT_UNSIGNED_SHORT:
-            for (n=0; n<test_count; n++) {
-                *((unsigned short *)sbuf+n) = (comm_rank%2==0 ? 1:3); 
+            if (test_op_n == OP_LXOR) {
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((unsigned short *)sbuf+n) = (n%2==0 ? 1:0);
+                    }
+                    else {
+                        *((unsigned short *)sbuf+n) = 0;
+                    }
+                }
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (n=0; n<test_count; n++) {
+                        *((unsigned short *)ansbuf+n) = ((n%2==0) ? 1:0);
+                    }
+                }
             }
-            if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                if (test_op_n == OP_LAND) {
-                    for (n=0; n<test_count; n++) {
-                        *((unsigned short *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((unsigned short *)ansbuf+n) =
-                                ANS_LAND(*((unsigned short *)ansbuf+n), (cn%2==0 ? 1:3));
-                        }
+            else { // OP_LAND, OP_LOR
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((unsigned short *)sbuf+n) = ((n%4==0 || (n-1)%4==0) ? 1:0);
+                    }
+                    else {
+                        *((unsigned short *)sbuf+n) = (unsigned short)((n+1)%2);
                     }
                 }
-                else if (test_op_n == OP_LOR) {
-                    for (n=0; n<test_count; n++) {
-                        *((unsigned short *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((unsigned short *)ansbuf+n) =
-                                ANS_LOR(*((unsigned short *)ansbuf+n), (cn%2==0 ? 1:3));
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    if (test_op_n == OP_LAND) {
+                        for (n=0; n<test_count; n++) {
+                            *((unsigned short *)ansbuf+n) = ((n%4==0) ? 1:0);
                         }
                     }
-                }
-                else { // OP_LXOR
-                    for (n=0; n<test_count; n++) {
-                        *((unsigned short *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((unsigned short *)ansbuf+n) =
-                                ANS_LXOR(*((unsigned short *)ansbuf+n), (cn%2==0 ? 1:3));
+                    else { // OP_LOR
+                        for (n=0; n<test_count; n++) {
+                            *((unsigned short *)ansbuf+n) = ((n!=0 && (n+1)%4==0) ? 0:1);
                         }
                     }
                 }
             }
             break;
         case DT_UNSIGNED:
-            for (n=0; n<test_count; n++) {
-                *((unsigned int *)sbuf+n) = (comm_rank%2==0 ? 1:3); 
+            if (test_op_n == OP_LXOR) {
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((unsigned int *)sbuf+n) = (n%2==0 ? 1:0);
+                    }
+                    else {
+                        *((unsigned int *)sbuf+n) = 0;
+                    }
+                }
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (n=0; n<test_count; n++) {
+                        *((unsigned int *)ansbuf+n) = ((n%2==0) ? 1:0);
+                    }
+                }
             }
-            if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                if (test_op_n == OP_LAND) {
-                    for (n=0; n<test_count; n++) {
-                        *((unsigned int *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((unsigned int *)ansbuf+n) =
-                                ANS_LAND(*((unsigned int *)ansbuf+n), (cn%2==0 ? 1:3));
-                        }
+            else { // OP_LAND, OP_LOR
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((unsigned int *)sbuf+n) = ((n%4==0 || (n-1)%4==0) ? 1:0);
+                    }
+                    else {
+                        *((unsigned int *)sbuf+n) = ((n+1)%2);
                     }
                 }
-                else if (test_op_n == OP_LOR) {
-                    for (n=0; n<test_count; n++) {
-                        *((unsigned int *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((unsigned int *)ansbuf+n) =
-                                ANS_LOR(*((unsigned int *)ansbuf+n), (cn%2==0 ? 1:3));
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    if (test_op_n == OP_LAND) {
+                        for (n=0; n<test_count; n++) {
+                            *((unsigned int *)ansbuf+n) = ((n%4==0) ? 1:0);
                         }
                     }
-                }
-                else { // OP_LXOR
-                    for (n=0; n<test_count; n++) {
-                        *((unsigned int *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((unsigned int *)ansbuf+n) =
-                                ANS_LXOR(*((unsigned int *)ansbuf+n), (cn%2==0 ? 1:3));
+                    else { // OP_LOR
+                        for (n=0; n<test_count; n++) {
+                            *((unsigned int *)ansbuf+n) = ((n!=0 && (n+1)%4==0) ? 0:1);
                         }
                     }
                 }
             }
             break;
         case DT_UNSIGNED_LONG:
-            for (n=0; n<test_count; n++) {
-                *((unsigned long *)sbuf+n) = (comm_rank%2==0 ? 1:3); 
+            if (test_op_n == OP_LXOR) {
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((unsigned long *)sbuf+n) = (n%2==0 ? 1:0);
+                    }
+                    else {
+                        *((unsigned long *)sbuf+n) = 0;
+                    }
+                }
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (n=0; n<test_count; n++) {
+                        *((unsigned long *)ansbuf+n) = ((n%2==0) ? 1:0);
+                    }
+                }
             }
-            if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                if (test_op_n == OP_LAND) {
-                    for (n=0; n<test_count; n++) {
-                        *((unsigned long *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((unsigned long *)ansbuf+n) =
-                                ANS_LAND(*((unsigned long *)ansbuf+n), (cn%2==0 ? 1:3));
-                        }
+            else { // OP_LAND, OP_LOR
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((unsigned long *)sbuf+n) = ((n%4==0 || (n-1)%4==0) ? 1:0);
+                    }
+                    else {
+                        *((unsigned long *)sbuf+n) = ((n+1)%2);
                     }
                 }
-                else if (test_op_n == OP_LOR) {
-                    for (n=0; n<test_count; n++) {
-                        *((unsigned long *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((unsigned long *)ansbuf+n) =
-                                ANS_LOR(*((unsigned long *)ansbuf+n), (cn%2==0 ? 1:3));
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    if (test_op_n == OP_LAND) {
+                        for (n=0; n<test_count; n++) {
+                            *((unsigned long *)ansbuf+n) = ((n%4==0) ? 1:0);
                         }
                     }
-                }
-                else { // OP_LXOR
-                    for (n=0; n<test_count; n++) {
-                        *((unsigned long *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((unsigned long *)ansbuf+n) =
-                                ANS_LXOR(*((unsigned long *)ansbuf+n), (cn%2==0 ? 1:3));
+                    else { // OP_LOR
+                        for (n=0; n<test_count; n++) {
+                            *((unsigned long *)ansbuf+n) = ((n!=0 && (n+1)%4==0) ? 0:1);
                         }
                     }
                 }
             }
             break;
         case DT_UNSIGNED_LONG_LONG:
-            for (n=0; n<test_count; n++) {
-                *((unsigned long long *)sbuf+n) = (comm_rank%2==0 ? 1:3); 
+            if (test_op_n == OP_LXOR) {
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((unsigned long long *)sbuf+n) = (n%2==0 ? 1:0);
+                    }
+                    else {
+                        *((unsigned long long *)sbuf+n) = 0;
+                    }
+                }
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (n=0; n<test_count; n++) {
+                        *((unsigned long long *)ansbuf+n) = ((n%2==0) ? 1:0);
+                    }
+                }
             }
-            if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                if (test_op_n == OP_LAND) {
-                    for (n=0; n<test_count; n++) {
-                        *((unsigned long long *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((unsigned long long *)ansbuf+n) =
-                                ANS_LAND(*((unsigned long long *)ansbuf+n), (cn%2==0 ? 1:3));
-                        }
+            else { // OP_LAND, OP_LOR
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((unsigned long long *)sbuf+n) = ((n%4==0 || (n-1)%4==0) ? 1:0);
+                    }
+                    else {
+                        *((unsigned long long *)sbuf+n) = ((n+1)%2);
                     }
                 }
-                else if (test_op_n == OP_LOR) {
-                    for (n=0; n<test_count; n++) {
-                        *((unsigned long long *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((unsigned long long *)ansbuf+n) =
-                                ANS_LOR(*((unsigned long long *)ansbuf+n), (cn%2==0 ? 1:3));
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    if (test_op_n == OP_LAND) {
+                        for (n=0; n<test_count; n++) {
+                            *((unsigned long long *)ansbuf+n) = ((n%4==0) ? 1:0);
                         }
                     }
-                }
-                else { // OP_LXOR
-                    for (n=0; n<test_count; n++) {
-                        *((unsigned long long *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((unsigned long long *)ansbuf+n) =
-                                ANS_LXOR(*((unsigned long long *)ansbuf+n), (cn%2==0 ? 1:3));
+                    else { // OP_LOR
+                        for (n=0; n<test_count; n++) {
+                            *((unsigned long long *)ansbuf+n) = ((n!=0 && (n+1)%4==0) ? 0:1);
                         }
                     }
                 }
             }
             break;
         case DT_INT8_T:
-            for (n=0; n<test_count; n++) {
-                *((int8_t *)sbuf+n) = (comm_rank%2==0 ? 1:3); 
+            if (test_op_n == OP_LXOR) {
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((int8_t *)sbuf+n) = (n%2==0 ? 1:0);
+                    }
+                    else {
+                        *((int8_t *)sbuf+n) = 0;
+                    }
+                }
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (n=0; n<test_count; n++) {
+                        *((int8_t *)ansbuf+n) = ((n%2==0) ? 1:0);
+                    }
+                }
             }
-            if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                if (test_op_n == OP_LAND) {
-                    for (n=0; n<test_count; n++) {
-                        *((int8_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((int8_t *)ansbuf+n) = ANS_LAND(*((int8_t *)ansbuf+n), (cn%2==0 ? 1:3));
-                        }
+            else { // OP_LAND, OP_LOR
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((int8_t *)sbuf+n) = ((n%4==0 || (n-1)%4==0) ? 1:0);
+                    }
+                    else {
+                        *((int8_t *)sbuf+n) = (int8_t)((n+1)%2);
                     }
                 }
-                else if (test_op_n == OP_LOR) {
-                    for (n=0; n<test_count; n++) {
-                        *((int8_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((int8_t *)ansbuf+n) = ANS_LOR(*((int8_t *)ansbuf+n), (cn%2==0 ? 1:3));
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    if (test_op_n == OP_LAND) {
+                        for (n=0; n<test_count; n++) {
+                            *((int8_t *)ansbuf+n) = ((n%4==0) ? 1:0);
                         }
                     }
-                }
-                else { // OP_LXOR
-                    for (n=0; n<test_count; n++) {
-                        *((int8_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((int8_t *)ansbuf+n) = ANS_LXOR(*((int8_t *)ansbuf+n), (cn%2==0 ? 1:3));
+                    else { // OP_LOR
+                        for (n=0; n<test_count; n++) {
+                            *((int8_t *)ansbuf+n) = ((n!=0 && (n+1)%4==0) ? 0:1);
                         }
                     }
                 }
             }
             break;
         case DT_INT16_T:
-            for (n=0; n<test_count; n++) {
-                *((int16_t *)sbuf+n) = (comm_rank%2==0 ? 1:3); 
+            if (test_op_n == OP_LXOR) {
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((int16_t *)sbuf+n) = (n%2==0 ? 1:0);
+                    }
+                    else {
+                        *((int16_t *)sbuf+n) = 0;
+                    }
+                }
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (n=0; n<test_count; n++) {
+                        *((int16_t *)ansbuf+n) = ((n%2==0) ? 1:0);
+                    }
+                }
             }
-            if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                if (test_op_n == OP_LAND) {
-                    for (n=0; n<test_count; n++) {
-                        *((int16_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((int16_t *)ansbuf+n) = ANS_LAND(*((int16_t *)ansbuf+n), (cn%2==0 ? 1:3));
-                        }
+            else { // OP_LAND, OP_LOR
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((int16_t *)sbuf+n) = ((n%4==0 || (n-1)%4==0) ? 1:0);
+                    }
+                    else {
+                        *((int16_t *)sbuf+n) = (int16_t)((n+1)%2);
                     }
                 }
-                else if (test_op_n == OP_LOR) {
-                    for (n=0; n<test_count; n++) {
-                        *((int16_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((int16_t *)ansbuf+n) = ANS_LOR(*((int16_t *)ansbuf+n), (cn%2==0 ? 1:3));
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    if (test_op_n == OP_LAND) {
+                        for (n=0; n<test_count; n++) {
+                            *((int16_t *)ansbuf+n) = ((n%4==0) ? 1:0);
                         }
                     }
-                }
-                else { // OP_LXOR
-                    for (n=0; n<test_count; n++) {
-                        *((int16_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((int16_t *)ansbuf+n) = ANS_LXOR(*((int16_t *)ansbuf+n), (cn%2==0 ? 1:3));
+                    else { // OP_LOR
+                        for (n=0; n<test_count; n++) {
+                            *((int16_t *)ansbuf+n) = ((n!=0 && (n+1)%4==0) ? 0:1);
                         }
                     }
                 }
             }
             break;
         case DT_INT32_T:
-            for (n=0; n<test_count; n++) {
-                *((int32_t *)sbuf+n) = (comm_rank%2==0 ? 1:3); 
+            if (test_op_n == OP_LXOR) {
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((int32_t *)sbuf+n) = (n%2==0 ? 1:0);
+                    }
+                    else {
+                        *((int32_t *)sbuf+n) = 0;
+                    }
+                }
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (n=0; n<test_count; n++) {
+                        *((int32_t *)ansbuf+n) = ((n%2==0) ? 1:0);
+                    }
+                }
             }
-            if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                if (test_op_n == OP_LAND) {
-                    for (n=0; n<test_count; n++) {
-                        *((int32_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((int32_t *)ansbuf+n) = ANS_LAND(*((int32_t *)ansbuf+n), (cn%2==0 ? 1:3));
-                        }
+            else { // OP_LAND, OP_LOR
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((int32_t *)sbuf+n) = ((n%4==0 || (n-1)%4==0) ? 1:0);
+                    }
+                    else {
+                        *((int32_t *)sbuf+n) = ((n+1)%2);
                     }
                 }
-                else if (test_op_n == OP_LOR) {
-                    for (n=0; n<test_count; n++) {
-                        *((int32_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((int32_t *)ansbuf+n) = ANS_LOR(*((int32_t *)ansbuf+n), (cn%2==0 ? 1:3));
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    if (test_op_n == OP_LAND) {
+                        for (n=0; n<test_count; n++) {
+                            *((int32_t *)ansbuf+n) = ((n%4==0) ? 1:0);
                         }
                     }
-                }
-                else { // OP_LXOR
-                    for (n=0; n<test_count; n++) {
-                        *((int32_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((int32_t *)ansbuf+n) = ANS_LXOR(*((int32_t *)ansbuf+n), (cn%2==0 ? 1:3));
+                    else { // OP_LOR
+                        for (n=0; n<test_count; n++) {
+                            *((int32_t *)ansbuf+n) = ((n!=0 && (n+1)%4==0) ? 0:1);
                         }
                     }
                 }
             }
             break;
         case DT_INT64_T:
-            for (n=0; n<test_count; n++) {
-                *((int64_t *)sbuf+n) = (comm_rank%2==0 ? 1:3); 
+            if (test_op_n == OP_LXOR) {
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((int64_t *)sbuf+n) = (n%2==0 ? 1:0);
+                    }
+                    else {
+                        *((int64_t *)sbuf+n) = 0;
+                    }
+                }
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (n=0; n<test_count; n++) {
+                        *((int64_t *)ansbuf+n) = ((n%2==0) ? 1:0);
+                    }
+                }
             }
-            if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                if (test_op_n == OP_LAND) {
-                    for (n=0; n<test_count; n++) {
-                        *((int64_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((int64_t *)ansbuf+n) = ANS_LAND(*((int64_t *)ansbuf+n), (cn%2==0 ? 1:3));
-                        }
+            else { // OP_LAND, OP_LOR
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((int64_t *)sbuf+n) = ((n%4==0 || (n-1)%4==0) ? 1:0);
+                    }
+                    else {
+                        *((int64_t *)sbuf+n) = ((n+1)%2);
                     }
                 }
-                else if (test_op_n == OP_LOR) {
-                    for (n=0; n<test_count; n++) {
-                        *((int64_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((int64_t *)ansbuf+n) = ANS_LOR(*((int64_t *)ansbuf+n), (cn%2==0 ? 1:3));
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    if (test_op_n == OP_LAND) {
+                        for (n=0; n<test_count; n++) {
+                            *((int64_t *)ansbuf+n) = ((n%4==0) ? 1:0);
                         }
                     }
-                }
-                else { // OP_LXOR
-                    for (n=0; n<test_count; n++) {
-                        *((int64_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((int64_t *)ansbuf+n) = ANS_LXOR(*((int64_t *)ansbuf+n), (cn%2==0 ? 1:3));
+                    else { // OP_LOR
+                        for (n=0; n<test_count; n++) {
+                            *((int64_t *)ansbuf+n) = ((n!=0 && (n+1)%4==0) ? 0:1);
                         }
                     }
                 }
             }
             break;
         case DT_UINT8_T:
-            for (n=0; n<test_count; n++) {
-                *((uint8_t *)sbuf+n) = (comm_rank%2==0 ? 1:3); 
+            if (test_op_n == OP_LXOR) {
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((uint8_t *)sbuf+n) = (n%2==0 ? 1:0);
+                    }
+                    else {
+                        *((uint8_t *)sbuf+n) = 0;
+                    }
+                }
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (n=0; n<test_count; n++) {
+                        *((uint8_t *)ansbuf+n) = ((n%2==0) ? 1:0);
+                    }
+                }
             }
-            if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                if (test_op_n == OP_LAND) {
-                    for (n=0; n<test_count; n++) {
-                        *((uint8_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((uint8_t *)ansbuf+n) = ANS_LAND(*((uint8_t *)ansbuf+n), (cn%2==0 ? 1:3));
-                        }
+            else { // OP_LAND, OP_LOR
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((uint8_t *)sbuf+n) = (uint8_t)((n%4==0 || (n-1)%4==0) ? 1:0);
+                    }
+                    else {
+                        *((uint8_t *)sbuf+n) = (uint8_t)((n+1)%2);
                     }
                 }
-                else if (test_op_n == OP_LOR) {
-                    for (n=0; n<test_count; n++) {
-                        *((uint8_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((uint8_t *)ansbuf+n) = ANS_LOR(*((uint8_t *)ansbuf+n), (cn%2==0 ? 1:3));
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    if (test_op_n == OP_LAND) {
+                        for (n=0; n<test_count; n++) {
+                            *((uint8_t *)ansbuf+n) = ((n%4==0) ? 1:0);
                         }
                     }
-                }
-                else { // OP_LXOR
-                    for (n=0; n<test_count; n++) {
-                        *((uint8_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((uint8_t *)ansbuf+n) = ANS_LXOR(*((uint8_t *)ansbuf+n), (cn%2==0 ? 1:3));
+                    else { // OP_LOR
+                        for (n=0; n<test_count; n++) {
+                            *((uint8_t *)ansbuf+n) = ((n!=0 && (n+1)%4==0) ? 0:1);
                         }
                     }
                 }
             }
             break;
         case DT_UINT16_T:
-            for (n=0; n<test_count; n++) {
-                *((uint16_t *)sbuf+n) = (comm_rank%2==0 ? 1:3); 
+            if (test_op_n == OP_LXOR) {
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((uint16_t *)sbuf+n) = (n%2==0 ? 1:0);
+                    }
+                    else {
+                        *((uint16_t *)sbuf+n) = 0;
+                    }
+                }
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (n=0; n<test_count; n++) {
+                        *((uint16_t *)ansbuf+n) = ((n%2==0) ? 1:0);
+                    }
+                }
             }
-            if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                if (test_op_n == OP_LAND) {
-                    for (n=0; n<test_count; n++) {
-                        *((uint16_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((uint16_t *)ansbuf+n) = ANS_LAND(*((uint16_t *)ansbuf+n), (cn%2==0 ? 1:3));
-                        }
+            else { // OP_LAND, OP_LOR
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((uint16_t *)sbuf+n) = ((n%4==0 || (n-1)%4==0) ? 1:0);
+                    }
+                    else {
+                        *((uint16_t *)sbuf+n) = (uint16_t)((n+1)%2);
                     }
                 }
-                else if (test_op_n == OP_LOR) {
-                    for (n=0; n<test_count; n++) {
-                        *((uint16_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((uint16_t *)ansbuf+n) = ANS_LOR(*((uint16_t *)ansbuf+n), (cn%2==0 ? 1:3));
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    if (test_op_n == OP_LAND) {
+                        for (n=0; n<test_count; n++) {
+                            *((uint16_t *)ansbuf+n) = ((n%4==0) ? 1:0);
                         }
                     }
-                }
-                else { // OP_LXOR
-                    for (n=0; n<test_count; n++) {
-                        *((uint16_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((uint16_t *)ansbuf+n) = ANS_LXOR(*((uint16_t *)ansbuf+n), (cn%2==0 ? 1:3));
+                    else { // OP_LOR
+                        for (n=0; n<test_count; n++) {
+                            *((uint16_t *)ansbuf+n) = ((n!=0 && (n+1)%4==0) ? 0:1);
                         }
                     }
                 }
             }
             break;
         case DT_UINT32_T:
-            for (n=0; n<test_count; n++) {
-                *((uint32_t *)sbuf+n) = (comm_rank%2==0 ? 1:3); 
+            if (test_op_n == OP_LXOR) {
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((uint32_t *)sbuf+n) = (n%2==0 ? 1:0);
+                    }
+                    else {
+                        *((uint32_t *)sbuf+n) = 0;
+                    }
+                }
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (n=0; n<test_count; n++) {
+                        *((uint32_t *)ansbuf+n) = ((n%2==0) ? 1:0);
+                    }
+                }
             }
-            if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                if (test_op_n == OP_LAND) {
-                    for (n=0; n<test_count; n++) {
-                        *((uint32_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((uint32_t *)ansbuf+n) = ANS_LAND(*((uint32_t *)ansbuf+n), (cn%2==0 ? 1:3));
-                        }
+            else { // OP_LAND, OP_LOR
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((uint32_t *)sbuf+n) = ((n%4==0 || (n-1)%4==0) ? 1:0);
+                    }
+                    else {
+                        *((uint32_t *)sbuf+n) = ((n+1)%2);
                     }
                 }
-                else if (test_op_n == OP_LOR) {
-                    for (n=0; n<test_count; n++) {
-                        *((uint32_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((uint32_t *)ansbuf+n) = ANS_LOR(*((uint32_t *)ansbuf+n), (cn%2==0 ? 1:3));
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    if (test_op_n == OP_LAND) {
+                        for (n=0; n<test_count; n++) {
+                            *((uint32_t *)ansbuf+n) = ((n%4==0) ? 1:0);
                         }
                     }
-                }
-                else { // OP_LXOR
-                    for (n=0; n<test_count; n++) {
-                        *((uint32_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((uint32_t *)ansbuf+n) = ANS_LXOR(*((uint32_t *)ansbuf+n), (cn%2==0 ? 1:3));
+                    else { // OP_LOR
+                        for (n=0; n<test_count; n++) {
+                            *((uint32_t *)ansbuf+n) = ((n!=0 && (n+1)%4==0) ? 0:1);
                         }
                     }
                 }
             }
             break;
         case DT_UINT64_T:
-            for (n=0; n<test_count; n++) {
-                *((uint64_t *)sbuf+n) = (comm_rank%2==0 ? 1:3); 
+            if (test_op_n == OP_LXOR) {
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((uint64_t *)sbuf+n) = (n%2==0 ? 1:0);
+                    }
+                    else {
+                        *((uint64_t *)sbuf+n) = 0;
+                    }
+                }
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (n=0; n<test_count; n++) {
+                        *((uint64_t *)ansbuf+n) = ((n%2==0) ? 1:0);
+                    }
+                }
             }
-            if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                if (test_op_n == OP_LAND) {
-                    for (n=0; n<test_count; n++) {
-                        *((uint64_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((uint64_t *)ansbuf+n) = ANS_LAND(*((uint64_t *)ansbuf+n), (cn%2==0 ? 1:3));
-                        }
+            else { // OP_LAND, OP_LOR
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((uint64_t *)sbuf+n) = ((n%4==0 || (n-1)%4==0) ? 1:0);
+                    }
+                    else {
+                        *((uint64_t *)sbuf+n) = ((n+1)%2);
                     }
                 }
-                else if (test_op_n == OP_LOR) {
-                    for (n=0; n<test_count; n++) {
-                        *((uint64_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((uint64_t *)ansbuf+n) = ANS_LOR(*((uint64_t *)ansbuf+n), (cn%2==0 ? 1:3));
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    if (test_op_n == OP_LAND) {
+                        for (n=0; n<test_count; n++) {
+                            *((uint64_t *)ansbuf+n) = ((n%4==0) ? 1:0);
                         }
                     }
-                }
-                else { // OP_LXOR
-                    for (n=0; n<test_count; n++) {
-                        *((uint64_t *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((uint64_t *)ansbuf+n) = ANS_LXOR(*((uint64_t *)ansbuf+n), (cn%2==0 ? 1:3));
+                    else { // OP_LOR
+                        for (n=0; n<test_count; n++) {
+                            *((uint64_t *)ansbuf+n) = ((n!=0 && (n+1)%4==0) ? 0:1);
                         }
                     }
                 }
             }
             break;
         case DT_C_BOOL:
-            for (n=0; n<test_count; n++) {
-                *((bool *)sbuf+n) = (comm_rank%2==0 ? 1:0); 
+            if (test_op_n == OP_LXOR) {
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((bool *)sbuf+n) = (n%2==0 ? true:false);
+                    }
+                    else {
+                        *((bool *)sbuf+n) = false;
+                    }
+                }
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (n=0; n<test_count; n++) {
+                        *((bool *)ansbuf+n) = ((n%2==0) ? true:false);
+                    }
+                }
             }
-            if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                if (test_op_n == OP_LAND) {
-                    for (n=0; n<test_count; n++) {
-                        *((bool *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((bool *)ansbuf+n) = ANS_LAND(*((bool *)ansbuf+n), (cn%2==0 ? 1:0));
-                        }
+            else { // OP_LAND, OP_LOR
+                for (n=0; n<test_count; n++) {
+                    if (comm_rank == root_rank) {
+                        *((bool *)sbuf+n) = ((n%4==0 || (n-1)%4==0) ? true:false);
+                    }
+                    else {
+                        *((bool *)sbuf+n) = (bool)((n+1)%2);
                     }
                 }
-                else if (test_op_n == OP_LOR) {
-                    for (n=0; n<test_count; n++) {
-                        *((bool *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((bool *)ansbuf+n) = ANS_LOR(*((bool *)ansbuf+n), (cn%2==0 ? 1:0));
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    if (test_op_n == OP_LAND) {
+                        for (n=0; n<test_count; n++) {
+                            *((bool *)ansbuf+n) = ((n%4==0) ? true:false);
                         }
                     }
-                }
-                else { // OP_LXOR
-                    for (n=0; n<test_count; n++) {
-                        *((bool *)ansbuf+n) = 1;
-                        for (cn=1; cn<comm_procs; cn++) {
-                            *((bool *)ansbuf+n) = ANS_LXOR(*((bool *)ansbuf+n), (cn%2==0 ? 1:0));
+                    else { // OP_LOR
+                        for (n=0; n<test_count; n++) {
+                            *((bool *)ansbuf+n) = ((n!=0 && (n+1)%4==0) ? false:true);
                         }
                     }
                 }
@@ -2386,70 +2543,70 @@ static int set_data_for_reduce_logical(void *sbuf, void *rbuf, void *ansbuf, lon
         // Following types cannot be used in these reduction operations.
         case DT_WCHAR:
             for (n=0; n<test_count; n++) {
-                *((wchar_t *)sbuf+n) = (wchar_t)comm_rank; 
+                *((wchar_t *)sbuf+n) = (wchar_t)comm_rank;
             }
             break;
         case DT_FLOAT:
             for (n=0; n<test_count; n++) {
-                *((float *)sbuf+n) = (float)comm_rank; 
+                *((float *)sbuf+n) = (float)comm_rank;
             }
             break;
         case DT_DOUBLE:
             for (n=0; n<test_count; n++) {
-                *((double *)sbuf+n) = (double)comm_rank; 
+                *((double *)sbuf+n) = (double)comm_rank;
             }
             break;
         case DT_LONG_DOUBLE:
             for (n=0; n<test_count; n++) {
-                *((long double *)sbuf+n) = (long double)comm_rank; 
+                *((long double *)sbuf+n) = (long double)comm_rank;
             }
             break;
-#if defined(__clang__)
+#if defined(MPIX_C_FLOAT16)
         case DT_C_FLOAT16:
             for (n=0; n<test_count; n++) {
-                *((_Float16 *)sbuf+n) = (_Float16)comm_rank; 
+                *((_Float16 *)sbuf+n) = (_Float16)comm_rank;
             }
             break;
 #endif
         case DT_C_COMPLEX:
         case DT_C_FLOAT_COMPLEX:
             for (n=0; n<test_count; n++) {
-                *((float _Complex *)sbuf+n) = comm_rank + 1.0i; 
+                *((float _Complex *)sbuf+n) = comm_rank + 1.0i;
             }
             break;
         case DT_C_DOUBLE_COMPLEX:
             for (n=0; n<test_count; n++) {
-                *((double _Complex *)sbuf+n) = comm_rank + 1.0i; 
+                *((double _Complex *)sbuf+n) = comm_rank + 1.0i;
             }
             break;
         case DT_C_LONG_DOUBLE_COMPLEX:
             for (n=0; n<test_count; n++) {
-                *((long double _Complex *)sbuf+n) = comm_rank + 1.0i; 
+                *((long double _Complex *)sbuf+n) = comm_rank + 1.0i;
             }
             break;
         case DT_SHORT_INT:
             for (n=0; n<test_count; n++) {
-                ((short_int *)sbuf+n)->val = (short)n;  // value part
-                ((short_int *)sbuf+n)->ind = 1;         // index part
+                ((short_int *)sbuf+n)->val = (short)comm_rank;  // value part
+                ((short_int *)sbuf+n)->ind = 1;                 // index part
             };
             break;
         case DT_2INT:
             for (n=0; n<test_count; n++) {
-                ((int_int *)sbuf+n)->val = n;   // value part
-                ((int_int *)sbuf+n)->ind = 1;   // index part
+                ((int_int *)sbuf+n)->val = comm_rank;   // value part
+                ((int_int *)sbuf+n)->ind = 1;           // index part
             };
             break;
         case DT_LONG_INT:
             for (n=0; n<test_count; n++) {
-                ((long_int *)sbuf+n)->val = n;  // value part
-                ((long_int *)sbuf+n)->ind = 1;  // index part
+                ((long_int *)sbuf+n)->val = comm_rank;  // value part
+                ((long_int *)sbuf+n)->ind = 1;          // index part
             };
             break;
         default:
-            fprintf(stderr, "[%s] invalid datatype: rank(w/c)=%d/%d func=%s datatype=%s\n",
-                    __func__, wrank, comm_rank, FUNC_STR[test_func], DATATYPE_STR[test_datatype_n]);
+            fprintf(stderr, "[%s] invalid datatype: rank(w/c)=%d/%d func=%s datatype=%d\n",
+                    __func__, wrank, comm_rank, FUNC_STR[test_func], test_datatype_n);
             return FUNC_ERROR;
-    } 
+    }
     return FUNC_SUCCESS;
 }
 
@@ -2473,16 +2630,21 @@ static int set_data_for_reduce_max_min(void *sbuf, void *rbuf, void *ansbuf, lon
     }
 
     switch (test_datatype_n) {
-        case DT_CHAR:
+        case DT_SIGNED_CHAR:
             for (n=0; n<test_count; n++) {
-                *((char *)sbuf+n) = (char)comm_rank;
+                *((signed char *)sbuf+n) = (signed char)comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     if (test_op_n == OP_MAX) {
-                        *((char *)ansbuf+n) = (char)(comm_procs>CHAR_MAX ? CHAR_MAX:(comm_procs-1));
+                        *((signed char *)ansbuf+n) =
+                            (signed char)(comm_procs>SCHAR_MAX ? SCHAR_MAX:(comm_procs-1));
                     }
                     else {
-                        *((char *)ansbuf+n) = 0;
+                        *((signed char *)ansbuf+n) = (signed char)(comm_procs>SCHAR_MAX ? SCHAR_MIN:0);
                     }
+#if defined(TPDEBUG)
+                    fprintf(stderr, "[%s] rank(w/c)=%d/%d comm_procs=%d ansbuf[%d]=%d\n",
+                            __func__, wrank, comm_rank, comm_procs, n, *((signed char *)ansbuf+n));
+#endif
                 }
             }
             break;
@@ -2494,7 +2656,7 @@ static int set_data_for_reduce_max_min(void *sbuf, void *rbuf, void *ansbuf, lon
                         *((short *)ansbuf+n) = (short)(comm_procs>SHRT_MAX ? SHRT_MAX:(comm_procs-1));
                     }
                     else {
-                        *((short *)ansbuf+n) = 0;
+                        *((short *)ansbuf+n) = (short)(comm_procs>SHRT_MAX ? SHRT_MIN:0);
                     }
                 }
             }
@@ -2585,7 +2747,7 @@ static int set_data_for_reduce_max_min(void *sbuf, void *rbuf, void *ansbuf, lon
                         *((int8_t *)ansbuf+n) = (int8_t)(comm_procs>INT8_MAX ? INT8_MAX:(comm_procs-1));
                     }
                     else {
-                        *((int8_t *)ansbuf+n) = 0;
+                        *((int8_t *)ansbuf+n) = (int8_t)(comm_procs>INT8_MAX ? INT8_MIN:0);
                     }
                 }
             }
@@ -2598,7 +2760,7 @@ static int set_data_for_reduce_max_min(void *sbuf, void *rbuf, void *ansbuf, lon
                         *((int16_t *)ansbuf+n) = (int16_t)(comm_procs>INT16_MAX ? INT16_MAX:(comm_procs-1));
                     }
                     else {
-                        *((int16_t *)ansbuf+n) = 0;
+                        *((int16_t *)ansbuf+n) = (int16_t)(comm_procs>INT16_MAX ? INT16_MIN:0);
                     }
                 }
             }
@@ -2683,12 +2845,16 @@ static int set_data_for_reduce_max_min(void *sbuf, void *rbuf, void *ansbuf, lon
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     *((long double *)ansbuf+n) = (long double)(test_op_n==OP_MAX ? (comm_procs-1) : 0);
                 }
+#if defined(TPDEBUG)
+                fprintf(stderr, "[%s] rank(w/c)=%d/%d sbuf[%d]=%Lf\n",
+                        __func__, wrank, comm_rank, n, *((long double *)sbuf+n));
+#endif
             }
             break;
-#if defined(__clang__)
+#if defined(MPIX_C_FLOAT16)
         case DT_C_FLOAT16:
             for (n=0; n<test_count; n++) {
-                *((_Float16 *)sbuf+n) = (_Float16)comm_rank; 
+                *((_Float16 *)sbuf+n) = (_Float16)comm_rank;
                 if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
                     *((_Float16 *)ansbuf+n) = (_Float16)(test_op_n==OP_MAX ? (comm_procs-1) : 0);
                 }
@@ -2699,28 +2865,28 @@ static int set_data_for_reduce_max_min(void *sbuf, void *rbuf, void *ansbuf, lon
         // Following types cannot be used in these reduction operations.
         case DT_WCHAR:
             for (n=0; n<test_count; n++) {
-                *((wchar_t *)sbuf+n) = (wchar_t)comm_rank; 
+                *((wchar_t *)sbuf+n) = (wchar_t)comm_rank;
             }
             break;
         case DT_C_BOOL:
             for (n=0; n<test_count; n++) {
-                *((bool *)sbuf+n) = (bool)comm_rank; 
+                *((bool *)sbuf+n) = (bool)comm_rank;
             }
             break;
         case DT_C_COMPLEX:
         case DT_C_FLOAT_COMPLEX:
             for (n=0; n<test_count; n++) {
-                *((float _Complex *)sbuf+n) = comm_rank + 1.0i; 
+                *((float _Complex *)sbuf+n) = comm_rank + 1.0i;
             }
             break;
         case DT_C_DOUBLE_COMPLEX:
             for (n=0; n<test_count; n++) {
-                *((double _Complex *)sbuf+n) = comm_rank + 1.0i; 
+                *((double _Complex *)sbuf+n) = comm_rank + 1.0i;
             }
             break;
         case DT_C_LONG_DOUBLE_COMPLEX:
             for (n=0; n<test_count; n++) {
-                *((long double _Complex *)sbuf+n) = comm_rank + 1.0i; 
+                *((long double _Complex *)sbuf+n) = comm_rank + 1.0i;
             }
             break;
         case DT_SHORT_INT:
@@ -2742,10 +2908,18 @@ static int set_data_for_reduce_max_min(void *sbuf, void *rbuf, void *ansbuf, lon
             };
             break;
         default:
-            fprintf(stderr, "[%s] invalid datatype: rank(w/c)=%d/%d func=%s datatype=%s\n",
-                    __func__, wrank, comm_rank, FUNC_STR[test_func], DATATYPE_STR[test_datatype_n]);
+            fprintf(stderr, "[%s] invalid datatype: rank(w/c)=%d/%d func=%s datatype=%d\n",
+                    __func__, wrank, comm_rank, FUNC_STR[test_func], test_datatype_n);
             return FUNC_ERROR;
-    } 
+    }
+#if defined(TPDEBUG)
+    fprintf(stderr, "[%s] rank(w/c)=%d/%d datatype=%s buf_size=%ld, data=\'",
+            __func__, wrank, comm_rank, DATATYPE_STR[test_datatype_n], buf_size);
+    for (n=0; n<buf_size; n++) {
+        fprintf(stderr, "%02x ", *((unsigned char*)sbuf+n));
+    }
+    fprintf(stderr, "'\n");
+#endif
     return FUNC_SUCCESS;
 }
 
@@ -2771,8 +2945,8 @@ static int set_data_for_reduce_max_min_loc(void *sbuf, void *rbuf, void *ansbuf,
     switch (test_datatype_n) {
         case DT_SHORT_INT:
             for (n=0; n<test_count; n++) {
-                ((short_int *)sbuf+n)->val = (short)comm_rank; 
-                ((short_int *)sbuf+n)->ind = comm_rank; 
+                ((short_int *)sbuf+n)->val = (short)comm_rank;
+                ((short_int *)sbuf+n)->ind = comm_rank;
 #if TPDEBUG
                 fprintf(stderr, "[%s] rank(w/c)=%d/%d sbuf  =%p sbuf  +n=%p (sbuf  +n)->ind=%p\n",
                         __func__, wrank, comm_rank, sbuf, (short_int *)sbuf+n, &(((short_int *)sbuf+n)->ind));
@@ -2788,7 +2962,7 @@ static int set_data_for_reduce_max_min_loc(void *sbuf, void *rbuf, void *ansbuf,
                     ((short_int *)ansbuf+n)->ind = (test_op_n==OP_MAXLOC ? (comm_procs-1) : 0);
 #if TPDEBUG
                     fprintf(stderr, "[%s] rank(w/c)=%d/%d ansbuf=%p ansbuf+n=%p (ansbuf+n)->ind=%p\n",
-                            __func__, wrank, comm_rank, ansbuf, (short_int *)ansbuf+n, 
+                            __func__, wrank, comm_rank, ansbuf, (short_int *)ansbuf+n,
                             &(((short_int *)ansbuf+n)->ind));
 #endif
                 }
@@ -2806,8 +2980,8 @@ static int set_data_for_reduce_max_min_loc(void *sbuf, void *rbuf, void *ansbuf,
             break;
         case DT_LONG_INT:
             for (n=0; n<test_count; n++) {
-                ((long_int *)sbuf+n)->val = comm_rank; 
-                ((long_int *)sbuf+n)->ind = comm_rank; 
+                ((long_int *)sbuf+n)->val = comm_rank;
+                ((long_int *)sbuf+n)->ind = comm_rank;
 #if TPDEBUG
                 fprintf(stderr, "[%s] rank(w/c)=%d/%d sbuf  =%p sbuf  +n=%p (sbuf  +n)->ind=%p\n",
                         __func__, wrank, comm_rank, sbuf, (long_int *)sbuf+n, &(((long_int *)sbuf+n)->ind));
@@ -2825,37 +2999,151 @@ static int set_data_for_reduce_max_min_loc(void *sbuf, void *rbuf, void *ansbuf,
             break;
 
         // Following types cannot be used in these reduction operations.
+        case DT_SIGNED_CHAR:
+            for (n=0; n<test_count; n++) {
+                *((char *)sbuf+n) = (char)comm_rank;
+            }
+            break;
+        case DT_SHORT:
+            for (n=0; n<test_count; n++) {
+                *((short *)sbuf+n) = (short)comm_rank;
+            }
+            break;
+        case DT_INT:
+            for (n=0; n<test_count; n++) {
+                *((int *)sbuf+n) = (int)comm_rank;
+            }
+            break;
+        case DT_LONG:
+            for (n=0; n<test_count; n++) {
+                *((long *)sbuf+n) = (long)comm_rank;
+            }
+            break;
+        case DT_LONG_LONG:
+        case DT_LONG_LONG_INT:
+            for (n=0; n<test_count; n++) {
+                *((long long *)sbuf+n) = (long long)comm_rank;
+            }
+            break;
+        case DT_BYTE:
+        case DT_UNSIGNED_CHAR:
+            for (n=0; n<test_count; n++) {
+                *((unsigned char *)sbuf+n) = (unsigned char)comm_rank;
+            }
+            break;
+        case DT_UNSIGNED_SHORT:
+            for (n=0; n<test_count; n++) {
+                *((unsigned short *)sbuf+n) = (unsigned short)comm_rank;
+            }
+            break;
+        case DT_UNSIGNED:
+            for (n=0; n<test_count; n++) {
+                *((unsigned int *)sbuf+n) = (unsigned int)comm_rank;
+            }
+            break;
+        case DT_UNSIGNED_LONG:
+            for (n=0; n<test_count; n++) {
+                *((unsigned long *)sbuf+n) = (unsigned long)comm_rank;
+            }
+            break;
+        case DT_UNSIGNED_LONG_LONG:
+            for (n=0; n<test_count; n++) {
+                *((unsigned long long *)sbuf+n) = (unsigned long long)comm_rank;
+            }
+            break;
+        case DT_INT8_T:
+            for (n=0; n<test_count; n++) {
+                *((int8_t *)sbuf+n) = (int8_t)comm_rank;
+            }
+            break;
+        case DT_INT16_T:
+            for (n=0; n<test_count; n++) {
+                *((int16_t *)sbuf+n) = (int16_t)comm_rank;
+            }
+            break;
+        case DT_INT32_T:
+            for (n=0; n<test_count; n++) {
+                *((int32_t *)sbuf+n) = (int32_t)comm_rank;
+            }
+            break;
+        case DT_INT64_T:
+            for (n=0; n<test_count; n++) {
+                *((int64_t *)sbuf+n) = (int64_t)comm_rank;
+            }
+            break;
+        case DT_UINT8_T:
+            for (n=0; n<test_count; n++) {
+                *((uint8_t *)sbuf+n) = (uint8_t)comm_rank;
+            }
+            break;
+        case DT_UINT16_T:
+            for (n=0; n<test_count; n++) {
+                *((uint16_t *)sbuf+n) = (uint16_t)comm_rank;
+            }
+            break;
+        case DT_UINT32_T:
+            for (n=0; n<test_count; n++) {
+                *((uint32_t *)sbuf+n) = (uint32_t)comm_rank;
+            }
+            break;
+        case DT_UINT64_T:
+            for (n=0; n<test_count; n++) {
+                *((uint64_t *)sbuf+n) = (uint64_t)comm_rank;
+            }
+            break;
         case DT_WCHAR:
             for (n=0; n<test_count; n++) {
-                *((wchar_t *)sbuf+n) = (wchar_t)comm_rank; 
+                *((wchar_t *)sbuf+n) = (wchar_t)comm_rank;
             }
             break;
         case DT_C_BOOL:
             for (n=0; n<test_count; n++) {
-                *((bool *)sbuf+n) = (bool)comm_rank; 
+                *((bool *)sbuf+n) = (bool)comm_rank;
             }
             break;
+        case DT_FLOAT:
+            for (n=0; n<test_count; n++) {
+                *((float *)sbuf+n) = (float)comm_rank;
+            }
+            break;
+        case DT_DOUBLE:
+            for (n=0; n<test_count; n++) {
+                *((double *)sbuf+n) = (double)comm_rank;
+            }
+            break;
+        case DT_LONG_DOUBLE:
+            for (n=0; n<test_count; n++) {
+                *((long double *)sbuf+n) = (long double)comm_rank;
+            }
+            break;
+#if defined(MPIX_C_FLOAT16)
+        case DT_C_FLOAT16:
+            for (n=0; n<test_count; n++) {
+                *((_Float16 *)sbuf+n) = (_Float16)comm_rank;
+            }
+            break;
+#endif
         case DT_C_COMPLEX:
         case DT_C_FLOAT_COMPLEX:
             for (n=0; n<test_count; n++) {
-                *((float _Complex *)sbuf+n) = comm_rank + 1.0i; 
+                *((float _Complex *)sbuf+n) = comm_rank + 1.0i;
             }
             break;
         case DT_C_DOUBLE_COMPLEX:
             for (n=0; n<test_count; n++) {
-                *((double _Complex *)sbuf+n) = comm_rank + 1.0i; 
+                *((double _Complex *)sbuf+n) = comm_rank + 1.0i;
             }
             break;
         case DT_C_LONG_DOUBLE_COMPLEX:
             for (n=0; n<test_count; n++) {
-                *((long double _Complex *)sbuf+n) = comm_rank + 1.0i; 
+                *((long double _Complex *)sbuf+n) = comm_rank + 1.0i;
             }
             break;
         default:
-            fprintf(stderr, "[%s] invalid datatype: rank(w/c)=%d/%d func=%s datatype=%s\n",
-                    __func__, wrank, comm_rank, FUNC_STR[test_func], DATATYPE_STR[test_datatype_n]);
+            fprintf(stderr, "[%s] invalid datatype: rank(w/c)=%d/%d func=%s datatype=%d\n",
+                    __func__, wrank, comm_rank, FUNC_STR[test_func], test_datatype_n);
             return FUNC_ERROR;
-    } 
+    }
     return FUNC_SUCCESS;
 }
 
@@ -2904,14 +3192,14 @@ static int test_barrier(void)
 
 
 /*
- * Compare the recieve buffer and the answer buffer. 
+ * Compare the recieve buffer and the answer buffer.
  */
 static int comp_data(void *buf, void *ansbuf)
 {
     int n;
 
     switch (test_datatype_n) {
-        case DT_CHAR: 
+        case DT_SIGNED_CHAR:
             for (n = 0; n < test_count; n++) {
                 if (*((char *)buf+n) != *((char *)ansbuf+n)) {
                     fprintf(stderr,
@@ -2923,7 +3211,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_SHORT: 
+        case DT_SHORT:
             for (n = 0; n < test_count; n++) {
                 if (*((short *)buf+n) != *((short *)ansbuf+n)) {
                     fprintf(stderr,
@@ -2935,7 +3223,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_INT: 
+        case DT_INT:
             for (n = 0; n < test_count; n++) {
                 if (*((int *)buf+n) != *((int *)ansbuf+n)) {
                     fprintf(stderr,
@@ -2947,7 +3235,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_LONG: 
+        case DT_LONG:
             for (n = 0; n < test_count; n++) {
                 if (*((long *)buf+n) != *((long *)ansbuf+n)) {
                     fprintf(stderr,
@@ -2959,8 +3247,8 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_LONG_LONG: 
-        case DT_LONG_LONG_INT: 
+        case DT_LONG_LONG:
+        case DT_LONG_LONG_INT:
             for (n = 0; n < test_count; n++) {
                 if (*((long long *)buf+n) != *((long long *)ansbuf+n)) {
                     fprintf(stderr,
@@ -2972,8 +3260,8 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_BYTE: 
-        case DT_UNSIGNED_CHAR: 
+        case DT_BYTE:
+        case DT_UNSIGNED_CHAR:
             for (n = 0; n < test_count; n++) {
                 if (*((unsigned char *)buf+n) != *((unsigned char *)ansbuf+n)) {
                     fprintf(stderr,
@@ -2985,7 +3273,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_UNSIGNED_SHORT: 
+        case DT_UNSIGNED_SHORT:
             for (n = 0; n < test_count; n++) {
                 if (*((unsigned short *)buf+n) != *((unsigned short *)ansbuf+n)) {
                     fprintf(stderr,
@@ -2997,7 +3285,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_UNSIGNED: 
+        case DT_UNSIGNED:
             for (n = 0; n < test_count; n++) {
                 if (*((unsigned int *)buf+n) != *((unsigned int *)ansbuf+n)) {
                     fprintf(stderr,
@@ -3009,7 +3297,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_UNSIGNED_LONG: 
+        case DT_UNSIGNED_LONG:
             for (n = 0; n < test_count; n++) {
                 if (*((unsigned long *)buf+n) != *((unsigned long *)ansbuf+n)) {
                     fprintf(stderr,
@@ -3021,7 +3309,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_UNSIGNED_LONG_LONG: 
+        case DT_UNSIGNED_LONG_LONG:
             for (n = 0; n < test_count; n++) {
                 if (*((unsigned long long *)buf+n) != *((unsigned long long *)ansbuf+n)) {
                     fprintf(stderr,
@@ -3033,7 +3321,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_INT8_T: 
+        case DT_INT8_T:
             for (n = 0; n < test_count; n++) {
                 if (*((int8_t *)buf+n) != *((int8_t *)ansbuf+n)) {
                     fprintf(stderr,
@@ -3045,7 +3333,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_INT16_T: 
+        case DT_INT16_T:
             for (n = 0; n < test_count; n++) {
                 if (*((int16_t *)buf+n) != *((int16_t *)ansbuf+n)) {
                     fprintf(stderr,
@@ -3057,7 +3345,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_INT32_T: 
+        case DT_INT32_T:
             for (n = 0; n < test_count; n++) {
                 if (*((int32_t *)buf+n) != *((int32_t *)ansbuf+n)) {
                     fprintf(stderr,
@@ -3069,7 +3357,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_INT64_T: 
+        case DT_INT64_T:
             for (n = 0; n < test_count; n++) {
                 if (*((int64_t *)buf+n) != *((int64_t *)ansbuf+n)) {
                     fprintf(stderr,
@@ -3081,7 +3369,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_UINT8_T: 
+        case DT_UINT8_T:
             for (n = 0; n < test_count; n++) {
                 if (*((uint8_t *)buf+n) != *((uint8_t *)ansbuf+n)) {
                     fprintf(stderr,
@@ -3093,7 +3381,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_UINT16_T: 
+        case DT_UINT16_T:
             for (n = 0; n < test_count; n++) {
                 if (*((uint16_t *)buf+n) != *((uint16_t *)ansbuf+n)) {
                     fprintf(stderr,
@@ -3105,7 +3393,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_UINT32_T: 
+        case DT_UINT32_T:
             for (n = 0; n < test_count; n++) {
                 if (*((uint32_t *)buf+n) != *((uint32_t *)ansbuf+n)) {
                     fprintf(stderr,
@@ -3117,7 +3405,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_UINT64_T: 
+        case DT_UINT64_T:
             for (n = 0; n < test_count; n++) {
                 if (*((uint64_t *)buf+n) != *((uint64_t *)ansbuf+n)) {
                     fprintf(stderr,
@@ -3129,7 +3417,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_WCHAR: 
+        case DT_WCHAR:
             for (n = 0; n < test_count; n++) {
                 if (*((wchar_t *)buf+n) != *((wchar_t *)ansbuf+n)) {
                     fprintf(stderr,
@@ -3141,7 +3429,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_C_BOOL: 
+        case DT_C_BOOL:
             for (n = 0; n < test_count; n++) {
                 if (*((bool *)buf+n) != *((bool *)ansbuf+n)) {
                     fprintf(stderr,
@@ -3153,7 +3441,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_FLOAT: 
+        case DT_FLOAT:
             for (n = 0; n < test_count; n++) {
                 if (*((float *)buf+n) != *((float *)ansbuf+n)) {
                     fprintf(stderr,
@@ -3165,7 +3453,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_DOUBLE: 
+        case DT_DOUBLE:
             for (n = 0; n < test_count; n++) {
                 if (*((double *)buf+n) != *((double *)ansbuf+n)) {
                     fprintf(stderr,
@@ -3177,7 +3465,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_LONG_DOUBLE: 
+        case DT_LONG_DOUBLE:
             for (n = 0; n < test_count; n++) {
                 if (*((long double *)buf+n) != *((long double *)ansbuf+n)) {
                     fprintf(stderr,
@@ -3189,7 +3477,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-#if defined(__clang__)
+#if defined(MPIX_C_FLOAT16)
         case DT_C_FLOAT16:
             for (n = 0; n < test_count; n++) {
                 if (*((_Float16 *)buf+n) != *((_Float16 *)ansbuf+n)) {
@@ -3204,7 +3492,7 @@ static int comp_data(void *buf, void *ansbuf)
             break;
 #endif
         case DT_C_COMPLEX:
-        case DT_C_FLOAT_COMPLEX: 
+        case DT_C_FLOAT_COMPLEX:
             for (n = 0; n < test_count; n++) {
                 if (*((float _Complex *)buf+n) != *((float _Complex *)ansbuf+n)) {
                     fprintf(stderr,
@@ -3217,7 +3505,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_C_DOUBLE_COMPLEX: 
+        case DT_C_DOUBLE_COMPLEX:
             for (n = 0; n < test_count; n++) {
                 if (*((double _Complex *)buf+n) != *((double _Complex *)ansbuf+n)) {
                     fprintf(stderr,
@@ -3230,7 +3518,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_C_LONG_DOUBLE_COMPLEX: 
+        case DT_C_LONG_DOUBLE_COMPLEX:
             for (n = 0; n < test_count; n++) {
                 if (*((long double _Complex *)buf+n) != *((long double _Complex *)ansbuf+n)) {
                     fprintf(stderr,
@@ -3245,7 +3533,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_SHORT_INT: 
+        case DT_SHORT_INT:
             for (n = 0; n < test_count; n++) {
                 if (((short_int *)buf+n)->val != ((short_int *)ansbuf+n)->val ||
                     ((short_int *)buf+n)->ind != ((short_int *)ansbuf+n)->ind) {
@@ -3259,7 +3547,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_2INT: 
+        case DT_2INT:
             for (n = 0; n < test_count; n++) {
                 if (((int_int *)buf+n)->val != ((int_int *)ansbuf+n)->val ||
                     ((int_int *)buf+n)->ind != ((int_int *)ansbuf+n)->ind) {
@@ -3273,7 +3561,7 @@ static int comp_data(void *buf, void *ansbuf)
                 }
             }
             break;
-        case DT_LONG_INT: 
+        case DT_LONG_INT:
             for (n = 0; n < test_count; n++) {
                 if (((long_int *)buf+n)->val != ((long_int *)ansbuf+n)->val ||
                     ((long_int *)buf+n)->ind != ((long_int *)ansbuf+n)->ind) {
@@ -3288,8 +3576,8 @@ static int comp_data(void *buf, void *ansbuf)
             }
             break;
         default:
-            fprintf(stderr, "[%s] unknown datatype: rank(w/c)=%d/%d datatype=%s count=%d\n",
-                    __func__, wrank, comm_rank, DATATYPE_STR[test_datatype_n], test_count);
+            fprintf(stderr, "[%s] unknown datatype: rank(w/c)=%d/%d datatype=%d count=%d\n",
+                    __func__, wrank, comm_rank, test_datatype_n, test_count);
             return FUNC_ERROR;
     } // end switch
 
@@ -3303,9 +3591,6 @@ static int comp_data(void *buf, void *ansbuf)
 static int test_bcast(char *buf, char *ansbuf, long buf_size)
 {
     int ret=MPI_SUCCESS, lret=FUNC_SUCCESS, i;
-#if 0
-    long n;
-#endif
     uint64_t cnt_start=0, cnt_end, cnt;
 
     // Get the VBG counter.
@@ -3316,7 +3601,7 @@ static int test_bcast(char *buf, char *ansbuf, long buf_size)
     for (i = 0; i < iter; i++) {
         if (set_data_for_bcast(buf, ansbuf, buf_size)) {
             return FUNC_ERROR;
-        } 
+        }
         if (comm_rank == root_rank || !flg_diff_type) {
             ret = MPI_Bcast(buf, test_count, test_datatype, root_rank, tcomm);
         }
@@ -3327,11 +3612,11 @@ static int test_bcast(char *buf, char *ansbuf, long buf_size)
                 ret = MPI_Bcast(buf, buf_size, MPI_BYTE, root_rank, tcomm);
             }
             else {
-                ret = MPI_Bcast(buf, buf_size, MPI_CHAR, root_rank, tcomm);
+                ret = MPI_Bcast(buf, buf_size, MPI_SIGNED_CHAR, root_rank, tcomm);
             }
         }
         if (ret != MPI_SUCCESS) {
-            fprintf(stderr, 
+            fprintf(stderr,
                     "[%s] MPI_Bcast error: ret=%d rank(w/c)=%d/%d datatype=%s count=%d diff_type=%d\n",
                     __func__, ret, wrank, comm_rank, DATATYPE_STR[test_datatype_n], test_count, flg_diff_type);
             return FUNC_ERROR;
@@ -3339,22 +3624,9 @@ static int test_bcast(char *buf, char *ansbuf, long buf_size)
 
         // Non-root ranks check if the result was received correctly.
         if (comm_rank != root_rank) {
-#if 1
             if (comp_data(buf, ansbuf) == FUNC_ERROR) {
                 lret = FUNC_INCORRECT;
             }
-#else
-            for (n = 0; n < buf_size; n++) {
-                if (buf[n] != ansbuf[n]) {
-                    fprintf(stderr,
-                            "[%s] data mismatch: buf[%d]=%d ansbuf[%d]=%d: "
-                            "rank(w/c)=%d/%d datatype=%s count=%d\n",
-                            __func__, n, buf[n], n, ansbuf[n], wrank, comm_rank,
-                            DATATYPE_STR[test_datatype_n], test_count);
-                    lret = FUNC_INCORRECT;
-                }
-            }
-#endif
         }
     }
 
@@ -3385,9 +3657,6 @@ static int test_bcast(char *buf, char *ansbuf, long buf_size)
 static int test_reduce(char *sendbuf, char *recvbuf, char *ansbuf, long buf_size)
 {
     int ret, lret=FUNC_SUCCESS, i;
-#if 0
-    long n;
-#endif
     char *rbufp;
     uint64_t cnt_start=0, cnt_end, cnt;
 
@@ -3423,15 +3692,15 @@ static int test_reduce(char *sendbuf, char *recvbuf, char *ansbuf, long buf_size
             default:
                 fprintf(stderr, "[%s] unknown operation: rank(w/c)=%d/%d op=%d\n",
                         __func__, wrank, comm_rank, test_op_n);
-                       
+
                 return FUNC_ERROR;
         }
         if (lret != FUNC_SUCCESS) {
             return FUNC_ERROR;
         }
 #if TPDEBUG
-        fprintf(stderr, "[%s:%d] set data SUCCESS: rank(w/c)=%d/%d tcomm=%p\n",
-                __func__, __LINE__, wrank, comm_rank, tcomm);
+        fprintf(stderr, "[%s:%d] set data success: rank(w/c)=%d/%d tcomm=%d\n",
+                __func__, __LINE__, wrank, comm_rank, (int)tcomm);
 #endif
 
         if (flg_use_in_place && comm_rank == root_rank) {
@@ -3441,7 +3710,7 @@ static int test_reduce(char *sendbuf, char *recvbuf, char *ansbuf, long buf_size
             ret = MPI_Reduce(sendbuf, recvbuf, test_count, test_datatype, test_op, root_rank, tcomm);
         }
         if (ret != MPI_SUCCESS) {
-            fprintf(stderr, 
+            fprintf(stderr,
                     "[%s] MPI_Reduce error: ret=%d rank(w/c)=%d/%d datatype=%s count=%d op=%s\n",
                     __func__, ret, wrank, comm_rank, DATATYPE_STR[test_datatype_n], test_count,
                     OP_STR[test_op_n]);
@@ -3451,31 +3720,9 @@ static int test_reduce(char *sendbuf, char *recvbuf, char *ansbuf, long buf_size
         // Root rank checks if the result was received correctly.
         if (comm_rank == root_rank) {
             rbufp = (flg_use_in_place ? sendbuf : recvbuf);
-#if 1
             if (comp_data(rbufp, ansbuf) == FUNC_ERROR) {
                 lret = FUNC_INCORRECT;
             }
-#else
-            for (n = 0; n < buf_size; n++) {
-                if (rbufp[n] != ansbuf[n]) {
-                    fprintf(stderr,
-                            "[%s] data mismatch: buf[%d]=%d ansbuf[%d]=%d: "
-                            "rank(w/c)=%d/%d datatype=%s count=%d op=%s\n",
-                            __func__, n, rbufp[n], n, ansbuf[n], wrank, comm_rank, 
-                            DATATYPE_STR[test_datatype_n], test_count, OP_STR[test_op_n]);
-                    lret = FUNC_INCORRECT;
-#if 0
-                }
-                else {
-                    fprintf(stderr,
-                            "[%s] data match: ansbuf[%d]=%d: "
-                            "rank(w/c)=%d/%d datatype=%s count=%d op=%s\n",
-                            __func__, n, ansbuf[n], wrank, comm_rank, 
-                            DATATYPE_STR[test_datatype_n], test_count, OP_STR[test_op_n]);
-#endif
-                }
-            }
-#endif
         }
     }
 
@@ -3506,9 +3753,6 @@ static int test_reduce(char *sendbuf, char *recvbuf, char *ansbuf, long buf_size
 static int test_allreduce(char *sendbuf, char *recvbuf, char *ansbuf, long buf_size)
 {
     int ret, lret=FUNC_SUCCESS, i;
-#if 0
-    long n;
-#endif
     char *rbufp;
     uint64_t cnt_start=0, cnt_end, cnt;
 
@@ -3544,15 +3788,15 @@ static int test_allreduce(char *sendbuf, char *recvbuf, char *ansbuf, long buf_s
             default:
                 fprintf(stderr, "[%s] unknown operation: rank(w/c)=%d/%d op=%d\n",
                         __func__, wrank, comm_rank, test_op_n);
-                       
+
                 return FUNC_ERROR;
         }
         if (lret != FUNC_SUCCESS) {
             return FUNC_ERROR;
         }
 #if TPDEBUG
-        fprintf(stderr, "[%s:%d] set data SUCCESS: rank(w/c)=%d/%d tcomm=%p\n",
-                __func__, __LINE__, wrank, comm_rank, tcomm);
+        fprintf(stderr, "[%s:%d] set data success: rank(w/c)=%d/%d tcomm=%d\n",
+                __func__, __LINE__, wrank, comm_rank, (int)tcomm);
 #endif
 
         if (flg_use_in_place) {
@@ -3562,7 +3806,7 @@ static int test_allreduce(char *sendbuf, char *recvbuf, char *ansbuf, long buf_s
             ret = MPI_Allreduce(sendbuf, recvbuf, test_count, test_datatype, test_op, tcomm);
         }
         if (ret != MPI_SUCCESS) {
-            fprintf(stderr, 
+            fprintf(stderr,
                     "[%s] MPI_Allreduce error: ret=%d rank(w/c)=%d/%d datatype=%s count=%d op=%s\n",
                     __func__, ret, wrank, comm_rank, DATATYPE_STR[test_datatype_n], test_count,
                     OP_STR[test_op_n]);
@@ -3571,31 +3815,9 @@ static int test_allreduce(char *sendbuf, char *recvbuf, char *ansbuf, long buf_s
 
         // All ranks check if the result was received correctly.
         rbufp = (flg_use_in_place ? sendbuf : recvbuf);
-#if 1
         if (comp_data(rbufp, ansbuf) == FUNC_ERROR) {
             lret = FUNC_INCORRECT;
         }
-#else
-        for (n = 0; n < buf_size; n++) {
-            if (rbufp[n] != ansbuf[n]) {
-                fprintf(stderr,
-                        "[%s] data mismatch: buf[%d]=%d ansbuf[%d]=%d: "
-                        "rank(w/c)=%d/%d datatype=%s count=%d op=%s\n",
-                        __func__, n, rbufp[n], n, ansbuf[n], wrank, comm_rank, 
-                        DATATYPE_STR[test_datatype_n], test_count, OP_STR[test_op_n]);
-                lret = FUNC_INCORRECT;
-#if 0
-            }
-            else {
-                fprintf(stderr,
-                        "[%s] data match: ansbuf[%d]=%d: "
-                        "rank(w/c)=%d/%d datatype=%s count=%d op=%s\n",
-                        __func__, n, ansbuf[n], wrank, comm_rank, 
-                        DATATYPE_STR[test_datatype_n], test_count, OP_STR[test_op_n]);
-#endif
-            }
-        }
-#endif
     }
 
     // Get and check the VBG counter.
@@ -3623,7 +3845,7 @@ int main(int argc, char **argv)
 {
     utf_timer_t start=0, end=0;
     double elapse=0.0;
-    int ret=FUNC_SUCCESS, allret=FUNC_SUCCESS, all_vbg_ret=VBG_PASS, mret;
+    int ret=FUNC_SUCCESS, allret=FUNC_SUCCESS, all_vbg_ret=VBG_NOT_PASS, mret;
     int cnum;
     void *buf = NULL, *rbuf = NULL, *ansbuf = NULL;
     int type_size;
@@ -3631,10 +3853,13 @@ int main(int argc, char **argv)
     MPI_Group wgroup = 0;
     MPI_Group *grp_tbl_p = NULL;    // Pointer to the group table
     MPI_Comm *comm_tbl_p = NULL;    // Pointer to the communicator table
-    
+
     // Initialize valiables.
     init_val();
 
+#if TPDEBUG
+    fprintf(stderr, "## [%d] mpi start!\n", wrank);
+#endif
     mret = MPI_Init(&argc, &argv);
     if (mret != MPI_SUCCESS) {
         fprintf(stderr, "[%s:%d] MPI_Init error: ret=%d\n", __func__, __LINE__, ret);
@@ -3653,8 +3878,7 @@ int main(int argc, char **argv)
         goto err;
     }
 #if TPDEBUG
-    fprintf(stdout, "## [%d] test start!\n", wrank);
-    fflush(stdout);
+    fprintf(stderr, "## [%d] test start!\n", wrank);
 #endif
 
     // Check the arguments and set the test patterns.
@@ -3683,7 +3907,7 @@ int main(int argc, char **argv)
         else if (test_datatype == MPI_LONG_INT) {
             type_size = sizeof(long_int);
         }
-        else {        
+        else {
             mret = MPI_Type_size(test_datatype, &type_size);
             if (mret != MPI_SUCCESS) {
                 fprintf(stderr, "[%s:%d] MPI_Type_size error: ret=%d rank(w/c)=%d/%d\n",
@@ -3763,11 +3987,22 @@ int main(int argc, char **argv)
             ret = create_comm(MPI_COMM_WORLD, wrank, wprocs, wgroup);
         }
         if (ret == FUNC_ERROR) {
+            if (test_comm == COMM_CREATE_NO_FREE ||
+                test_comm == COMM_SPLIT_NO_FREE) {
+                fprintf(stderr,
+                        "[%s:%d] create_comm error: rank(w/c)=%d/%d cnum=%d procs=%d test_comm=%d\n",
+                        __func__, __LINE__, wrank, comm_rank, cnum, comm_procs, test_comm);
+            }
+            else {
+                fprintf(stderr,
+                        "[%s:%d] create_comm error: rank(w)=%d cnum=%d procs=%d test_comm=%d\n",
+                        __func__, __LINE__, wrank, cnum, wprocs, test_comm);
+            }
             goto err;
         }
 #if TPDEBUG
-        fprintf(stderr, "[%s:%d] create_comm SUCCESS: rank(w/c)=%d/%d tcomm=%p\n",
-                __func__, __LINE__, wrank, comm_rank, tcomm);
+        fprintf(stderr, "[%s:%d] create_comm success: rank(w/c)=%d/%d cnum=%d test_comm=%d tcomm=%d\n",
+                __func__, __LINE__, wrank, comm_rank, cnum, test_comm, (int)tcomm);
 #endif
         if (test_comm == COMM_CREATE_NO_FREE ||
             test_comm == COMM_DUP_NO_FREE    ||
@@ -3780,37 +4015,37 @@ int main(int argc, char **argv)
 
         // Execute the barrier tests.
         switch(test_func) {
-            case FUNC_MPI_BARRIER: 
+            case FUNC_MPI_BARRIER:
                 if (flg_measure) {
                     start = get_time();
                 }
- 
+
                 ret = test_barrier();
- 
+
                 if (flg_measure) {
                     end = get_time();
                     elapse = get_elapse(start, end);
                 }
                 break;
- 
+
             case FUNC_MPI_BCAST:
                 if (allocate_buffer(&buf, NULL, &ansbuf, buf_size)) {
                     ret = FUNC_ERROR;
                     goto err;
                 }
- 
+
                 if (flg_measure) {
                     start = get_time();
                 }
- 
+
                 ret = test_bcast(buf, ansbuf, buf_size);
- 
+
                 if (flg_measure) {
                     end = get_time();
                     elapse = get_elapse(start, end);
                 }
                 break;
- 
+
             case FUNC_MPI_REDUCE:
                 if (allocate_buffer(&buf, &rbuf, &ansbuf, buf_size)) {
                     ret = FUNC_ERROR;
@@ -3818,24 +4053,23 @@ int main(int argc, char **argv)
                 }
 #if TPDEBUG
                 if (flg_print_info) {
-                    fprintf(stdout, "[%d/%d] buf     =%p\n", wrank, comm_rank, buf);
-                    fprintf(stdout, "[%d/%d] rbuf    =%p\n", wrank, comm_rank, rbuf);
-                    fprintf(stdout, "[%d/%d] ansbuf  =%p\n", wrank, comm_rank, ansbuf);
-                    fflush(stdout);
+                    fprintf(stderr, "[%d/%d] buf     =%p\n", wrank, comm_rank, buf);
+                    fprintf(stderr, "[%d/%d] rbuf    =%p\n", wrank, comm_rank, rbuf);
+                    fprintf(stderr, "[%d/%d] ansbuf  =%p\n", wrank, comm_rank, ansbuf);
                 }
 #endif
                 if (flg_measure) {
                     start = get_time();
                 }
- 
+
                 ret = test_reduce(buf, rbuf, ansbuf, buf_size);
- 
+
                 if (flg_measure) {
                     end = get_time();
                     elapse = get_elapse(start, end);
                 }
                 break;
- 
+
             case FUNC_MPI_ALLREDUCE:
                 if (allocate_buffer(&buf, &rbuf, &ansbuf, buf_size)) {
                     ret = FUNC_ERROR;
@@ -3843,25 +4077,24 @@ int main(int argc, char **argv)
                 }
 #if TPDEBUG
                 if (flg_print_info) {
-                    fprintf(stdout, "[%d/%d] buf     =%p\n", wrank, comm_rank, buf);
-                    fprintf(stdout, "[%d/%d] rbuf    =%p\n", wrank, comm_rank, rbuf);
-                    fprintf(stdout, "[%d/%d] ansbuf  =%p\n", wrank, comm_rank, ansbuf);
-                    fflush(stdout);
+                    fprintf(stderr, "[%d/%d] buf     =%p\n", wrank, comm_rank, buf);
+                    fprintf(stderr, "[%d/%d] rbuf    =%p\n", wrank, comm_rank, rbuf);
+                    fprintf(stderr, "[%d/%d] ansbuf  =%p\n", wrank, comm_rank, ansbuf);
                 }
 #endif
                 if (flg_measure) {
                     start = get_time();
                 }
- 
+
                 ret = test_allreduce(buf, rbuf, ansbuf, buf_size);
- 
+
                 if (flg_measure) {
                     end = get_time();
                     elapse = get_elapse(start, end);
                 }
                 break;
         }
- 
+
         // Check if all ranks in MPI_COMM_WORLD got the correct value.
         mret = MPI_Reduce(&ret, &allret, 1, MPI_INT, MPI_MAX, 0, MPI_COMM_WORLD);
         if (mret != MPI_SUCCESS) {
@@ -3870,21 +4103,17 @@ int main(int argc, char **argv)
             ret = FUNC_ERROR;
             goto err;
         }
-        // Check if the root rank of each communicator has passed VBG.
-        if ((test_comm == COMM_SPLIT ||
-             test_comm == COMM_SPLIT_FREE ||
-             test_comm == COMM_SPLIT_NO_FREE) && comm_rank == root_rank) {
-            mret = MPI_Reduce(&vbg_ret, &all_vbg_ret, 1, MPI_INT, MPI_MAX, 0, MPI_COMM_WORLD);
-            if (mret != MPI_SUCCESS) {
-                fprintf(stderr, "[%s:%d] MPI_Reduce error: ret=%d wrank=%d\n",
-                        __func__, __LINE__, ret, wrank);
-                ret = FUNC_ERROR;
-                goto err;
-            }
+        // Check if all ranks in MPI_COMM_WORLD has passed VBG.
+        mret = MPI_Reduce(&vbg_ret, &all_vbg_ret, 1, MPI_INT, MPI_MAX, 0, MPI_COMM_WORLD);
+        if (mret != MPI_SUCCESS) {
+            fprintf(stderr, "[%s:%d] MPI_Reduce error: ret=%d wrank=%d\n",
+                    __func__, __LINE__, ret, wrank);
+            ret = FUNC_ERROR;
+            goto err;
         }
 #if TPDEBUG
-        fprintf(stderr, "[%s:%d] test(%d) end: rank(w/c)=%d/%d test_comm=%d tcomm=%p ret=%d\n",
-                __func__, __LINE__, cnum, wrank, comm_rank, test_comm, tcomm, ret);
+        fprintf(stderr, "[%s:%d] test(%d) end: rank(w/c)=%d/%d test_comm=%d tcomm=%d ret=%d\n",
+                __func__, __LINE__, cnum, wrank, comm_rank, test_comm, (int)tcomm, ret);
 #endif
 
         if (ret != FUNC_SUCCESS || (wrank==0 && allret != FUNC_SUCCESS)) {
@@ -3899,13 +4128,17 @@ int main(int argc, char **argv)
                 goto err;
             }
 #if TPDEBUG
-            fprintf(stderr, "[%s:%d] free_comm SUCCESS: rank(w/c)=%d/%d\n",
+            fprintf(stderr, "[%s:%d] free_comm success: rank(w/c)=%d/%d\n",
                     __func__, __LINE__, wrank, comm_rank);
 #endif
         }
     } // end for
 
     if (wgroup != 0) {
+#if TPDEBUG
+        fprintf(stderr, "[%s:%d] call MPI_Group_free: rank(w/c)=%d/%d wgroup=%d\n",
+                __func__, __LINE__, wrank, comm_rank, (int)wgroup);
+#endif
         // Free the group associated with MPI_COMM_WORLD.
         ret = MPI_Group_free(&wgroup);
         if (ret != MPI_SUCCESS) {
@@ -3942,8 +4175,7 @@ int main(int argc, char **argv)
     }
 
 #if TPDEBUG
-    fprintf(stdout, "## [%d] test end!\n", wrank);
-    fflush(stdout);
+    fprintf(stderr, "## [%d] test end!\n", wrank);
 #endif
 
 err:
@@ -3967,12 +4199,18 @@ err:
         free(comm_tbl_p);
         comm_tbl_p = NULL;
     }
+#if TPDEBUG
+    fprintf(stderr, "[%s:%d] call MPI_Fnalize: rank(w)=%d\n", __func__, __LINE__, wrank);
+#endif
     mret = MPI_Finalize();
     if (mret != MPI_SUCCESS) {
         fprintf(stderr, "[%s:%d] MPI_Finalize error: ret=%d wrank=%d\n",
                 __func__, __LINE__, ret, wrank);
         ret = FUNC_ERROR;
     }
+#if TPDEBUG
+    fprintf(stderr, "## [%d] mpi end!\n", wrank);
+#endif
 
     if (ret != FUNC_SUCCESS) {
         allret = ret;
