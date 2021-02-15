@@ -116,3 +116,54 @@ utf_msgreq_show(utfslist_t *slst)
 		   cur, req, req->busyslst.next, req->hdr.src, req->hdr.tag, req->hdr.size, req->state, req->fi_flgs);
     }
 }
+
+
+#define LOGSZ	(1024*8)
+#define LNSZ	64
+static char	logbuff[LOGSZ][LNSZ];
+static int	logptr, logovf;
+
+void
+utf_log(const char *fmt, ...)
+{
+    va_list	ap;
+    int	sz;
+
+    va_start(ap, fmt);
+    if (logptr >= LOGSZ) {
+	logptr = 0; logovf = 1;
+    }
+    sz = vsnprintf(logbuff[logptr], LNSZ, fmt, ap);
+    if (sz == LNSZ && logbuff[logptr][LNSZ - 1] != '\n') {
+	logbuff[logptr][LNSZ - 1] = '\n';
+    }
+    va_end(ap);
+    logptr++;
+}
+
+void
+utf_log_show(FILE *out)
+{
+    int	i;
+
+    {
+	extern int tofu_barrier_cnt, tofu_barrier_do, tofu_barrier_src, tofu_barrier_dst, tofu_gatherv_cnt, tofu_gatherv_do;
+	fprintf(out, "@@@@@ TOFU DEBUG @@@@@\n");
+	fprintf(out, "tofu_gatherv_do: %d\n", tofu_gatherv_do);
+	fprintf(out, "tofu_gatherv_cnt: %d\n", tofu_gatherv_cnt);
+	fprintf(out, "tofu_barrier_do: %d\n", tofu_barrier_do);
+	fprintf(out, "tofu_barrier_cnt: %d\n", tofu_barrier_cnt);
+	fprintf(out, "tofu_barrier_src: %d\n", tofu_barrier_src);
+	fprintf(out, "tofu_barrier_dst: %d\n", tofu_barrier_dst);
+    }
+    fprintf(out, "<<<<< UTF LOG (%d:%d) >>>>>\n", logptr, logovf);
+    if (logovf) {
+	for (i = logptr; i < LOGSZ; i++) {
+	    fprintf(out, "%s", logbuff[i]);
+	}
+    }
+    for (i = 0; i < logptr; i++) {
+	fprintf(out, "%s", logbuff[i]);
+    }
+    fprintf(out, "<<<<< END OF UTF LOG >>>>>\n");
+}

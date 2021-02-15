@@ -68,7 +68,8 @@ extern void utofu_get_last_error(const char*);
 	    }								\
 	}								\
 	if (count >= 2) {						\
-	    utf_printf("%s: cannot handle tcq count %d\n", __func__, count); \
+	    utf_printf("%s: TOFU ERROR cannot handle tcq count %d\n", __func__, count); \
+	    abort();							\
 	}								\
 	UTOFU_ERRCHECK_EXIT_IF(abrt, rc);				\
 } while(0);

@@ -150,6 +150,16 @@ utf_setinjcnt(int cnt)
 }
 
 void
+utf_setrcvcnt(int cnt)
+{
+    if (cnt > 0) {
+	utf_rcv_count = cnt;
+    } else {
+	utf_rcv_count = TOFU_RECVMAX;
+    }
+}
+
+void
 utf_setasendcnt(int cnt)
 {
     if (cnt > 0 && cnt < TOFU_INJECTCNT) {

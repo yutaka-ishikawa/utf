@@ -177,6 +177,8 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
     utf_settransmode(i);
     i = utf_getenvint("UTF_INJECT_COUNT");
     utf_setinjcnt(i);
+    i = utf_getenvint("UTF_RECV_COUNT");
+    utf_setrcvcnt(i);
     i = utf_getenvint("UTF_ASEND_COUNT");
     utf_setasendcnt(i);
     i = utf_getenvint("UTF_ARMA_COUNT");
@@ -241,7 +243,7 @@ utf_finalize(int wipe)
     DEBUG(DLEVEL_INIFIN) {
 	utf_egrbuf_show(stderr);
     } else if (utf_dflag & DLEVEL_STATISTICS) {
-	utf_statistics(stderr);
+	utf_dbg_stat(stderr);
     }
     if (utf_getenvint("UTF_COMDEBUG")) {
 	extern void utf_recvcntr_show(FILE*);
@@ -252,6 +254,12 @@ utf_finalize(int wipe)
     utf_mem_finalize();
     utf_procmap_finalize();
     jtofu_finalize();
+    INFO(ILEVEL_STAT) {
+	utf_stat_show();
+    }
+    DEBUG(DLEVEL_LOG|DLEVEL_LOG2) {
+	utf_log_show(stderr);
+    }
     fflush(NULL);
 }
 

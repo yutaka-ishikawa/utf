@@ -17,17 +17,27 @@ int utf_progcount;
 #define UTF_POLLING_COUNT 1000
 #endif
 
+uint64_t	_utf_fi_src, _utf_fi_data;
 #define DEBUG_20210101
 int
 utf_progress()
 {
     int	j;
+    int nrcv = 0;
 #ifdef DEBUG_20210101
 #else
     int	arvd = 0;
 #endif
 
-    if (utf_tcq_count) utf_tcqprogress();
+//#define DEBUG_20210206
+#ifdef DEBUG_20210206
+    utf_tcqprogress();
+#else
+    /* at least one shot progress */
+    do {
+	utf_tcqprogress();
+    } while (utf_tcq_count > 0);
+#endif
 
     if ((int64_t) utf_egr_rbuf.head.cntr < -1) {
 	utf_printf("%s: No more Eager Receiver Buffer in my rank. cntr(%ld)\n", __func__, (int64_t) utf_egr_rbuf.head.cntr);
@@ -50,8 +60,6 @@ utf_progress()
 	pktp = msgbase + urp->recvidx;
 	if (pktp->hdr.marker == MSG_MARKER) {
 	    /* message arrives */
-	    //utf_printf("%s: msgsize(%d) payloadsize(%d)\n", __func__, pktp->hdr.size, PKT_PYLDSZ(pktp));
-	    //utf_tmr_end(TMR_UTF_RCVPROGRESS);
 	    sidx = pktp->hdr.sidx;
 	    if ((sidx & 0xff) == 0xff) {
 		utf_printf("%s: j(%d) PROTOCOL ERROR urp(%p)->state(%d:%s) sidx(%d) pkt(%p) MSG(%s)\n",
@@ -59,15 +67,17 @@ utf_progress()
 			   sidx, pktp, pkt2string((struct utf_packet*) pktp, NULL, 0));
 		utf_printf("%s: sidx(%d)\n", __func__, pktp->hdr.sidx);
 	    }
-	    /* for debugging */
-	    //urp->dbg_rsize[urp->dbg_idx] = PKT_PYLDSZ(pktp);
-	    //urp->dbg_idx = (urp->dbg_idx + 1) % COM_RBUF_SIZE;
 	    urp->src = pktp->hdr.src;
+	    _utf_fi_src = PKT_MSGSRC(pktp);   /* 2021/02/14 */
+	    _utf_fi_data = PKT_FI_DATA(pktp);   /* 2021/02/14 */
 	    if (utf_recvengine(urp, (struct utf_packet*) pktp, sidx) < 0) {
 		utf_printf("%s: j(%d) protocol error urp(%p)->state(%d:%s) sidx(%d) pkt(%p) MSG(%s)\n",
 			   __func__, j, urp, urp->state, rstate_symbol[urp->state],
 			   sidx, pktp, pkt2string((struct utf_packet*) pktp, NULL, 0));
 		abort();
+	    }
+	    if (_utf_fi_data != PKT_FI_DATA(pktp)) {
+		utf_printf("%s: TOFU ERROR prev-src(%d)data(%ld) now-src(%d)data%ld)\n", __func__, _utf_fi_data, _utf_fi_src, PKT_MSGSRC(pktp), PKT_FI_DATA(pktp));
 	    }
 	    pktp->hdr.hall = -1UL;
 	    urp->recvidx++;
@@ -77,23 +87,35 @@ utf_progress()
 #endif
 	    if (IS_COMRBUF_FULL(urp)) {
 		utofu_stadd_t	stadd = SCNTR_ADDR_CNTR_FIELD(sidx);
+		struct utf_send_cntr *newusp;
 		urp->recvidx = 0;
 		if (j == EGRCHAIN_RECVPOS || urp->svcqid == 0) {
 		    urp->svcqid = utf_info.vname[pktp->hdr.src].vcqid;
 		    urp->src = pktp->hdr.src;
 		}
-		utf_remote_armw4(utf_info.vcqh, urp->svcqid, urp->flags,
-				 UTOFU_ARMW_OP_OR, SCNTR_OK,
-				 stadd + SCNTR_RST_RECVRESET_OFFST, sidx, 0);
-		// utf_printf("RST(%d:%d:%d)\n", pktp->hdr.src, urp->src, sidx);
+		newusp = utf_remote_armw4(utf_info.vcqh, urp->svcqid, urp->flags,
+					  UTOFU_ARMW_OP_OR, SCNTR_OK,
+					  stadd + SCNTR_RST_RECVRESET_OFFST, sidx, 0);
+		if (newusp != NULL) { /* 2021/02/06 */
+		    utf_printf("%s: TOFU internal error\n", __func__);
+		    abort();
+		}
 	    } else {
-		goto try_again;
+		nrcv++;
+		if (nrcv < utf_rcv_count) {
+		    goto try_again;
+		}
 	    }
 	}
-	// utf_printf("%s: waiting for recvidx(%d)\n", __func__, urp->recvidx);
     }
+    utf_rcv_max = utf_rcv_count > utf_rcv_max ? utf_rcv_count : utf_rcv_max;
 #ifdef DEBUG_20210101
-    utf_mrqprogress();
+    {
+	int	uc;
+	do {
+	    uc = utf_mrqprogress();
+	} while (uc == UTOFU_SUCCESS);
+    }
 #else
     if (!arvd) utf_mrqprogress();
 #endif

@@ -15,6 +15,7 @@ extern utfslist_t	utf_rndz_freelst;
 //extern utfslist_t	utf_rmacq_waitlst;
 extern int	utf_tcq_count, utf_mrq_count;
 extern int	utf_sreq_count, utf_rreq_count;
+extern int	utf_rcv_count, utf_rcv_max;
 extern int	utf_asend_count;
 extern int	utf_rma_max_inflight;
 
@@ -273,21 +274,21 @@ remote_piggysend(utofu_vcq_hdl_t vcqh,
 
 static inline struct utf_send_cntr *
 remote_piggysend2(utofu_vcq_hdl_t vcqh,
-		 utofu_vcq_id_t rvcqid, void *data,  utofu_stadd_t rstadd,
-		 size_t len, uint64_t edata, unsigned long flgs, void *cbdata)
+		  utofu_vcq_id_t rvcqid, void *data,  utofu_stadd_t rstadd,
+		  size_t len, uint64_t edata, unsigned long flgs)
 {
     struct utf_send_cntr *usp = 0;
     flgs |= UTOFU_ONESIDED_FLAG_STRONG_ORDER
 	 | UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE;
     UTOFU_MSGCALL(1, usp, vcqh, utofu_put_piggyback,
-		  vcqh, rvcqid, data, rstadd, len, edata, flgs, cbdata);
+		  vcqh, rvcqid, data, rstadd, len, edata, flgs, NULL);
     return usp;
 }
 
-//#define USE_PUT_TCQ_NOTICE
 /*
  * MRQ_LOCAL_PUT event driven is employed in the current implementation
- * for remote_put, but piggysend is TCQ_NOTICE driven
+ * for remote_put, but piggysend is TCQ_NOTICE driven.
+ * LOCAL_TCQ_NOTICE does not change state.
  */
 static inline struct utf_send_cntr *
 remote_put(utofu_vcq_hdl_t vcqh,
@@ -296,23 +297,12 @@ remote_put(utofu_vcq_hdl_t vcqh,
 	   unsigned long flgs, void *cbdata)
 {
     struct utf_send_cntr *usp = 0;
-#ifdef USE_PUT_TCQ_NOTICE
-    flgs |= UTOFU_ONESIDED_FLAG_TCQ_NOTICE
-/*	 | UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE */ /* 2020/12/20 */
-	 | UTOFU_ONESIDED_FLAG_STRONG_ORDER
-	 | UTOFU_ONESIDED_FLAG_CACHE_INJECTION;
-    UTOFU_MSGCALL(1, usp, vcqh, utofu_put,
-		  vcqh, rvcqid,  lstadd, rstadd, len, edata, flgs, cbdata);
-    utf_tcq_count++;
-#else
-    flgs = 
-	 UTOFU_ONESIDED_FLAG_LOCAL_MRQ_NOTICE
-/*	 |UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE*/
+    flgs = UTOFU_ONESIDED_FLAG_LOCAL_MRQ_NOTICE
+/*	 | UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE*/
 	 | UTOFU_ONESIDED_FLAG_STRONG_ORDER
 	 | UTOFU_ONESIDED_FLAG_CACHE_INJECTION;
     UTOFU_MSGCALL(1, usp, vcqh, utofu_put,
 		  vcqh, rvcqid,  lstadd, rstadd, len, edata, flgs, NULL);
-#endif 
     return usp;
 }
 
@@ -612,70 +602,3 @@ utfgen_uexplst_enqueue(uint8_t flgs, struct utf_msgreq *req)
 }
 
 extern int	utf_progress();
-#if 0
-static inline int
-utf_progress()
-{
-    int	j;
-    int	arvd = 0;
-
-    if (utf_tcq_count) utf_tcqprogress();
-
-    if ((int64_t) utf_egr_rbuf.head.cntr < 0) {
-	utf_printf("%s: No more Eager Receiver Buffer in my rank\n", __func__);
-	utf_egrrbuf_show(stderr);
-	abort();
-    }
-    /* here is peeking memory */
-    for (j = utf_egr_rbuf.head.cntr + 1; j <= RCV_CNTRL_INIT/*RCV_CNTRL_MAX*/ ; j++) {
-	struct utf_packet	*msgbase = utf_recvbuf_get(j);
-	struct utf_recv_cntr	*urp = &utf_rcntr[j];
-	volatile struct utf_packet	*pktp;
-	int	marker, sidx, rc;
-    try_again:
-	pktp = msgbase + urp->recvidx;
-	if (pktp->hdr.marker == MSG_MARKER) {
-	    /* message arrives */
-	    utf_tmr_end(TMR_UTF_RCVPROGRESS);
-	    sidx = pktp->hdr.sidx;
-	    if ((sidx & 0xff) == 0xff) {
-		utf_printf("%s: j(%d) PROTOCOL ERROR urp(%p)->state(%d:%s) sidx(%d) pkt(%p) MSG(%s)\n",
-			   __func__, j, urp, urp->state, rstate_symbol[urp->state],
-			   sidx, pktp, pkt2string((struct utf_packet*) pktp, NULL, 0));
-		utf_printf("%s: sidx(%d)\n", __func__, pktp->hdr.sidx);
-	    }
-	    /* for debugging */
-	    urp->dbg_rsize[urp->dbg_idx] = PKT_PYLDSZ(pktp);
-	    urp->dbg_idx = (urp->dbg_idx + 1) % COM_RBUF_SIZE;
-	    rc = utf_recvengine(urp, (struct utf_packet*) pktp, sidx);
-	    if (rc == 1) { /* Cannot handle at this time */
-		/* Do we need to handle this situation at the sender side ? */
-		continue;
-	    } else if (rc < 0) {
-		utf_printf("%s: j(%d) protocol error urp(%p)->state(%d:%s) sidx(%d) pkt(%p) MSG(%s)\n",
-			   __func__, j, urp, urp->state, rstate_symbol[urp->state],
-			   sidx, pktp, pkt2string((struct utf_packet*) pktp, NULL, 0));
-		abort();
-	    }
-	    pktp->hdr.hall = -1UL;
-	    urp->recvidx++;
-	    arvd = 1;
-	    if (IS_COMRBUF_FULL(urp)) {
-		utofu_stadd_t	stadd = SCNTR_ADDR_CNTR_FIELD(sidx);
-		urp->recvidx = 0;
-		if (urp->svcqid == 0) {
-		    urp->svcqid = utf_info.vname[pktp->hdr.src].vcqid;
-		}
-		utf_remote_armw4(utf_info.vcqh, urp->svcqid, urp->flags,
-				 UTOFU_ARMW_OP_OR, SCNTR_OK,
-				 stadd + SCNTR_RST_RECVRESET_OFFST, sidx, 0);
-	    } else {
-		goto try_again;
-	    }
-	}
-    }
-    if (!arvd) utf_mrqprogress();
-
-    return 0;
-}
-#endif

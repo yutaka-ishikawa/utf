@@ -30,9 +30,13 @@
 #define DLEVEL_FI		0x008000
 #define DLEVEL_INI		0x010000
 #define DLEVEL_CHND		0x020000
-#define DLEVEL_ALL		0x0fffff
-#define ILEVEL_MSG		0x01
-#define ILEVEL_STAG		0x02
+#define DLEVEL_STAG		0x040000
+#define DLEVEL_LOG		0x080000
+#define DLEVEL_LOG2		0x100000
+#define DLEVEL_ALL		0x1fffff
+#define ILEVEL_MSG		0x001
+#define ILEVEL_STAG		0x002
+#define ILEVEL_STAT		0x100
 
 #define SHMEM_KEY_VAL_FMT	"/tmp/MPICH-shm"
 #define PMIX_TOFU_SHMEM	"UTF_TOFU_SHM"
@@ -41,6 +45,7 @@
 #define TOFU_NIC_SIZE	6	/* number of NIC */
 #define TOFU_INJECTSIZE	228
 #define TOFU_INJECTCNT	16	/* asynchronous message injection size */
+#define TOFU_RECVMAX	128	/* default max # of receiving packets in utf_progress() */
 #define NODE_MAX	158976
 #define PROC_MAX	663552	/* 24*23*24*12 * 4(ppn) */
 #define SND_CNTRL_MAX	128	/* shorter than 2^7 (sidx) */

@@ -16,6 +16,7 @@ extern void	utf_fence();
 extern void	utf_setmsgmode(int);
 extern void	utf_settransmode(int);
 extern void	utf_setinjcnt(int);
+extern void	utf_setrcvcnt(int);
 extern void	utf_setasendcnt(int);
 extern void	utf_setarmacnt(int);
 extern void	utf_mem_init();
@@ -28,7 +29,7 @@ extern void	utf_vname_show(FILE*);
 extern void	utf_cqtab_show(FILE*);
 extern void	utf_egrrbuf_show(FILE*);
 extern void	utf_egrbuf_show(FILE*);
-extern void	utf_statistics(FILE*);
+extern void	utf_dbg_stat(FILE*);
 
 /**/
 struct tofu_vname;

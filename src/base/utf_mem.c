@@ -14,6 +14,7 @@
 int utf_tcq_count, utf_mrq_count, utf_injct_count;
 int utf_sreq_count, utf_rreq_count;
 int utf_asend_count;
+int utf_rcv_count, utf_rcv_max;
 int utf_rma_max_inflight;
 int utf_dflag; /* debug */
 int utf_rflag; /* redirect */
@@ -81,15 +82,30 @@ utofu_stadd_t	utf_rmacq_stadd;	/* rmacq for injectdata */
 /**/
 uint8_t	utf_zero256[256];
 
+static int utf_mreg;
+
 utofu_stadd_t
 utf_mem_reg(utofu_vcq_hdl_t vcqh, void *buf, size_t size)
 {
     utofu_stadd_t	stadd = 0;
+    int rc;
 
     utf_tmr_begin(TMR_UTF_MEMREG);
+#if 0
     UTOFU_CALL(1, utofu_reg_mem, vcqh, buf, size, 0, &stadd);
-    DEBUG(DLEVEL_PROTO_RMA|DLEVEL_ADHOC) {
-	utf_printf("%s: size(%ld/0x%lx) vcqh(%lx) buf(%p) stadd(%lx)\n", __func__, size, size, vcqh, buf, stadd);
+#endif
+    rc = utofu_reg_mem(vcqh, buf, size, 0, &stadd);
+    if (rc != UTOFU_SUCCESS) {
+	char msg[1024];
+	utofu_get_last_error(msg);
+	utf_printf("error: %s @ %d in %s\n", msg, __LINE__, __FILE__);
+	utf_printf("\t requested address(%p) utf_mreg = %d\n", buf, utf_mreg);
+    }
+    utf_mreg++;
+    DEBUG(DLEVEL_STAG|DLEVEL_PROTO_RMA) {
+	if (utf_mreg > 48 && (utf_info.myrank == 0 || utf_info.myrank == (utf_info.nprocs - 1))) {
+	    utf_printf("%s: size(%ld/0x%lx) vcqh(%lx) buf(%p) stadd(%lx) utf_mreg(%d)\n", __func__, size, size, vcqh, buf, stadd, utf_mreg);
+	}
     }
     utf_tmr_end(TMR_UTF_MEMREG);
     return stadd;
@@ -100,8 +116,11 @@ utf_mem_dereg(utofu_vcq_id_t vcqh, utofu_stadd_t stadd)
 {
     utf_tmr_begin(TMR_UTF_MEMDEREG);
     UTOFU_CALL(1, utofu_dereg_mem, vcqh, stadd, 0);
-    DEBUG(DLEVEL_PROTO_RMA|DLEVEL_ADHOC) {
-	utf_printf("%s: vcqh(%lx) stadd(%lx)\n", __func__, vcqh, stadd);
+    --utf_mreg;
+    DEBUG(DLEVEL_STAG|DLEVEL_PROTO_RMA) {
+	if (utf_mreg > 48 && (utf_info.myrank == 0 || utf_info.myrank == (utf_info.nprocs - 1))) {
+	    utf_printf("%s: vcqh(%lx) stadd(%lx) utf_mreg(%d)\n", __func__, vcqh, stadd, utf_mreg);
+	}
     }
     utf_tmr_end(TMR_UTF_MEMDEREG);
     return;
@@ -397,11 +416,31 @@ utf_egrbuf_show(FILE *fp)
 }
 
 void
-utf_statistics(FILE *fp)
+utf_dbg_stat(FILE *fp)
 {
-//    if (utf_info.myrank == 0) {
-	fprintf(fp, "\tCNTR = %ld\n", utf_egr_rbuf.head.cntr); fflush(fp);
-	fprintf(fp, "\tRECV_REQ_CNT = %d\n", utf_rreq_count); fflush(fp);
-	fprintf(fp, "\tSEND_REQ_CNT = %d\n", utf_sreq_count); fflush(fp);
-//    }
+    fprintf(fp, "\tCNTR = %ld\n", utf_egr_rbuf.head.cntr); fflush(fp);
+    fprintf(fp, "\tRECV_REQ_CNT = %d\n", utf_rreq_count); fflush(fp);
+    fprintf(fp, "\tSEND_REQ_CNT = %d\n", utf_sreq_count); fflush(fp);
+}
+
+void
+utf_stat_show()
+{
+    int	i;
+    FILE	*fp = stdout;
+
+    i = utf_getenvint("UTF_STATFD");
+    if (i == 2) {
+	fp = stderr;
+    }
+    i = utf_getenvint("UTF_STATRANK");
+    if (i == -1 || utf_info.myrank == i) {
+	fprintf(fp, "***** UTF STATISTICS *****\n");
+	fprintf(fp, "\tRECV MAX = %d\n", utf_rcv_max);
+	fprintf(fp, "\tCNTR     = %ld\n", utf_egr_rbuf.head.cntr);
+	fprintf(fp, "\tRECV_REQ_CNT = %d\n", utf_rreq_count);
+	fprintf(fp, "\tSEND_REQ_CNT = %d\n", utf_sreq_count);
+	fprintf(fp, "**************************\n");
+	fflush(fp);
+    }
 }

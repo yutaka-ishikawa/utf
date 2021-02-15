@@ -625,6 +625,12 @@ find:
     idx = mlst->reqidx;
     //utf_printf("\t return idx(%d) mlst(%p) exp_src(%ld) exp_tag(0x%lx) exp_ignore(0x%lx)\n", idx, mlst, mlst->hdr.src, mlst->hdr.tag, mlst->fi_ignore);
     if (peek == 0) {
+	DEBUG(DLEVEL_LOG2) {
+	    extern int tofu_gatherv_cnt, tofu_gatherv_do;
+	    if (tofu_gatherv_do) {
+		utf_log("\tG(%d)A(%d:%d) ", tofu_gatherv_cnt, src, mlst->hdr.src);
+	    }
+	}
 	utfslist_remove2(explst, cur, prev);
 	utf_msglst_free(mlst);
     }

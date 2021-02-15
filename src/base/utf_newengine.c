@@ -8,12 +8,16 @@
 #include "utf_sndmgt.h"
 #include "utf_queue.h"
 #include "utf_timer.h"
+#include <execinfo.h>
+
 #define UTF_RSTATESYM_NEEDED
 #include "utf_msgmacros.h"
 
+int tofu_barrier_cnt, tofu_barrier_do, tofu_barrier_src, tofu_barrier_dst, tofu_gatherv_cnt, tofu_gatherv_do;
+
 #define INTERNAL_ERROR do { \
-    utf_printf("%s: UTF internal error\n", __func__);	\
-    abort();						\
+	utf_printf("%s: UTF internal error @d\n", __func__, __LINE__);	\
+	abort();							\
 } while(0);
 
 extern int utf_tcq_count, utf_injct_count;
@@ -151,14 +155,18 @@ chain_inform_ready(struct utf_send_cntr *usp)
     utofu_vcq_id_t	rvcqid;
     uint64_t	flgs = 0;
     union utf_chain_rdy	ready;
+
+    if (usp->chn_informed) {
+	return;
+    }
     ready.rdy = 1;
     ready.recvidx = usp->recvidx;
     rvcqid = utf_info.vname[usp->chn_next.rank].vcqid;
-    usp->chn_informed = 1;
     /* sindex is remote one */
     remote_piggysend2(utf_info.vcqh, rvcqid, &ready,
 		      SCNTR_CHAIN_READY(usp->chn_next.sidx),
-		      sizeof(uint64_t),  usp->chn_next.sidx, flgs, NULL);
+		      sizeof(uint64_t),  usp->chn_next.sidx, flgs);
+    usp->chn_informed = 1;
     DEBUG(DLEVEL_CHND) {
 	utf_printf("%s:[CHND] INFORM-TO rank(%d)\n", __func__, usp->chn_next.rank);
     }
@@ -216,7 +224,7 @@ chain_prog_room(struct utf_send_cntr *usp, uint64_t rslt)
 	data = make_chain_addr(utf_info.myrank, usp->mypos, 0);
 	/* sidx is remote one */
 	remote_piggysend2(utf_info.vcqh, rvcqid, &data, SCNTR_CHAIN_NXT(last_rank.sidx),
-			  sizeof(uint64_t), last_rank.sidx, flags, NULL);
+			  sizeof(uint64_t), last_rank.sidx, flags);
 	rc = PROG_CHAIN_NONE;
 	DEBUG(DLEVEL_CHND) {
 	    utf_printf("%s:[CHND] WAIT-FOR rank(%d)\n", __func__, last_rank.rank);
@@ -271,9 +279,10 @@ chain_progress(struct utf_send_cntr *usp, uint64_t rslt, int evtype, struct utf_
     struct utf_send_cntr *nusp;
     int	rc = PROG_CHAIN_NONE;
     switch (evtype) {
-    case EVT_LCL_CHNNXT: /* called from sendengine at the end of send (S_NODE state)
-			  * or mrqprogress (in case of S_WAIT_BUFREADY_CHND state) */
-	/* (usp->state == S_NONE) and (usp->inflight == 0) */
+    case EVT_LCL_CHNNXT:
+	/* state == S_NONE and called from sendengine at the end of send.
+	 * state == S_WAIT_BUFREADY_CHND called from mrqprogress
+	 * (usp->state == S_NONE) and (usp->inflight == 0) */
 	usp->ostate = usp->state;
 	if (usp->inflight > 0) {
 	    usp->state = S_HAS_ROOM;
@@ -284,7 +293,7 @@ chain_progress(struct utf_send_cntr *usp, uint64_t rslt, int evtype, struct utf_
 		nusp = chain_reset_recv_chntail(usp);
 		usp->state = S_WAIT_RESETCHN;
 		if (nusp) {
-		    if (newusp == NULL) {
+		    if (newusp == NULL || (nusp == usp)) {
 			INTERNAL_ERROR;
 		    }
 		    *newusp = nusp;
@@ -555,8 +564,6 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 		 evt, usp->rcvreset, usp->recvidx);
     }
     switch(usp->state) {
-    case S_NONE: /* never comes */
-	break;
     case S_REQ_ROOM:
 	if ((int64_t)rslt >= 0) {
 	    utf_sndmgt_set_sndok(usp->dst, utf_egrmgt);
@@ -599,6 +606,11 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 	    /* packet data is already filled */
 	    newusp = remote_piggysend(utf_info.vcqh, rvcqid, &minfo->sndbuf->pkt,
 				      recvstadd, 32, usp->mypos, flgs, usp);
+	    DEBUG(DLEVEL_LOG2) {
+		if (tofu_gatherv_do) {
+		    utf_log("\tS(%d)\n", PKT_FI_DATA(minfo->sndbuf->pkt));
+		}
+	    }
 	    usp->recvidx++;
 	    usp->usize = PKT_PYLDSZ(pkt);
 	    usp->state = S_DONE_EGR;
@@ -786,26 +798,35 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 		usp->ostate = S_NONE;
 		usp->state = S_WAIT_BUFREADY_CHND;
 	    } else {
-		struct utf_send_cntr *newusp;
 		/* state will be changed to S_WAIT_RESETCHN, S_WAIT_NEXTUPDT, or not */
 		rc = chain_progress(usp, 0, EVT_LCL_CHNNXT, &newusp);
 		if (rc == PROG_CHAIN_SENDEPREP) {
-		    utf_sendengine_prep(newusp, 0, EVT_LCL);
+		    break;
 		} else if (rc != PROG_CHAIN_NONE) {
 		    INTERNAL_ERROR;
 		}
-		if (usp->inflight > 0) {
-		    utf_printf("%s: usp->state(%d) usp->inflight(%d)\n", __func__, usp->state, usp->inflight);
-		    INTERNAL_ERROR;
+		if (newusp) {
+		    utf_printf("%s: DEBUG_TOFU_NEWUSP\n", __func__);
 		}
 	    }
 	}
 	break;
     }
-    case S_DONE:
-	break;
     case S_WAIT_BUFREADY:
 	utf_printf("%s: protocol error in S_WAIT_BUFREADY\n", __func__);
+	abort();
+	break;
+    default:
+    case S_DONE: /* never comes */
+    case S_NONE: /* never comes */
+	utf_printf("%s: TOFU protocol error state(%s:%d)\n", __func__, sstate_symbol[usp->state], usp->state);
+	{
+#define TRBUF_SZ 1024
+	    static void	*trbuf[TRBUF_SZ];
+	    int sz = backtrace(trbuf, TRBUF_SZ);
+	    utf_printf("####### BACK TRACE (%d) #######\n", sz);
+	    backtrace_symbols_fd(trbuf, sz, 2); /* stderr */
+	}
 	abort();
 	break;
     }
@@ -819,8 +840,10 @@ utf_sendengine_prep(struct utf_send_cntr *usp, uint64_t rslt, int evt)
 	struct utf_send_msginfo	*minfo = &usp->msginfo[usp->micur];
 	usp = utf_sendengine(usp, minfo, rslt, evt);
 	/* usp is not NULL means getting poll_tcq success */
-	// --utf_tcq_count; 2021/01/30
-	evt = EVT_LCL; rslt = 0;
+	if (usp != NULL) {
+	    --utf_tcq_count;
+	    evt = EVT_LCL; rslt = 0;
+	}
     } while (usp != NULL);
     assert(utf_tcq_count >= 0);
 }
@@ -832,6 +855,14 @@ utf_send_start(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo)
     int	dst = usp->dst;
     DEBUG(DLEVEL_CHND) {
 	utf_printf("%s: [CHND] DST(%d)\n", __func__, usp->dst);
+    }
+    DEBUG(DLEVEL_LOG) {
+	if (tofu_gatherv_do) {
+	    utf_log("\tutf-GS(%d)D(%d)\n", tofu_gatherv_cnt, usp->dst);
+	}
+	if (tofu_barrier_do) {
+	    utf_log("\tutf-S(%d:%d)D(%d)\n", tofu_barrier_cnt, tofu_barrier_dst, usp->dst);
+	}
     }
     if (utf_sndmgt_isset_sndok(dst, utf_egrmgt) != 0) {
 	DEBUG(DLEVEL_PROTOCOL) {
@@ -875,6 +906,7 @@ utf_send_start(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo)
 	return -1;
     }
     if (newusp) {
+	--utf_tcq_count;
 	utf_sendengine_prep(newusp, 0, EVT_LCL);
     }
     return 0;
@@ -891,6 +923,7 @@ utf_tcqprogress()
 	rc = utofu_poll_tcq(utf_info.vcqh, 0, (void*) &usp);
 	if (rc != UTOFU_SUCCESS) break;
 	if (usp == NULL) continue;
+	--utf_tcq_count;
 	utf_sendengine_prep(usp, 0, EVT_LCL);
     } while (utf_tcq_count);
     if (rc != UTOFU_ERR_NOT_FOUND && rc != UTOFU_SUCCESS) {
@@ -909,6 +942,7 @@ void
 utf_rget_progress(struct utf_msgreq *req)
 {
     utofu_stadd_t	stadd;
+    struct utf_send_cntr *newusp;
 
     DEBUG(DLEVEL_PROTO_RENDEZOUS) {
 	utf_printf("%s: R_DO_RNDZ req(%p)->vcqid(%lx) rsize(%ld) expsize(%ld) rndzpos(%d)\n",
@@ -929,9 +963,13 @@ utf_rget_progress(struct utf_msgreq *req)
      * currently local notitication is enabled
      */
     stadd = MSGINFO_STADDR(req->rgetsender.rndzpos);
-    utf_remote_armw4(utf_info.vcqh, req->rgetsender.vcqid[0], 0,
-		     UTOFU_ARMW_OP_OR, SCNTR_OK,
-		     stadd + MSGINFO_RGETDONE_OFFST, req->rgetsender.rndzpos, 0);
+    newusp = utf_remote_armw4(utf_info.vcqh, req->rgetsender.vcqid[0], 0,
+			      UTOFU_ARMW_OP_OR, SCNTR_OK,
+			      stadd + MSGINFO_RGETDONE_OFFST, req->rgetsender.rndzpos, 0);
+    if (newusp != 0) { /* 2021/02/06 */
+	utf_printf("%s: TOFU INTERNAL ERROR\n", __func__);
+	abort();
+    }
     if (req->bufinfo.stadd[0]) {
 	utf_mem_dereg(utf_info.vcqh, req->bufinfo.stadd[0]);
 	req->bufinfo.stadd[0] = 0;
@@ -979,11 +1017,24 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 	DEBUG(DLEVEL_PROTOCOL) {
 	    utf_printf("%s: NEW MESSAGE SRC(%d) size(%ld)\n", __func__, pkt->hdr.src, (uint64_t)pkt->hdr.size);
 	}
+	DEBUG(DLEVEL_LOG) {
+	    if (tofu_barrier_do) {
+		utf_log("R(%d:%d)S(%d)T(%llx) ", tofu_barrier_cnt, tofu_barrier_src, PKT_MSGSRC(pkt), PKT_MSGTAG(pkt));
+	    }
+	    if (tofu_gatherv_do) {
+		utf_log("GR(%d:%d)S(%d)T(%llx) ", tofu_gatherv_cnt, tofu_barrier_src, PKT_MSGSRC(pkt), PKT_MSGTAG(pkt));
+	    }
+	}
 	if ((idx = utfgen_explst_match(PKT_MSGFLG(pkt), PKT_MSGSRC(pkt), PKT_MSGTAG(pkt))) != -1) {
 	found:
 	    req = utf_idx2msgreq(idx);
 	    req->rndz = pkt->hdr.rndz;
 	    req->fi_data = PKT_FI_DATA(pkt);
+	    DEBUG(DLEVEL_LOG2) {
+		if (tofu_gatherv_do) {
+		    utf_log("(%d:%d:%d) ", req->hdr.src, PKT_FI_DATA(pkt), idx);
+		}
+	    }
 	    if (PKT_MSGFLG(pkt)&~MSGHDR_FLGS_FI_TAGGED && req->fi_mrecv) {
 		/* expected queue is created */
 		req->fi_mrecv(req, PKT_MSGSZ(pkt));
@@ -1011,6 +1062,9 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 		if ((idx = utfgen_explst_match(PKT_MSGFLG(pkt), PKT_MSGSRC(pkt), PKT_MSGTAG(pkt))) != -1) {
 		    goto found;
 		}
+	    }
+	    DEBUG(DLEVEL_LOG) {
+		if (tofu_barrier_do || tofu_gatherv_do) { utf_log("E\n"); }
 	    }
 	    req = utf_recvreq_alloc();
 	    if (req == NULL) {
@@ -1071,6 +1125,11 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
     done:
 	req->state = REQ_DONE;
 	if (req->type == REQ_RECV_UNEXPECTED) {
+#if 0
+	    if (utf_info.myrank == 0 && PKT_MSGTAG(pkt) == 0xf880000004) {
+		utf_printf("Unexp(%d)d(%d)r(%d)\t", PKT_MSGSRC(pkt), PKT_FI_DATA(pkt), utf_rcntr[EGRCHAIN_RECVPOS].recvidx);
+	    }
+#endif
 	    DEBUG(DLEVEL_PROTOCOL) {
 		utf_printf("%s: recv_post SRC(%d) UEXP DONE(req=%p,idx=%d,flgs(%x))\n", __func__, req->hdr.src,
 			   req, utf_msgreq2idx(req), req->hdr.flgs);
@@ -1080,6 +1139,11 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 		utf_printf("%s: recv_post SRC(%d) EXP DONE(req=%p,idx=%d,flgs(%x)), req->fi_flgs(0x%lx) notify(%p)\n", __func__, req->hdr.src,
 			   req, utf_msgreq2idx(req), req->hdr.flgs, req->fi_flgs, req->notify);
 	    }
+#if 0
+	    if (utf_info.myrank == 0 && PKT_MSGTAG(pkt) == 0xf880000004) {
+		utf_printf("Expsrc(%d)d(%d)r(%d)\n", PKT_MSGSRC(pkt), PKT_FI_DATA(pkt), utf_rcntr[EGRCHAIN_RECVPOS].recvidx);
+	    }
+#endif
 	    if (req->notify) req->notify(req, 1);
 	}
 	/* reset the state */
@@ -1099,17 +1163,17 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 	return 0;
 }
 
+static char msg[2048];
+
 int
 utf_mrqprogress()
 {
-    int	ridx = -1;
     int	uc = 0;
     struct utofu_mrq_notice mrq_notice;
 
     uc = utofu_poll_mrq(utf_info.vcqh, 0, &mrq_notice);
-    if (uc == UTOFU_ERR_NOT_FOUND) return ridx;
+    if (uc == UTOFU_ERR_NOT_FOUND) return uc;
     if (uc != UTOFU_SUCCESS) {
-	char msg[1024];
 	utofu_get_last_error(msg);
 	utf_printf("%s: utofu_poll_mrq ERROR rc(%d) %s\n", __func__, uc, msg);
 	utf_printf("%s: type(%s) vcq_id(0x%lx) edata(0x%x) rmt_value(0x%lx) lcl_stadd(0x%lx) rmt_stadd(0x%lx)\n",
@@ -1129,7 +1193,7 @@ utf_mrqprogress()
 	    utf_rget_progress(req);
 	}
 	abort();
-	return ridx;
+	return uc;
     }
     DEBUG(DLEVEL_UTOFU) {
 	utf_printf("%s: type(%s)\n", __func__,
@@ -1326,6 +1390,7 @@ utf_mrqprogress()
 		utf_printf("%s: TOFU ???? evtype(%d)\n", __func__, evtype);
 		INTERNAL_ERROR;
 	    }
+	    /* EVT_RMT_RECVRST */
 	    if (usp->smode == TRANSMODE_AGGR) {
 		usp->rcvreset = 0; usp->recvidx = 0;
 		if (usp->state == S_WAIT_BUFREADY) {
@@ -1354,6 +1419,7 @@ utf_mrqprogress()
 			 * has been posted 2021/01/26 */
 			utf_sendengine_prep(usp, 0, EVT_LCL);
 		    } else if (rc == PROG_CHAIN_SENDEPREP) {
+			--utf_tcq_count;
 			utf_sendengine_prep(newusp, 0, EVT_LCL);
 		    } else if (rc != PROG_CHAIN_NONE) {
 			utf_printf("%s: RMT_ARMW rc(%d) usp->state(%d) usp->inflight(%d)\n", __func__, rc, usp->state, usp->inflight);
@@ -1377,7 +1443,7 @@ utf_mrqprogress()
 		   __func__, mrq_notice.notice_type, mrq_notice.edata, mrq_notice.rmt_value);
 	break;
     }
-    return ridx;
+    return uc;
 }
 
 int
@@ -1403,12 +1469,12 @@ utf_recvcntr_show(FILE *fp)
     for (i = COM_PEERS - 1; i > cntr; --i) {
 	struct utf_recv_cntr	*urp = &utf_rcntr[i]; 
 	if (urp->req) {
-	    utf_printf(" r-ridx(%d) r-src(%d) r-recvidx(%d) svcqid(0x%lx) state(%s:%d) req(%p) "
-		       " r-msghdr(size(%d) tag(0x%lx) src(%d)\n",
+	    utf_printf(" r-ridx(%d) r-src(%d) r-recvidx(%d) svcqid(0x%llx) state(%s:%d) req(%p) "
+		       " r-msghdr(size(%d) tag(0x%llx) src(%d)\n",
 		       i, urp->src, urp->recvidx, urp->svcqid, rstate_symbol[urp->state], urp->state,
 		       urp->req, urp->req->hdr.size, urp->req->hdr.tag, urp->req->hdr.src);
 	} else {
-	    utf_printf(" r-ridx(%d) r-src(%d) r-recvidx(%d) svcqid(0x%lx) state(%s:%d) req(NULL)\n",
+	    utf_printf(" r-ridx(%d) r-src(%d) r-recvidx(%d) svcqid(0x%llx) state(%s:%d) req(NULL)\n",
 		       i, urp->src, urp->recvidx, urp->svcqid, rstate_symbol[urp->state], urp->state);
 	}
     }
@@ -1418,18 +1484,23 @@ utf_recvcntr_show(FILE *fp)
 	volatile struct utf_packet	*pktp;
 	int	idx;
 	if (utf_egr_rbuf.head.chntail.recvidx != urp->recvidx) {
-	    utf_printf(" ---- CHAINED_RECV ERROR (head.recvidx(%d) recvidx(%d)----\n",
+	    utf_printf(" ---- CHAINED_RECV-ERROR (head.rank(%d).sidx(%d).recvidx(%d) recvidx(%d) ----\n",
+		       utf_egr_rbuf.head.chntail.rank, 
+		       utf_egr_rbuf.head.chntail.sidx,
 		       utf_egr_rbuf.head.chntail.recvidx, urp->recvidx);
 	} else {
-	    utf_printf(" ---- CHAINED_RECV ----\n");
+	    utf_printf(" ---- CHAINED_RECV (head.rank(%d).sidx(%d).recvidx(%d) ----\n",
+		       utf_egr_rbuf.head.chntail.rank, 
+		       utf_egr_rbuf.head.chntail.sidx,
+		       utf_egr_rbuf.head.chntail.recvidx);
 	}
 	for (idx = 0; idx < COM_RBUF_SIZE; idx++) {
 	    pktp = msgbase + idx;
 	    if (idx == urp->recvidx) {
-		utf_printf("* chn-recvidx(%d) pktp(0x%x) src(%d) sidx(%d) tag(0x%lx) size(%ld) flgs(0x%x)\n",
+		utf_printf("* chn-recvidx(%d) pktp(0x%x) src(%d) sidx(%d) tag(0x%llx) size(%ld) flgs(0x%x)\n",
 			   idx, pktp->hdr.marker, pktp->hdr.src, pktp->hdr.sidx, pktp->hdr.tag, pktp->hdr.size, pktp->hdr.flgs);
 	    } else {
-		utf_printf(" chn-recvidx(%d) pktp(0x%x) src(%d) sidx(%d) tag(0x%lx) size(%ld) flgs(0x%x)\n",
+		utf_printf(" chn-recvidx(%d) pktp(0x%x) src(%d) sidx(%d) tag(0x%llx) size(%ld) flgs(0x%x)\n",
 			   idx, pktp->hdr.marker, pktp->hdr.src, pktp->hdr.sidx, pktp->hdr.tag, pktp->hdr.size, pktp->hdr.flgs);
 	    }
 	}
@@ -1478,7 +1549,7 @@ utf_sendctr_show()
 		   usp->chn_ready.recvidx, usp->waitfor);
 	for (i = 0; i < COM_SCNTR_MINF_SZ; i++) {
 	    minfo = &usp->msginfo[i];
-	    utf_printf("\tminfo[%d] msghdr(size(%d) tag(0x%lx) req(%p))\n",
+	    utf_printf("\tminfo[%d] msghdr(size(%d) tag(0x%llx) req(%p))\n",
 		       i, minfo->msghdr.size, minfo->msghdr.tag, minfo->mreq);
 	}
     }
@@ -1487,8 +1558,9 @@ utf_sendctr_show()
 void
 utf_injcnt_show()
 {
-    utf_printf("***** TOFU INJECTION *****\n");
+    utf_printf("***** TOFU INJECTION & RECV *****\n");
     utf_printf("\tinjection count : %d\n", utf_injct_count);
     utf_printf("\ttcq count       : %d\n", utf_tcq_count);
     utf_printf("\tmrq count       : %d\n", utf_mrq_count);
+    utf_printf("\tmax recv count  : %d\n", utf_rcv_max);
 }
