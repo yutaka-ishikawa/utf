@@ -1,0 +1,16 @@
+CC = fcc
+#CC =	/opt/FJSVxos/devkit/aarch64/bin/aarch64-linux-gnu-gcc
+#LD =	/opt/FJSVxos/devkit/aarch64/bin/aarch64-linux-gnu-ld
+
+CFLAGS = -Nclang -O3 -g
+INCLUDES =  -I/usr/include/FJSVtcs/ple
+#LDFLAGS = -ltofutop -ltofucom -L/opt/FJSVxos/devkit/aarch64/rfs/usr/lib/FJSVtcs/ple/lib64 -lpmix
+LDFLAGS = -ltofutop -ltofucom -L$(HOME)/riken-mpich -lpmix
+
+MPICC = mpicc
+
+FJMPICC = mpifccpx
+FJCFLAGS = 
+FJLDFLAGS = -ltofutop -ltofucom -lpmix
+
+INSTALL=install
