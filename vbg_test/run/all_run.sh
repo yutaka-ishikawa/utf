@@ -7,7 +7,7 @@ CSV_FILE_OUT="OFF"
 
 # Read TP.list
 if [ $# = 0 ]; then
-    TP_LIST="TP_list.txt"
+    TP_LIST="TPlist.txt"
 else
     TP_LIST="$1"
 fi

@@ -64,6 +64,7 @@ uint64_t utf_bg_counter MPICH_API_PUBLIC;
 unsigned long long mca_coll_tbi_exec_counter OMPI_DECLSPEC;
 #define utf_bg_counter   mca_coll_tbi_exec_counter;
 #endif
+double      call_elapse;
 
 
 /*
@@ -479,6 +480,24 @@ static inline double get_elapse(utf_timer_t start, utf_timer_t end)
     return maxtime;
 }
 
+static inline double get_call_elapse(utf_timer_t elapse_sum)
+{
+    double elapse, maxtime = 0.0;
+    int ret = MPI_SUCCESS;
+
+#if USE_WTIME
+    elapse = elapse_sum*1000000.0/iter;
+#else
+    elapse = (((double)elapse_sum)/freq)*1000000.0/iter;
+#endif
+    ret = MPI_Reduce(&elapse, &maxtime, 1, MPI_DOUBLE, MPI_MAX, root_rank, tcomm);
+    if (ret != MPI_SUCCESS) {
+        fprintf(stderr, "[%s] MPI_Reduce error: ret=%d rank(w/c)=%d/%d\n",
+                __func__, ret, wrank, comm_rank);
+    }
+    return maxtime;
+}
+
 
 /*
  * Allocate the data buffers.
@@ -815,7 +834,7 @@ static int set_data_for_bcast(void *sbuf, void *ansbuf, long buf_size) {
 /*
  * Set the test data and the answer for MPI_Reduce/MPI_Allreduce(MPI_SUM).
  */
-static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long buf_size) {
+static int set_data_for_reduce_sum(void *sbuf, void *ansbuf, long buf_size) {
 
     int n, cn, ans_n;
 
@@ -826,11 +845,18 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
     }
     memset(sbuf, 0x00, buf_size);
     memset(ansbuf, 0x00, buf_size);
-    if (rbuf != NULL) {
-        memset(rbuf, 0x00, buf_size);
-    }
 
     switch (test_datatype_n) {
+        case DT_DOUBLE:
+            for (n=0; n<test_count; n++) {
+                *((double *)sbuf+n) = (double)comm_rank;
+                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
+                    for (cn=0; cn<comm_procs; cn++) {
+                        *((double *)ansbuf+n) += (double)cn;
+                    }
+                }
+            }
+            break;
         case DT_SIGNED_CHAR:
             for (n=0; n<test_count; n++) {
                 *((signed char *)sbuf+n) = (signed char)comm_rank;
@@ -1024,16 +1050,6 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
                 }
             }
             break;
-        case DT_DOUBLE:
-            for (n=0; n<test_count; n++) {
-                *((double *)sbuf+n) = (double)comm_rank;
-                if (test_func == FUNC_MPI_ALLREDUCE || comm_rank == root_rank) {
-                    for (cn=0; cn<comm_procs; cn++) {
-                        *((double *)ansbuf+n) += (double)cn;
-                    }
-                }
-            }
-            break;
         case DT_LONG_DOUBLE:
             for (n=0; n<test_count; n++) {
                 *((long double *)sbuf+n) = (long double)comm_rank;
@@ -1163,7 +1179,7 @@ static int set_data_for_reduce_sum(void *sbuf, void *rbuf, void *ansbuf, long bu
 /*
  * Set the test data and the answer for MPI_Reduce/MPI_Allreduce(MPI_BAND/MPI_BOR/MPI_BXOR).
  */
-static int set_data_for_reduce_bit(void *sbuf, void *rbuf, void *ansbuf, long buf_size) {
+static int set_data_for_reduce_bit(void *sbuf, void *ansbuf, long buf_size) {
 
     int n, cn;
 
@@ -1174,9 +1190,6 @@ static int set_data_for_reduce_bit(void *sbuf, void *rbuf, void *ansbuf, long bu
     }
     memset(sbuf, 0x00, buf_size);
     memset(ansbuf, 0x00, buf_size);
-    if (rbuf != NULL) {
-        memset(rbuf, 0x00, buf_size);
-    }
 
     switch (test_datatype_n) {
         case DT_SIGNED_CHAR:
@@ -1765,7 +1778,7 @@ static int set_data_for_reduce_bit(void *sbuf, void *rbuf, void *ansbuf, long bu
 /*
  * Set the test data and the answer for MPI_Reduce/MPI_Allreduce(MPI_LAND/MPI_LOR/MPI_LXOR).
  */
-static int set_data_for_reduce_logical(void *sbuf, void *rbuf, void *ansbuf, long buf_size) {
+static int set_data_for_reduce_logical(void *sbuf, void *ansbuf, long buf_size) {
 
     int n;
 
@@ -1776,9 +1789,6 @@ static int set_data_for_reduce_logical(void *sbuf, void *rbuf, void *ansbuf, lon
     }
     memset(sbuf, 0x00, buf_size);
     memset(ansbuf, 0x00, buf_size);
-    if (rbuf != NULL) {
-        memset(rbuf, 0x00, buf_size);
-    }
 
     //     test data      answer
     //   n  root other     LXOR
@@ -2614,7 +2624,7 @@ static int set_data_for_reduce_logical(void *sbuf, void *rbuf, void *ansbuf, lon
 /*
  * Set the test data and the answer for MPI_Reduce/MPI_Allreduce(MPI_MAX/MPI_MIN).
  */
-static int set_data_for_reduce_max_min(void *sbuf, void *rbuf, void *ansbuf, long buf_size) {
+static int set_data_for_reduce_max_min(void *sbuf, void *ansbuf, long buf_size) {
 
     int n;
 
@@ -2625,9 +2635,6 @@ static int set_data_for_reduce_max_min(void *sbuf, void *rbuf, void *ansbuf, lon
     }
     memset(sbuf, 0x00, buf_size);
     memset(ansbuf, 0x00, buf_size);
-    if (rbuf != NULL) {
-        memset(rbuf, 0x00, buf_size);
-    }
 
     switch (test_datatype_n) {
         case DT_SIGNED_CHAR:
@@ -2927,7 +2934,7 @@ static int set_data_for_reduce_max_min(void *sbuf, void *rbuf, void *ansbuf, lon
 /*
  * Set the test data and the answer for MPI_Reduce/MPI_Allreduce(MPI_MAX_LOC/MPI_MIN_LOC).
  */
-static int set_data_for_reduce_max_min_loc(void *sbuf, void *rbuf, void *ansbuf, long buf_size) {
+static int set_data_for_reduce_max_min_loc(void *sbuf, void *ansbuf, long buf_size) {
 
     int n;
 
@@ -2938,9 +2945,6 @@ static int set_data_for_reduce_max_min_loc(void *sbuf, void *rbuf, void *ansbuf,
     }
     memset(sbuf, 0x00, buf_size);
     memset(ansbuf, 0x00, buf_size);
-    if (rbuf != NULL) {
-        memset(rbuf, 0x00, buf_size);
-    }
 
     switch (test_datatype_n) {
         case DT_SHORT_INT:
@@ -3155,10 +3159,15 @@ static int test_barrier(void)
 {
     int ret=MPI_SUCCESS, i;
     uint64_t cnt_start=0, cnt_end, cnt;
+    utf_timer_t call_start=0, call_end=0;
 
     // Get the VBG counter.
     if (flg_check_vbg) {
         cnt_start = utf_bg_counter;
+    }
+
+    if (flg_measure) {
+        call_start = get_time();
     }
 
     for (i = 0; i < iter; i++) {
@@ -3168,6 +3177,10 @@ static int test_barrier(void)
                     __func__, ret, wrank, comm_rank);
             break;
         }
+    }
+
+    if (flg_measure) {
+        call_end = get_time();
     }
 
     // Get and check the VBG counter.
@@ -3186,6 +3199,10 @@ static int test_barrier(void)
         else {
             vbg_ret = VBG_NOT_PASS;
         }
+    }
+
+    if (flg_measure) {
+        call_elapse = get_elapse(call_start, call_end);
     }
     return ret;
 }
@@ -3592,16 +3609,25 @@ static int test_bcast(char *buf, char *ansbuf, long buf_size)
 {
     int ret=MPI_SUCCESS, lret=FUNC_SUCCESS, i;
     uint64_t cnt_start=0, cnt_end, cnt;
+    utf_timer_t call_start=0, call_end=0, elapse_sum=0;
 
     // Get the VBG counter.
     if (flg_check_vbg) {
         cnt_start = utf_bg_counter;
     }
 
+    if (set_data_for_bcast(buf, ansbuf, buf_size)) {
+        return FUNC_ERROR;
+    }
+
     for (i = 0; i < iter; i++) {
-        if (set_data_for_bcast(buf, ansbuf, buf_size)) {
-            return FUNC_ERROR;
+        if (comm_rank != root_rank) {
+            memset(buf, 0x00, buf_size);
         }
+        if (flg_measure) {
+            call_start = get_time();
+        }
+
         if (comm_rank == root_rank || !flg_diff_type) {
             ret = MPI_Bcast(buf, test_count, test_datatype, root_rank, tcomm);
         }
@@ -3620,6 +3646,11 @@ static int test_bcast(char *buf, char *ansbuf, long buf_size)
                     "[%s] MPI_Bcast error: ret=%d rank(w/c)=%d/%d datatype=%s count=%d diff_type=%d\n",
                     __func__, ret, wrank, comm_rank, DATATYPE_STR[test_datatype_n], test_count, flg_diff_type);
             return FUNC_ERROR;
+        }
+
+        if (flg_measure) {
+            call_end = get_time();
+            elapse_sum += call_end - call_start;
         }
 
         // Non-root ranks check if the result was received correctly.
@@ -3647,6 +3678,10 @@ static int test_bcast(char *buf, char *ansbuf, long buf_size)
             vbg_ret = VBG_NOT_PASS;
         }
     }
+
+    if (flg_measure) {
+        call_elapse = get_call_elapse(elapse_sum);
+    }
     return lret;
 }
 
@@ -3659,49 +3694,58 @@ static int test_reduce(char *sendbuf, char *recvbuf, char *ansbuf, long buf_size
     int ret, lret=FUNC_SUCCESS, i;
     char *rbufp;
     uint64_t cnt_start=0, cnt_end, cnt;
+    utf_timer_t call_start=0, call_end=0, elapse_sum=0;
 
     // Get the VBG counter.
     if (flg_check_vbg) {
         cnt_start = utf_bg_counter;
     }
 
-    for (i = 0; i < iter; i++) {
-        // Set the input data.
-        switch (test_op_n) {
-            case OP_SUM:
-                lret = set_data_for_reduce_sum(sendbuf, recvbuf, ansbuf, buf_size);
-                break;
-            case OP_BAND:
-            case OP_BOR:
-            case OP_BXOR:
-                lret = set_data_for_reduce_bit(sendbuf, recvbuf, ansbuf, buf_size);
-                break;
-            case OP_LAND:
-            case OP_LOR:
-            case OP_LXOR:
-                lret = set_data_for_reduce_logical(sendbuf, recvbuf, ansbuf, buf_size);
-                break;
-            case OP_MAX:
-            case OP_MIN:
-                lret = set_data_for_reduce_max_min(sendbuf, recvbuf, ansbuf, buf_size);
-                break;
-            case OP_MAXLOC:
-            case OP_MINLOC:
-                lret = set_data_for_reduce_max_min_loc(sendbuf, recvbuf, ansbuf, buf_size);
-                break;
-            default:
-                fprintf(stderr, "[%s] unknown operation: rank(w/c)=%d/%d op=%d\n",
-                        __func__, wrank, comm_rank, test_op_n);
+    // Set the input data.
+    switch (test_op_n) {
+        case OP_SUM:
+            lret = set_data_for_reduce_sum(sendbuf, ansbuf, buf_size);
+            break;
+        case OP_BAND:
+        case OP_BOR:
+        case OP_BXOR:
+            lret = set_data_for_reduce_bit(sendbuf, ansbuf, buf_size);
+            break;
+        case OP_LAND:
+        case OP_LOR:
+        case OP_LXOR:
+            lret = set_data_for_reduce_logical(sendbuf, ansbuf, buf_size);
+            break;
+        case OP_MAX:
+        case OP_MIN:
+            lret = set_data_for_reduce_max_min(sendbuf, ansbuf, buf_size);
+            break;
+        case OP_MAXLOC:
+        case OP_MINLOC:
+            lret = set_data_for_reduce_max_min_loc(sendbuf, ansbuf, buf_size);
+            break;
+        default:
+            fprintf(stderr, "[%s] unknown operation: rank(w/c)=%d/%d op=%d\n",
+                    __func__, wrank, comm_rank, test_op_n);
 
-                return FUNC_ERROR;
-        }
-        if (lret != FUNC_SUCCESS) {
             return FUNC_ERROR;
-        }
+    }
+    if (lret != FUNC_SUCCESS) {
+        return FUNC_ERROR;
+    }
 #if TPDEBUG
-        fprintf(stderr, "[%s:%d] set data success: rank(w/c)=%d/%d tcomm=%d\n",
-                __func__, __LINE__, wrank, comm_rank, (int)tcomm);
+    fprintf(stderr, "[%s:%d] set data success: rank(w/c)=%d/%d tcomm=%d\n",
+            __func__, __LINE__, wrank, comm_rank, (int)tcomm);
 #endif
+
+    for (i = 0; i < iter; i++) {
+        if (recvbuf != NULL) {
+            memset(recvbuf, 0x00, buf_size);
+        }
+
+        if (flg_measure) {
+            call_start = get_time();
+        }
 
         if (flg_use_in_place && comm_rank == root_rank) {
             ret = MPI_Reduce(MPI_IN_PLACE, sendbuf, test_count, test_datatype, test_op, root_rank, tcomm);
@@ -3715,6 +3759,11 @@ static int test_reduce(char *sendbuf, char *recvbuf, char *ansbuf, long buf_size
                     __func__, ret, wrank, comm_rank, DATATYPE_STR[test_datatype_n], test_count,
                     OP_STR[test_op_n]);
             return FUNC_ERROR;
+        }
+
+        if (flg_measure) {
+            call_end = get_time();
+            elapse_sum += call_end - call_start;
         }
 
         // Root rank checks if the result was received correctly.
@@ -3743,6 +3792,10 @@ static int test_reduce(char *sendbuf, char *recvbuf, char *ansbuf, long buf_size
             vbg_ret = VBG_NOT_PASS;
         }
     }
+
+    if (flg_measure) {
+        call_elapse = get_call_elapse(elapse_sum);
+    }
     return lret;
 }
 
@@ -3755,49 +3808,58 @@ static int test_allreduce(char *sendbuf, char *recvbuf, char *ansbuf, long buf_s
     int ret, lret=FUNC_SUCCESS, i;
     char *rbufp;
     uint64_t cnt_start=0, cnt_end, cnt;
+    utf_timer_t call_start=0, call_end=0, elapse_sum=0;
 
     // Get the VBG counter.
     if (flg_check_vbg) {
         cnt_start = utf_bg_counter;
     }
 
-    for (i = 0; i < iter; i++) {
-        // Set the input data.
-        switch (test_op_n) {
-            case OP_SUM:
-                lret = set_data_for_reduce_sum(sendbuf, recvbuf, ansbuf, buf_size);
-                break;
-            case OP_BAND:
-            case OP_BOR:
-            case OP_BXOR:
-                lret = set_data_for_reduce_bit(sendbuf, recvbuf, ansbuf, buf_size);
-                break;
-            case OP_LAND:
-            case OP_LOR:
-            case OP_LXOR:
-                lret = set_data_for_reduce_logical(sendbuf, recvbuf, ansbuf, buf_size);
-                break;
-            case OP_MAX:
-            case OP_MIN:
-                lret = set_data_for_reduce_max_min(sendbuf, recvbuf, ansbuf, buf_size);
-                break;
-            case OP_MAXLOC:
-            case OP_MINLOC:
-                lret = set_data_for_reduce_max_min_loc(sendbuf, recvbuf, ansbuf, buf_size);
-                break;
-            default:
-                fprintf(stderr, "[%s] unknown operation: rank(w/c)=%d/%d op=%d\n",
-                        __func__, wrank, comm_rank, test_op_n);
+    // Set the input data.
+    switch (test_op_n) {
+        case OP_SUM:
+            lret = set_data_for_reduce_sum(sendbuf, ansbuf, buf_size);
+            break;
+        case OP_BAND:
+        case OP_BOR:
+        case OP_BXOR:
+            lret = set_data_for_reduce_bit(sendbuf, ansbuf, buf_size);
+            break;
+        case OP_LAND:
+        case OP_LOR:
+        case OP_LXOR:
+            lret = set_data_for_reduce_logical(sendbuf, ansbuf, buf_size);
+            break;
+        case OP_MAX:
+        case OP_MIN:
+            lret = set_data_for_reduce_max_min(sendbuf, ansbuf, buf_size);
+            break;
+        case OP_MAXLOC:
+        case OP_MINLOC:
+            lret = set_data_for_reduce_max_min_loc(sendbuf, ansbuf, buf_size);
+            break;
+        default:
+            fprintf(stderr, "[%s] unknown operation: rank(w/c)=%d/%d op=%d\n",
+                    __func__, wrank, comm_rank, test_op_n);
 
-                return FUNC_ERROR;
-        }
-        if (lret != FUNC_SUCCESS) {
             return FUNC_ERROR;
-        }
+    }
+    if (lret != FUNC_SUCCESS) {
+        return FUNC_ERROR;
+    }
 #if TPDEBUG
-        fprintf(stderr, "[%s:%d] set data success: rank(w/c)=%d/%d tcomm=%d\n",
-                __func__, __LINE__, wrank, comm_rank, (int)tcomm);
+    fprintf(stderr, "[%s:%d] set data success: rank(w/c)=%d/%d tcomm=%d\n",
+            __func__, __LINE__, wrank, comm_rank, (int)tcomm);
 #endif
+
+    for (i = 0; i < iter; i++) {
+        if (recvbuf != NULL) {
+            memset(recvbuf, 0x00, buf_size);
+        }
+
+        if (flg_measure) {
+            call_start = get_time();
+        }
 
         if (flg_use_in_place) {
             ret = MPI_Allreduce(MPI_IN_PLACE, sendbuf, test_count, test_datatype, test_op, tcomm);
@@ -3811,6 +3873,11 @@ static int test_allreduce(char *sendbuf, char *recvbuf, char *ansbuf, long buf_s
                     __func__, ret, wrank, comm_rank, DATATYPE_STR[test_datatype_n], test_count,
                     OP_STR[test_op_n]);
             return FUNC_ERROR;
+        }
+
+        if (flg_measure) {
+            call_end = get_time();
+            elapse_sum += call_end - call_start;
         }
 
         // All ranks check if the result was received correctly.
@@ -3837,14 +3904,20 @@ static int test_allreduce(char *sendbuf, char *recvbuf, char *ansbuf, long buf_s
             vbg_ret = VBG_NOT_PASS;
         }
     }
+
+    if (flg_measure) {
+        call_elapse = get_call_elapse(elapse_sum);
+    }
     return lret;
 }
 
 
 int main(int argc, char **argv)
 {
+#if EXTENSIVE_MEASUREMENT
     utf_timer_t start=0, end=0;
     double elapse=0.0;
+#endif
     int ret=FUNC_SUCCESS, allret=FUNC_SUCCESS, all_vbg_ret=VBG_NOT_PASS, mret;
     int cnum;
     void *buf = NULL, *rbuf = NULL, *ansbuf = NULL;
@@ -4016,16 +4089,20 @@ int main(int argc, char **argv)
         // Execute the barrier tests.
         switch(test_func) {
             case FUNC_MPI_BARRIER:
+#if EXTENSIVE_MEASUREMENT
                 if (flg_measure) {
                     start = get_time();
                 }
+#endif
 
                 ret = test_barrier();
 
+#if EXTENSIVE_MEASUREMENT
                 if (flg_measure) {
                     end = get_time();
                     elapse = get_elapse(start, end);
                 }
+#endif
                 break;
 
             case FUNC_MPI_BCAST:
@@ -4033,17 +4110,20 @@ int main(int argc, char **argv)
                     ret = FUNC_ERROR;
                     goto err;
                 }
-
+#if EXTENSIVE_MEASUREMENT
                 if (flg_measure) {
                     start = get_time();
                 }
+#endif
 
                 ret = test_bcast(buf, ansbuf, buf_size);
 
+#if EXTENSIVE_MEASUREMENT
                 if (flg_measure) {
                     end = get_time();
                     elapse = get_elapse(start, end);
                 }
+#endif
                 break;
 
             case FUNC_MPI_REDUCE:
@@ -4058,16 +4138,20 @@ int main(int argc, char **argv)
                     fprintf(stderr, "[%d/%d] ansbuf  =%p\n", wrank, comm_rank, ansbuf);
                 }
 #endif
+#if EXTENSIVE_MEASUREMENT
                 if (flg_measure) {
                     start = get_time();
                 }
+#endif
 
                 ret = test_reduce(buf, rbuf, ansbuf, buf_size);
 
+#if EXTENSIVE_MEASUREMENT
                 if (flg_measure) {
                     end = get_time();
                     elapse = get_elapse(start, end);
                 }
+#endif
                 break;
 
             case FUNC_MPI_ALLREDUCE:
@@ -4082,16 +4166,20 @@ int main(int argc, char **argv)
                     fprintf(stderr, "[%d/%d] ansbuf  =%p\n", wrank, comm_rank, ansbuf);
                 }
 #endif
+#if EXTENSIVE_MEASUREMENT
                 if (flg_measure) {
                     start = get_time();
                 }
+#endif
 
                 ret = test_allreduce(buf, rbuf, ansbuf, buf_size);
 
+#if EXTENSIVE_MEASUREMENT
                 if (flg_measure) {
                     end = get_time();
                     elapse = get_elapse(start, end);
                 }
+#endif
                 break;
         }
 
@@ -4220,7 +4308,11 @@ err:
         msgtmp[0] = '\0';
         msgtmp2[0] = '\0';
         if (flg_measure) {
-            sprintf(msgtmp, "%.3lf", elapse);
+#if EXTENSIVE_MEASUREMENT
+            sprintf(msgtmp, "%.3lf,%.3lf", elapse, call_elapse);
+#else
+            sprintf(msgtmp, "%.3lf", call_elapse);
+#endif
         }
         if (flg_check_vbg) {
             sprintf(msgtmp2, "%s", (all_vbg_ret==VBG_PASS?"passed":"-"));
