@@ -661,6 +661,7 @@ utf_vname_show(FILE *fp)
     }
 }
 
+#if 0
 static void
 utf_tni_show(FILE *fp)
 {
@@ -671,25 +672,30 @@ utf_tni_show(FILE *fp)
 		i, utf_info.cqseltab->snd_len[i], utf_info.cqseltab->rcv_len[i]);
     }
 }
+#endif
 
 void
 utf_cqtab_show(FILE *fp)
 {
     int i;
     struct tni_info	*tinfo = &utf_info.cqseltab->node[utf_info.mynrnk];
+#if 0
     if (utf_info.mynrnk == 0) {
 	utf_tni_show(fp);
     }
+#endif
     fprintf(fp, "CQ table tinfo(%p) entries(%d) nrank(%d)\n", tinfo, tinfo->ntni, utf_info.mynrnk);
     for (i = 0; i < tinfo->ntni; i++) {
 	fprintf(fp, "\t[%d]idx[%d]: vcqh(0x%lx) vhcid(0x%lx) busy(%d)\n",
 		i, tinfo->idx[i], tinfo->vcqhdl[i], tinfo->vcqid[i], tinfo->usd[i]);
     }
+#if 0
     fprintf(fp, "TNI left message\n");
     for (i = 0; i < tinfo->ntni; i++) {
 	fprintf(fp, "\t[%d]: send rest(%ld) recv rest(%ld)\n",
 		i, utf_info.cqseltab->snd_len[i], utf_info.cqseltab->rcv_len[i]);
     }
+#endif
 }
 
 /* Fujitsu compiler claim the following statement, but it is OK */

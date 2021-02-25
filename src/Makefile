@@ -33,6 +33,9 @@ install:
 	[ -d $(INSTDIR)/include ] || mkdir $(INSTDIR)/include
 	$(INSTALL) $(BUILDDIR)/libutf.so $(INSTDIR)/lib
 	$(INSTALL) $(INCDIR)/utf.h $(INSTDIR)/include
+	$(INSTALL) $(INCDIR)/utf_tsc.h $(INSTDIR)/include
+	$(INSTALL) $(INCDIR)/utf_bg.h $(INSTDIR)/include
+	$(INSTALL) $(INCDIR)/utf_timer.h $(INSTDIR)/include
 
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)

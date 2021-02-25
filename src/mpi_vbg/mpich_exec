@@ -2,7 +2,28 @@
 #
 # MPICH on Tofu Shell Environment
 #
-. ${HOME}/mpich-tofu/lib/mpich.env
+if [ X$MPICH_HOME != X ]; then
+# MPICH_HOME is defined
+.  ${MPICH_HOME}/lib/mpich.env
+   if [ -f $MPICH_HOME/lib/libutf.so ]; then
+      export LD_LIBRARY_PATH=$MPICH_HOME/lib:$LD_LIBRARY_PATH
+   else
+      echo "Cannot find an MPICH-Tofu library"
+      exit -1
+   fi 
+elif [ X$HOME/mpich-tofu != X ]; then
+# $HOME/mpich-tofu/ is defined
+.  ${HOME}/mpich-tofu/lib/mpich.env
+   if [ -f $HOME/mpich-tofu/lib/libutf.so ]; then
+      export LD_LIBRARY_PATH=$HOME/mpich-tofu/lib:$LD_LIBRARY_PATH
+   else
+      echo "Cannot find an MPICH-Tofu library"
+      exit -1
+   fi
+else
+    echo "Cannot find MPICH runtime environment"
+    exit -1
+fi
 
 if [ X$MPICH_TOFU_SHOW_PARAMS != X ]; then
    echo "LD_LIBRARY_PATH = " $LD_LIBRARY_PATH

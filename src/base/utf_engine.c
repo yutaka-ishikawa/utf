@@ -314,6 +314,7 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 	    /* state is S_WAIT_BUFREADY */
 	    break;
 	}
+	if (utf_info.myrank == 0 && usp->dst == 1) { utf_printf("%s: dst(%d) recvidx(%d)\n", __func__, usp->dst, usp->recvidx); }
 	switch (minfo->cntrtype) {
 	case SNDCNTR_BUFFERED_EAGER_PIGBACK:  /* max_piggyback_size == 32B */
 	    /* packet data is already filled */
@@ -691,10 +692,8 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 	    req = utf_recvreq_alloc();
 	    if (req == NULL) {
 		/* Cannot handle this message at this time */
-		DEBUG(DLEVEL_PROTOCOL) {
-		    utf_printf("%s: Unexepected Lack of free utf_msgreq\n", __func__);
-		}
-		return 1;
+		utf_printf("%s: Unexepected Lack of free utf_msgreq\n", __func__);
+		abort();
 	    }
 	    req->allflgs = 0;
 	    req->fi_data = PKT_FI_DATA(pkt);
@@ -990,12 +989,12 @@ utf_recvcntr_show(FILE *fp)
     for (i = COM_PEERS - 1; i > cntr; --i) {
 	struct utf_recv_cntr	*urp = &utf_rcntr[i]; 
 	if (urp->req) {
-	    utf_printf(" r-ridx(%d) r-src(%d) r-recvidx(%d) svcqid(0x%lx) state(%s:%d) req(%p) "
-		       " r-msghdr(size(%d) tag(0x%lx) src(%d)\n",
+	    utf_printf(" r-ridx(%d) r-src(%d) r-recvidx(%d) svcqid(0x%llx) state(%s:%d) req(%p) "
+		       " r-msghdr(size(%d) tag(0x%llx) src(%d)\n",
 		       i, urp->src, urp->recvidx, urp->svcqid, rstate_symbol[urp->state], urp->state,
 		       urp->req, urp->req->hdr.size, urp->req->hdr.tag, urp->req->hdr.src);
 	} else {
-	    utf_printf(" r-ridx(%d) r-src(%d) r-recvidx(%d) svcqid(0x%lx) state(%s:%d) req(NULL)\n",
+	    utf_printf(" r-ridx(%d) r-src(%d) r-recvidx(%d) svcqid(0x%llx) state(%s:%d) req(NULL)\n",
 		       i, urp->src, urp->recvidx, urp->svcqid, rstate_symbol[urp->state], urp->state);
 	}
     }

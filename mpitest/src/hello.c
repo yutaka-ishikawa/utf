@@ -18,11 +18,10 @@ main(int argc, char** argv)
 	utf_vname_show(stdout);
     }
     VERBOSE("Hello\n");
+    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Finalize();
     if (myrank == 0) {
-	printf("RESULT hello: PASS\n"); fflush(stdout);
+	printf("RESULT hello procs(%d): PASS\n", nprocs); fflush(stdout);
     }
-    printf("Exiting (%d)\n", myrank);
-    exit(0);
     return 0;
 }
