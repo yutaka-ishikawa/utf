@@ -524,8 +524,7 @@ static inline int allocate_buffer(void **buf_p, void **rbuf_p, void **ansbuf_p, 
 
     // Allocate and initialize the receive data buffer (only for Reduce/Allreduce).
     if (rbuf_p != NULL) {
-        if (flg_use_in_place ||
-            (test_func == FUNC_MPI_REDUCE && comm_rank != root_rank)) {
+        if (test_func == FUNC_MPI_REDUCE && comm_rank != root_rank) {
             // The case where the receive data buffer is not used.
             *rbuf_p = NULL;
         }
@@ -3738,9 +3737,22 @@ static int test_reduce(char *sendbuf, char *recvbuf, char *ansbuf, long buf_size
             __func__, __LINE__, wrank, comm_rank, (int)tcomm);
 #endif
 
+    if (flg_use_in_place && comm_rank == root_rank) {
+        // Use recvbuf as a temporary buffer for the send data.
+        memcpy(recvbuf, sendbuf, buf_size);
+    }
+
     for (i = 0; i < iter; i++) {
-        if (recvbuf != NULL) {
-            memset(recvbuf, 0x00, buf_size);
+        if (flg_use_in_place && comm_rank == root_rank) {
+            if (i > 0) {
+                // Reset the send data using the data in a temporary buffer(recvbuf).
+                memcpy(sendbuf, recvbuf, buf_size);
+            }
+        }
+        else {
+            if (recvbuf != NULL) {
+                memset(recvbuf, 0x00, buf_size);
+            }
         }
 
         if (flg_measure) {
@@ -3852,8 +3864,19 @@ static int test_allreduce(char *sendbuf, char *recvbuf, char *ansbuf, long buf_s
             __func__, __LINE__, wrank, comm_rank, (int)tcomm);
 #endif
 
+    if (flg_use_in_place) {
+        // Use recvbuf as a temporary buffer for the send data.
+        memcpy(recvbuf, sendbuf, buf_size);
+    }
+
     for (i = 0; i < iter; i++) {
-        if (recvbuf != NULL) {
+        if (flg_use_in_place) {
+            if (i > 0) {
+                // Reset the send data using the data in a temporary buffer(recvbuf).
+                memcpy(sendbuf, recvbuf, buf_size);
+            }
+        }
+        else {
             memset(recvbuf, 0x00, buf_size);
         }
 
