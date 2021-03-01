@@ -20,12 +20,23 @@ elif [ X$HOME/mpich-tofu != X ]; then
       echo "Cannot find an MPICH-Tofu library"
       exit -1
    fi
+MPICH_HOME=${HOME}/mpich-tofu
 else
-    echo "Cannot find MPICH runtime environment"
+    echo "Cannot find MPICH runtime environment."
+    echo "  Please define the MPICH_HOME shell environment."
     exit -1
 fi
 
+if [ X$UTF_BG_LOAD != X ]; then
+    export LD_PRELOAD="$MPICH_HOME/lib/libutf.so $MPICH_HOME/lib/libmpi_vbg.so $MPICH_HOME/lib/libmpi.so /usr/lib/FJSVtcs/ple/lib64/libpmix.so $LD_PRELOAD"
+else
+    export LD_PRELOAD="$MPICH_HOME/lib/libutf.so $MPICH_HOME/lib/libmpi.so /usr/lib/FJSVtcs/ple/lib64/libpmix.so $LD_PRELOAD"
+fi
+export LD_LIBRARY_PATH=$MPICH_HOME/lib:$LD_LIBRARY_PATH
+
 if [ X$MPICH_TOFU_SHOW_PARAMS != X ]; then
+   echo "CWD = " `pwd`
+   echo "LD_PRELOAD = " $LD_PRELOAD
    echo "LD_LIBRARY_PATH = " $LD_LIBRARY_PATH
    echo "TOFU_NAMED_AV = " $TOFU_NAMED_AV
    echo "UTF_MSGMODE   = " $UTF_MSGMODE "(0: Eager, 1: Rendezous)"
