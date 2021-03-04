@@ -1,4 +1,0 @@
-sendbuf=0x6c1fa0 recvbuf=0x6e1fb0
-MPI_INT SIZE: 4
-length(512) nprocs(64)
-RESULT coll: PASS
