@@ -2,14 +2,14 @@
 #UTF_ARCH=fugaku
 include ../dep/mkdef.$(UTF_ARCH)
 
-INSTDIR  := $(HOME)/mpich-tofu
+INSTDIR  := $(MPICH_HOME)
 INSTALL  := install
 
 #
 # -DDEBUGLOG for VBG
 # -DDEBUG for mpi_utf
 CFLAGS += -I../include/ -shared -fPIC -Wall
-CFLAGS += -DDEBUG
+CFLAGS += -DUTF_DEBUG
 CFLAGS += -DDEBUGLOG
 CFLAGS += $(INCLUDES)
 SRCDIR   := ./base/

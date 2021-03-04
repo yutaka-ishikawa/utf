@@ -8,6 +8,7 @@
 #include <utofu.h>
 #include <jtofu.h>
 #include <utf_bg.h>
+#include "../vbg/utf_bg_barrier.h"
 
 #define COMM_MPICHLEVEL_HANDLE
 
@@ -449,36 +450,97 @@ mpitype_to_utf(MPI_Datatype datatype)
     }
 }
 
-static enum utf_datatype
-mpiop_to_utf(MPI_Op op)
+#define BREDUCE_NONE	0
+#define BREDUCE_DOUBLE	1
+#define BREDUCE_UINT64	2
+#define BREDUCE_DOUBLE_MN	3
+#define BREDUCE_UINT64_MN	4
+#define BREDUCE_MN_LOC	5
+#define BREDUCE_BITWISE	6
+#define BREDUCE_LOGICAL	7
+
+#define MPIOP_TO_UTF_RETVAL(size, ft)	{ *mxcntp = size; *ftp = ft; }
+static enum utf_reduce_op
+mpiop_to_utf(MPI_Op op, enum utf_datatype datatype, int *mxcntp, int *ftp)
 {
+    size_t ddiv = datatype >> 24;
+
     switch(op) {
     case MPI_SUM:
+	switch (ddiv) {
+	case UTF_DATATYPE_DIV_REAL:
+	    MPIOP_TO_UTF_RETVAL(UTF_BG_REDUCE_ULMT_ELMS_3, BREDUCE_DOUBLE);
+	    break;
+	case UTF_DATATYPE_DIV_INT:
+	    MPIOP_TO_UTF_RETVAL(UTF_BG_REDUCE_ULMT_ELMS_6, BREDUCE_UINT64);
+	    break;
+	case UTF_DATATYPE_DIV_COMP:
+	    MPIOP_TO_UTF_RETVAL(UTF_BG_REDUCE_ULMT_ELMS_1, BREDUCE_DOUBLE);
+	    break;
+	default:
+	    MPIOP_TO_UTF_RETVAL(-1, BREDUCE_NONE);
+	}
 	return UTF_REDUCE_OP_SUM;
     case MPI_MAX:
-	return UTF_REDUCE_OP_MAX;
-    case MPI_MAXLOC:
-	return UTF_REDUCE_OP_MAXLOC;
-    case MPI_BAND:
-	return UTF_REDUCE_OP_BAND;
-    case MPI_BOR:
-	return UTF_REDUCE_OP_BOR;
-    case MPI_BXOR:
-	return UTF_REDUCE_OP_BXOR;
     case MPI_MIN:
-	return UTF_REDUCE_OP_MIN;
-    case MPI_LAND:
-	return UTF_REDUCE_OP_LAND;
-    case MPI_LOR:
-	return UTF_REDUCE_OP_LOR;
-    case MPI_LXOR:
-	return UTF_REDUCE_OP_LXOR;
+	if (ddiv == UTF_DATATYPE_DIV_REAL)  {
+	    MPIOP_TO_UTF_RETVAL(UTF_BG_REDUCE_ULMT_ELMS_6, BREDUCE_DOUBLE_MN);
+	} else if (ddiv == UTF_DATATYPE_DIV_INT) {
+	    MPIOP_TO_UTF_RETVAL(UTF_BG_REDUCE_ULMT_ELMS_6, BREDUCE_UINT64_MN);
+	} else {
+	    MPIOP_TO_UTF_RETVAL(-1, BREDUCE_NONE);
+	}
+	if (op == MPI_MAX) {
+	    return UTF_REDUCE_OP_MAX;
+	} else {
+	    return UTF_REDUCE_OP_MIN;
+	}
+    case MPI_MAXLOC:
     case MPI_MINLOC:
-	return UTF_REDUCE_OP_MINLOC;
+	if (ddiv == UTF_DATATYPE_DIV_PAIR) {
+	    MPIOP_TO_UTF_RETVAL(UTF_BG_REDUCE_ULMT_ELMS_3, BREDUCE_MN_LOC);
+	} else {
+	    MPIOP_TO_UTF_RETVAL(-1, BREDUCE_NONE);
+	}
+	if (op == MPI_MAXLOC) {
+	    return UTF_REDUCE_OP_MAXLOC;
+	} else {
+	    return UTF_REDUCE_OP_MINLOC;
+	}
+    case MPI_BAND:
+	if (ddiv == UTF_DATATYPE_DIV_INT) {
+	    MPIOP_TO_UTF_RETVAL(UTF_BG_REDUCE_ULMT_ELMS_48, BREDUCE_BITWISE);
+	} else {
+	    MPIOP_TO_UTF_RETVAL(-1, BREDUCE_NONE);
+	}
+	if (op == MPI_BAND) {
+	    return UTF_REDUCE_OP_BAND;
+	} else if (op == MPI_BOR) {
+	    return UTF_REDUCE_OP_BOR;
+	} else {
+	    return UTF_REDUCE_OP_BXOR;
+	}
+    case MPI_LAND:
+    case MPI_LOR:
+    case MPI_LXOR:
+	if (ddiv == UTF_DATATYPE_DIV_INT) {
+	    MPIOP_TO_UTF_RETVAL(UTF_BG_REDUCE_ULMT_ELMS_384, BREDUCE_LOGICAL);
+	    *mxcntp = UTF_BG_REDUCE_ULMT_ELMS_384;
+	} else {
+	    MPIOP_TO_UTF_RETVAL(-1, BREDUCE_NONE);
+	}
+	if (op == MPI_LAND) {
+	    return UTF_REDUCE_OP_LAND;
+	} else if (op == MPI_LOR) {
+	    return UTF_REDUCE_OP_LOR;
+	} else {
+	    return UTF_REDUCE_OP_LXOR;
+	}
     case MPI_PROD:
     case MPI_REPLACE:
     case MPI_NO_OP:
     default:
+	MPIOP_TO_UTF_RETVAL(-1, BREDUCE_NONE);
 	return 0;
     }
 }
@@ -489,24 +551,32 @@ MPI_Bcast(void *buf, int count, MPI_Datatype datatype, int root, MPI_Comm comm)
     int	rc;
     struct cominfo_ent *ent;
     int	siz;
-    size_t	tsize;
+    size_t	maxcnt, len, rest;
+    u_char	*snd_buf = (u_char*) buf;
 
     IF_BG_DISABLE(PMPI_Bcast(buf, count, datatype, root, comm));
     COMINFO_GET_CHECK_DO(cont, ent, comm);
     /* VBG resource has not been allocated */
+pmi_call:
     rc = PMPI_Bcast(buf, count, datatype, root, comm);
     goto ext;
 cont:
     rc = MPI_Type_size(datatype, &siz);
-    tsize = siz * count;
-    /* UTF_BG_REDUCE_ULMT_ELMS_48 48 */
-    rc = utf_broadcast(ent->bgrp, buf, tsize, NULL, root);
-    if (rc == UTF_SUCCESS) {
+    len = siz * count; /* byte */
+    maxcnt = UTF_BG_REDUCE_ULMT_ELMS_48; /* UTF_BG_REDUCE_ULMT_ELMS_48 48 */
+    rest = len;
+    while (rest > 0) {
+	size_t	pktlen;
 	double	data;
+	pktlen = rest > maxcnt ? maxcnt : rest;
+	rc = utf_broadcast(ent->bgrp, snd_buf, pktlen, NULL, root);
+	if (rc != UTF_SUCCESS) {
+	    myprintf(0, "[%d] %s: rc = %d using P%s\n", mpi_bg_myrank, __func__, rc, __func__);
+	    goto pmi_call;
+	}
+	/* progress */
 	mpi_bg_poll_reduce(ent->bgrp, (void**)&data);
-    } else if (rc == UTF_ERR_NOT_AVAILABLE) {
-	//myprintf(0, "[%d] %s: calling PMPI_Bcast\n", mpi_bg_myrank, __func__);
-	rc = PMPI_Bcast(buf, count, datatype, root, comm);
+	rest -= pktlen; snd_buf += pktlen;
     }
 ext:
     return rc;
@@ -520,6 +590,7 @@ MPI_Reduce(const void *sbuf, void *rbuf, int count, MPI_Datatype datatype,
     struct cominfo_ent *ent;
     enum utf_datatype  utf_type;
     enum utf_reduce_op utf_op;
+    int	maxcnt, functype;
 
     // myprintf(root, "[%d] %s: datatype=%x op=%x\n", mpi_bg_myrank, __func__, datatype, op);
     IF_BG_DISABLE(PMPI_Reduce(sbuf, rbuf, count, datatype, op, root, comm));
@@ -529,19 +600,25 @@ MPI_Reduce(const void *sbuf, void *rbuf, int count, MPI_Datatype datatype,
     goto ext;
 cont:
     utf_type = mpitype_to_utf(datatype);
-    utf_op = mpiop_to_utf(op);
-    if (utf_type != 0 && utf_op != 0) {
+    utf_op = mpiop_to_utf(op, utf_type, &maxcnt, &functype);
+    if (utf_type != 0 && utf_op != 0 && functype != BREDUCE_NONE) {
 	double	data;
-	rc = utf_reduce(ent->bgrp, sbuf, count, NULL, rbuf, NULL, utf_type, utf_op, root);
-	if (rc == UTF_ERR_NOT_AVAILABLE) {
-	    goto pmpi_call;
-	} else if (rc != UTF_SUCCESS) {
-	    myprintf(0, "[%d] %s: rc = %d\n", mpi_bg_myrank, __func__, rc);
-	    goto pmpi_call;
+	int	len = utf_type & 0xff;	/* length in byte is encoded in utf_datatype */
+	u_char	*snd_buf = (u_char*) sbuf;
+	u_char	*rcv_buf = (u_char*) rbuf;
+	size_t	scount;
+	int	rest = count;
+	while (rest > 0) {
+	    scount = rest > maxcnt ? maxcnt : rest;
+	    rc = utf_reduce(ent->bgrp, snd_buf, scount, NULL, rcv_buf, NULL, utf_type, utf_op, root);
+	    if (rc != UTF_SUCCESS) {
+		myprintf(0, "[%d] %s: rc = %d using P%s\n", mpi_bg_myrank, __func__, rc, __func__);
+		goto pmpi_call;
+	    }
+	    /* progress */
+	    mpi_bg_poll_reduce(ent->bgrp, (void**)&data);
+	    rest -= scount; snd_buf += len*scount; rcv_buf += len*scount;
 	}
-	/* progress */
-	mpi_bg_poll_reduce(ent->bgrp, (void**)&data);
-	goto ext;
     } else {
     pmpi_call:
 	//myprintf(0, "[%d] %s: calling PMPI_Reduce\n", mpi_bg_myrank, __func__);
@@ -559,6 +636,7 @@ MPI_Allreduce(const void *sbuf, void *rbuf, int count, MPI_Datatype datatype,
     struct cominfo_ent *ent;
     enum utf_datatype  utf_type;
     enum utf_reduce_op utf_op;
+    int	maxcnt, functype;
 
     //myprintf(mpi_bg_myrank, "[%d] %s: datatype=%x op=%x\n", mpi_bg_myrank, __func__, datatype, op);
     IF_BG_DISABLE(PMPI_Allreduce(sbuf, rbuf, count, datatype, op, comm));
@@ -567,19 +645,25 @@ MPI_Allreduce(const void *sbuf, void *rbuf, int count, MPI_Datatype datatype,
     goto ext;
 cont:
     utf_type = mpitype_to_utf(datatype);
-    utf_op = mpiop_to_utf(op);
-    if (utf_type != 0 && utf_op != 0) {
+    utf_op = mpiop_to_utf(op, utf_type, &maxcnt, &functype);
+    if (utf_type != 0 && utf_op != 0 && functype != BREDUCE_NONE) {
 	double	data;
-	rc = utf_allreduce(ent->bgrp, sbuf, count, NULL, rbuf, NULL, utf_type, utf_op);
-	if (rc == UTF_ERR_NOT_AVAILABLE) {
-	    goto pmpi_call;
-	} else if (rc != UTF_SUCCESS) {
-	    myprintf(0, "[%d] %s: rc = %d\n", mpi_bg_myrank, __func__, rc);
-	    goto pmpi_call;
+	int	len = utf_type & 0xff;	/* length in byte is encoded in utf_datatype */
+	u_char	*snd_buf = (u_char*) sbuf;
+	u_char	*rcv_buf = (u_char*) rbuf;
+	size_t	scount;
+	int	rest = count;
+	while (rest > 0) {
+	    scount = rest > maxcnt ? maxcnt : rest;
+	    rc = utf_allreduce(ent->bgrp, snd_buf, scount, NULL, rcv_buf, NULL, utf_type, utf_op);
+	    if (rc != UTF_SUCCESS) {
+		myprintf(0, "[%d] %s: rc = %d using P%s\n", mpi_bg_myrank, __func__, rc, __func__);
+		goto pmpi_call;
+	    }
+	    /* progress */
+	    mpi_bg_poll_reduce(ent->bgrp, (void**)&data);
+	    rest -= scount; snd_buf += len*scount; rcv_buf += len*scount;
 	}
-	/* progress */
-	mpi_bg_poll_reduce(ent->bgrp, (void**)&data);
-	goto ext;
     } else {
     pmpi_call:
 	//myprintf(0, "[%d] %s: calling PMPI_Allreduce\n", mpi_bg_myrank, __func__);

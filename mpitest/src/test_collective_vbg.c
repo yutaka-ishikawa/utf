@@ -8,10 +8,12 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <assert.h>
+#include <string.h>
 #include <mpi.h>
 #include "testlib.h"
 
-int		sbuf[128], rbuf[128];
+#define BUF_MAX	1024*1024
+int		sbuf[BUF_MAX], rbuf[BUF_MAX];
 
 static int
 myprintf(int myrank, const char *fmt, ...)
@@ -56,8 +58,8 @@ testBcast(MPI_Comm comm, int comm_rank, int count)
 {
     int rc = 0, errs, rslt;
     int	i;
-    if (comm_rank == 0) VERBOSE("Start MPI_Bcastr using utf_barrier\n");
-    for (i = 0; i < 12; i++) {
+    if (comm_rank == 0) VERBOSE("Start MPI_Bcast using utf_barrier\n");
+    for (i = 0; i < count; i++) {
 	sbuf[i] = comm_rank + i;
     }
     for (i = 0; i < iteration; i++) {
@@ -66,9 +68,9 @@ testBcast(MPI_Comm comm, int comm_rank, int count)
     if (comm_rank == 0) VERBOSE("Verifying\n");
     errs = 0;
     if (comm_rank != 0) {
-	for (i = 0; i < 12; i++) {
+	for (i = 0; i < count; i++) {
 	    if (sbuf[i] != i) {
-		myprintf(0, "rank(%d): sbuf[%d] Expect %d, but %d\n", comm_rank, i, i, sbuf[i]);
+		myprintf(0, "%s rank(%d): sbuf[%d] Expect %d, but %d\n", __func__, comm_rank, i, i, sbuf[i]);
 		errs++;
 	    }
 	}
@@ -99,7 +101,7 @@ testReduce(MPI_Comm comm, int comm_rank, int comm_nprocs, int count)
     }
     if (comm_rank == 0) VERBOSE("Start MPI_Reduce using utf_reduce\n");
     for (i = 0; i < iteration; i++) {
-	MPICALL_CHECK(err0, rc,  MPI_Reduce(sbuf, rbuf, 6, MPI_INT, MPI_SUM, 0, comm));
+	MPICALL_CHECK(err0, rc,  MPI_Reduce(sbuf, rbuf, count, MPI_INT, MPI_SUM, 0, comm));
     }
     if (comm_rank == 0) VERBOSE("Verifying\n");
     errs = 0;
@@ -110,7 +112,7 @@ testReduce(MPI_Comm comm, int comm_rank, int comm_nprocs, int count)
 	}
 	for (i = 0; i < count; i++) {
 	    if (rbuf[i] != expval) {
-		myprintf(comm_rank, "rbuf[%d] Expect %d, but %d\n", i, rbuf[i], expval + i);
+		myprintf(comm_rank, "%s rbuf[%d] Expect %d, but %d\n", __func__, i, rbuf[i], expval + i);
 		errs++;
 	    }
 	    expval += comm_nprocs;
@@ -139,7 +141,7 @@ testAllreduce(MPI_Comm comm, int comm_rank, int comm_nprocs, int count)
     }
     if (comm_rank == 0) VERBOSE("Start MPI_Allreduce using utf_reduce\n");
     for (i = 0; i < iteration; i++) {
-	MPICALL_CHECK(err0, rc,  MPI_Allreduce(sbuf, rbuf, 6, MPI_INT, MPI_SUM, comm));
+	MPICALL_CHECK(err0, rc,  MPI_Allreduce(sbuf, rbuf, count, MPI_INT, MPI_SUM, comm));
     }
     if (comm_rank == 0) VERBOSE("Verifying\n");
     errs = 0;
@@ -150,7 +152,7 @@ testAllreduce(MPI_Comm comm, int comm_rank, int comm_nprocs, int count)
 	}
 	for (i = 0; i < count; i++) {
 	    if (rbuf[i] != expval) {
-		myprintf(comm_rank, "rbuf[%d] Expect %d, but %d\n", i, rbuf[i], expval + i);
+		myprintf(comm_rank, "%s rbuf[%d] Expect %d, but %d\n", __func__, i, rbuf[i], expval + i);
 		errs++;
 	    }
 	    expval += comm_nprocs;
@@ -181,12 +183,15 @@ testAll(MPI_Comm comm, int comm_rank, int comm_nprocs,
 	MPICALL_CHECK(ext, rc, testBarrier(comm));
     }
     if (sflag & 0x02) {	/* MPI_Bcast (only 48 byte) count = 12, MPI_INT*/
+	memset(rbuf, 0, sizeof(rbuf));
 	MPICALL_CHECK(ext, rc, testBcast(comm, comm_rank, cnt_bcast));
     }
     if (sflag & 0x04) {	/* MPI_Reduce 6 entries */
+	memset(rbuf, 0, sizeof(rbuf));
 	MPICALL_CHECK(ext, rc, testReduce(comm, comm_rank, comm_nprocs, cnt_reduce));
     }
     if (sflag & 0x08) {	/* MPI_Allreduce 6 entries */
+	memset(rbuf, 0, sizeof(rbuf));
 	MPICALL_CHECK(ext, rc, testAllreduce(comm, comm_rank, comm_nprocs, cnt_allreduce));
     }
 ext:
@@ -197,15 +202,28 @@ int
 main(int argc, char *argv[])
 {
     int		rc = 0;
+    int		count;
 
     sflag = 0xff;
-    iteration = 10; /* default iteration */
+    iteration = 11; /* default iteration */
+    mlength = 1024; /* default length in count */
     test_init(argc, argv);
     myprintf(myrank, "nprocs = %d\n", nprocs);
 
     /* Testing COMM_WORLD */
     myprintf(myrank, "*** MPI_COMM_WORLD ***\n");
+    myprintf(myrank, "*** VBG size: Bcast(12) Reuce(6) Allreduce(6)\n");
     MPICALL_CHECK(ext, rc, testAll(MPI_COMM_WORLD, myrank, nprocs, 12, 6, 6));
+
+    count = 24;
+    myprintf(myrank, "*** Bcast & Reduce & Allreduce Count: %d\n", count);
+    MPICALL_CHECK(ext, rc, testAll(MPI_COMM_WORLD, myrank, nprocs, count, count, count));
+
+    myprintf(myrank, "*** Bcast & Reduce & Allreduce Count: 1 thr. %ld\n", mlength);
+    for (count = 1; count <= mlength; count <<= 1) {
+	myprintf(myrank, "*** Count: %d\n", count);
+	MPICALL_CHECK(ext, rc, testAll(MPI_COMM_WORLD, myrank, nprocs, count, count, count));
+    }
     /* Testing User-defined communicator */
     {
 	MPI_Comm	newcomm, newcomm2;

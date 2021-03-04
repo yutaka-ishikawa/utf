@@ -20,14 +20,20 @@
 #------- Program execution -------#
 
 MPIOPT="-of results/vbg/%n.%j.out -oferr results/vbg/%n.%j.err"
-VBGLOAD="env LD_PRELOAD=../../build/libmpi_vbg.so"
+export MPICH_HOME=$HOME/mpich-tofu
+export UTF_BG_LOAD=1
+#export PLE_MPI_STD_EMPTYFILE=off
 
+#VBGLOAD="env LD_PRELOAD=../../build/libmpi_vbg.so"
 export UTF_BG_CONFIRM=1
 #export UTF_BG_DBG=1
 #export UTF_BG_DISABLE=1
 #export UTF_BG_INITWAIT=10000
 #export UTF_BG_BARRIER=1
 #export UTF_BG_UTFPROGRESS=1
+
+export MPICH_TOFU_SHOW_PARAMS=1
+export MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG=1
 
 echo "UTF_BG_CONFIRM" $UTF_BG_CONFIRM
 echo "UTF_BG_DBG" $UTF_BG_DB
@@ -36,9 +42,13 @@ echo "UTF_BG_INITWAIT" $UTF_BG_INITWAIT
 echo "UTF_BG_BARRIER" $UTF_BG_BARRIER
 echo "UTF_BG_UTFPROGRESS" $UTF_BG_UTFPROGRESS
 
-export MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG=1
-
-export MPIR_CVAR_SCATTERV_INTRA_ALGORITHM=linear
-mpich_exec $MPIOPT $VBGLOAD ../src/test_collective_vbg
+COUNT=1024
+#
+#  0x01: Barrier, 0x02: Bcast, 0x04: Reduce, 0x08: AllReduce
+$MPICH_HOME/bin/mpich_exec $MPIOPT ../src/test_collective_vbg -s 0x0f -L $COUNT
 
 exit
+
+#
+# MPI_Bcast
+#$MPICH_HOME/bin/mpich_exec $MPIOPT ../src/test_collective_vbg -s 0x02 -L $COUNT
