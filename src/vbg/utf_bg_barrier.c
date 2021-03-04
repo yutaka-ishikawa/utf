@@ -926,7 +926,7 @@ int utf_broadcast(utf_coll_group_t group_struct, void *buf, size_t size, void *d
 
     /* Check the arguments. */
     if((size_t)UTF_BG_REDUCE_ULMT_ELMS_48 < size){
-        return UTF_ERR_NOT_AVAILABLE;
+        return UTF_ERR_INVALID_COUNT;
     }
     utf_bg_counter++;
 
@@ -1000,17 +1000,12 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
     switch((int)op){
         case UTF_REDUCE_OP_SUM:
             /* Check the datatype. */
-            assert(datatype_div == UTF_DATATYPE_DIV_INT ||
-                   datatype_div == UTF_DATATYPE_DIV_REAL ||
-                   datatype_div == UTF_DATATYPE_DIV_COMP);
-
-            /* UTF_ERR_NOT_AVAILABLE is returned for data types that do not match the reduction operation. */
             if(datatype_div == UTF_DATATYPE_DIV_REAL){
                 /* The datatype is a floating-point datatype. */
 
                 /* Check the count. */
                 if(UTF_BG_REDUCE_ULMT_ELMS_3 < count){
-                    return UTF_ERR_NOT_AVAILABLE;
+                    return UTF_ERR_INVALID_COUNT;
                 }
                 utf_bg_counter++;
                 /* Saves information for use in the poll function. */
@@ -1021,7 +1016,7 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
 
                 /* Check the count. */
                 if(UTF_BG_REDUCE_ULMT_ELMS_6 < count){
-                    return UTF_ERR_NOT_AVAILABLE;
+                    return UTF_ERR_INVALID_COUNT;
                 }
                 utf_bg_counter++;
                 /* Saves information for use in the poll function. */
@@ -1032,7 +1027,7 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
 
                 /* Check the count. */
                 if (UTF_BG_REDUCE_ULMT_ELMS_1 < count){
-                    return UTF_ERR_NOT_AVAILABLE;
+                    return UTF_ERR_INVALID_COUNT;
                 }
                 utf_bg_counter++;
                 /* Saves information for use in the poll function. */
@@ -1045,14 +1040,11 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
             break;
         case UTF_REDUCE_OP_MAX:
         case UTF_REDUCE_OP_MIN:
-            /* Check the datatype. */
-            assert(datatype_div == UTF_DATATYPE_DIV_INT || datatype_div == UTF_DATATYPE_DIV_REAL);
-
             /* Check the count. */
             if(UTF_BG_REDUCE_ULMT_ELMS_6 < count){
-                return UTF_ERR_NOT_AVAILABLE;
+                return UTF_ERR_INVALID_COUNT;
             }
-            /* UTF_ERR_NOT_AVAILABLE is returned for data types that do not match the reduction operation. */
+            /* Check the datatype. */
             if(datatype_div == UTF_DATATYPE_DIV_REAL){
                 utf_bg_counter++;
                 /* The datatype is a floating-point datatype. */
@@ -1075,14 +1067,11 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
             break;
         case UTF_REDUCE_OP_MAXLOC:
         case UTF_REDUCE_OP_MINLOC:
-            /* Check the datatype. */
-            assert(datatype_div == UTF_DATATYPE_DIV_PAIR);
-
             /* Check the count. */
             if(UTF_BG_REDUCE_ULMT_ELMS_3 < count){
-                return UTF_ERR_NOT_AVAILABLE;
+                return  UTF_ERR_INVALID_COUNT;
             }
-            /* UTF_ERR_NOT_AVAILABLE is returned for data types that do not match the reduction operation. */
+            /* Check the datatype. */
             if(datatype_div == UTF_DATATYPE_DIV_PAIR){
                 utf_bg_counter++;
                 /* Saves information for use in the poll function. */
@@ -1094,35 +1083,39 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
         case UTF_REDUCE_OP_BAND:
         case UTF_REDUCE_OP_BOR:
         case UTF_REDUCE_OP_BXOR:
-            /* Check the datatype. */
-            assert(datatype_div == UTF_DATATYPE_DIV_INT);
-
             /* Check the count. */
             if(UTF_BG_REDUCE_ULMT_ELMS_48 < (int)(datatype & UTF_DATATYPE_SIZE) * count){
-                return UTF_ERR_NOT_AVAILABLE;
+                return UTF_ERR_INVALID_COUNT;
             }
-            utf_bg_counter++;
-            /* Saves information for use in the poll function. */
-            UTF_BG_REDUCE_INFO_SET(result, op, count, datatype, reduce_root);
+            /* Check the datatype. */
+            if (datatype_div == UTF_DATATYPE_DIV_INT){
+                utf_bg_counter++;
+                /* Saves information for use in the poll function. */
+                UTF_BG_REDUCE_INFO_SET(result, op, count, datatype, reduce_root);
 
-            return utf_bg_reduce_bitwise(utf_bg_grp, sbuf, count, poll_info.utf_bg_poll_size, op);
+                return utf_bg_reduce_bitwise(utf_bg_grp, sbuf, count, poll_info.utf_bg_poll_size, op);
+            }
+            break;
         case UTF_REDUCE_OP_LAND:
         case UTF_REDUCE_OP_LOR:
         case UTF_REDUCE_OP_LXOR:
-            /* Check the datatype. */
-            assert(datatype_div == UTF_DATATYPE_DIV_INT);
-
             /* Check the count. */
             if (UTF_BG_REDUCE_ULMT_ELMS_384 < count){
-                return UTF_ERR_NOT_AVAILABLE;
+                return UTF_ERR_INVALID_COUNT;
             }
-            utf_bg_counter++;
-            /* Saves information for use in the poll function. */
-            UTF_BG_REDUCE_INFO_SET(result, op, count, datatype, reduce_root);
+            /* Check the datatype. */
+            if (datatype_div == UTF_DATATYPE_DIV_INT){
+                utf_bg_counter++;
+                /* Saves information for use in the poll function. */
+                UTF_BG_REDUCE_INFO_SET(result, op, count, datatype, reduce_root);
 
-            return utf_bg_reduce_logical(utf_bg_grp, sbuf, count, poll_info.utf_bg_poll_size, op);
+                return utf_bg_reduce_logical(utf_bg_grp, sbuf, count, poll_info.utf_bg_poll_size, op);
+            }
+            break;
+        default:
+            return UTF_ERR_INVALID_OP;
     }
-    return UTF_ERR_NOT_AVAILABLE;
+    return UTF_ERR_INVALID_DATATYPE;
 }
 
 

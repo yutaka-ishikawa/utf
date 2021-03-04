@@ -73,7 +73,9 @@ enum utf_return_code {
      UTF_ERR_FATAL            = UTOFU_ERR_FATAL,
 
      UTF_ERR_RESOURCE_BUSY    = -1024,
-     UTF_ERR_INTERNAL         = -1025
+     UTF_ERR_INTERNAL         = -1025,
+     UTF_ERR_INVALID_COUNT    = -1026,
+     UTF_ERR_INVALID_DATATYPE = -1027
 };
 
 typedef	union {
