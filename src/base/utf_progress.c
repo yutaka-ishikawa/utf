@@ -17,27 +17,19 @@ int utf_progcount;
 #define UTF_POLLING_COUNT 1000
 #endif
 
+/* Checking memory */
 uint64_t	_utf_fi_src, _utf_fi_data;
-#define DEBUG_20210101
+
 int
 utf_progress()
 {
     int	j;
     int nrcv = 0;
-#ifdef DEBUG_20210101
-#else
-    int	arvd = 0;
-#endif
 
-//#define DEBUG_20210206
-#ifdef DEBUG_20210206
-    utf_tcqprogress();
-#else
     /* at least one shot progress */
     do {
 	utf_tcqprogress();
     } while (utf_tcq_count > 0);
-#endif
 
     if ((int64_t) utf_egr_rbuf.head.cntr < -1) {
 	utf_printf("%s: No more Eager Receiver Buffer in my rank. cntr(%ld)\n", __func__, (int64_t) utf_egr_rbuf.head.cntr);
@@ -68,8 +60,8 @@ utf_progress()
 		utf_printf("%s: sidx(%d)\n", __func__, pktp->hdr.sidx);
 	    }
 	    urp->src = pktp->hdr.src;
-	    _utf_fi_src = PKT_MSGSRC(pktp);   /* 2021/02/14 */
-	    _utf_fi_data = PKT_FI_DATA(pktp);   /* 2021/02/14 */
+	    _utf_fi_src = PKT_MSGSRC(pktp);
+	    _utf_fi_data = PKT_FI_DATA(pktp);
 	    if (utf_recvengine(urp, (struct utf_packet*) pktp, sidx) < 0) {
 		utf_printf("%s: j(%d) protocol error urp(%p)->state(%d:%s) sidx(%d) pkt(%p) MSG(%s)\n",
 			   __func__, j, urp, urp->state, rstate_symbol[urp->state],
@@ -77,14 +69,10 @@ utf_progress()
 		abort();
 	    }
 	    if (_utf_fi_data != PKT_FI_DATA(pktp)) {
-		utf_printf("%s: TOFU ERROR prev-src(%d)data(%ld) now-src(%d)data%ld)\n", __func__, _utf_fi_data, _utf_fi_src, PKT_MSGSRC(pktp), PKT_FI_DATA(pktp));
+		utf_printf("%s: TOFU NOTICE prev-src(%d)data(%ld) now-src(%d)data(%ld)\n", __func__, _utf_fi_src, _utf_fi_data, PKT_MSGSRC(pktp), PKT_FI_DATA(pktp));
 	    }
 	    pktp->hdr.hall = -1UL;
 	    urp->recvidx++;
-#ifdef DEBUG_20210101
-#else
-	    arvd = 1;
-#endif
 	    if (IS_COMRBUF_FULL(urp)) {
 		utofu_stadd_t	stadd = SCNTR_ADDR_CNTR_FIELD(sidx);
 		struct utf_send_cntr *newusp;
@@ -109,16 +97,13 @@ utf_progress()
 	}
     }
     utf_rcv_max = utf_rcv_count > utf_rcv_max ? utf_rcv_count : utf_rcv_max;
-#ifdef DEBUG_20210101
     {
 	int	uc;
 	do {
 	    uc = utf_mrqprogress();
 	} while (uc == UTOFU_SUCCESS);
     }
-#else
-    if (!arvd) utf_mrqprogress();
-#endif
+    //if (!arvd) utf_mrqprogress();
 
     return 0;
 }

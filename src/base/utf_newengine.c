@@ -16,7 +16,7 @@
 int tofu_barrier_cnt, tofu_barrier_do, tofu_barrier_src, tofu_barrier_dst, tofu_gatherv_cnt, tofu_gatherv_do;
 
 #define INTERNAL_ERROR do { \
-	utf_printf("%s: UTF internal error @d\n", __func__, __LINE__);	\
+	utf_printf("%s: UTF internal error @%d\n", __func__, __LINE__);	\
 	abort();							\
 } while(0);
 
@@ -463,7 +463,9 @@ utf_rndz_done(int pos)
 	utf_mem_dereg(utf_info.vcqh, req->bufinfo.stadd[0]);
 	req->bufinfo.stadd[0] = 0;
     }
-    --minfo->scntr->inflight;
+    /* minfo->scntr->inflight is drecremented at S_REQ_RDVR state
+     *	--minfo->scntr->inflight;
+     */
     if (req->notify) req->notify(req, 1);
     if (req->reclaim) {
 	req->reclaim = 0;
@@ -722,6 +724,7 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 	DEBUG(DLEVEL_PROTO_RENDEZOUS) {
 	    utf_printf("%s: Request has been received by the receiver\n", __func__);
 	}
+	--minfo->scntr->inflight;
 	goto next_entry;
     case S_DO_RDVR:
     case S_RDVDONE:
@@ -803,6 +806,7 @@ utf_sendengine(struct utf_send_cntr *usp, struct utf_send_msginfo *minfo, uint64
 		if (rc == PROG_CHAIN_SENDEPREP) {
 		    break;
 		} else if (rc != PROG_CHAIN_NONE) {
+		    utf_printf("%s: rc = %d\n", __func__, rc);
 		    INTERNAL_ERROR;
 		}
 		if (newusp) {

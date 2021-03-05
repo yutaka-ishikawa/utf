@@ -8,8 +8,9 @@
 #
 #PJM -L "node=2"
 #PJM --mpi "max-proc-per-node=1"
-#PJM -L "elapse=00:01:30"
-#PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-spack2,jobenv=linux"
+#PJM -L "elapse=00:01:50"
+#PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-mck2_and_spack2,jobenv=linux"
+#	PJM -L "rscunit=rscunit_ft02,rscgrp=dvsys-spack2,jobenv=linux"
 #PJM -L proc-core=unlimited
 #------- Program execution -------#
 export LD_LIBRARY_PATH=../../build/:$LD_LIBRARY_PATH
@@ -18,7 +19,7 @@ MPIOPT="-of results/%n.%j.out -oferr results/%n.%j.err"
 #
 #export TOFULOG_DIR=./results
 export UTF_INFO=0x1
-export UTF_COMDEBUG=1
+#export UTF_COMDEBUG=1
 ##export UTF_DEBUG=0xfffffd
 
 #MAX_LEN=134217728	# 128 MiB
@@ -28,11 +29,16 @@ export UTF_COMDEBUG=1
 #MIN_LEN=128
 #MIN_LEN=256
 #ITER=1000
-#ITER=2
+#export UTF_TRANSMODE=1
+#export UTF_TRANSMODE=0
+#export UTF_MSGMODE=1
+#ITER=1
+#mpiexec $MPIOPT -np 2 ./test_p2p pingpong -i $ITER -l $MIN_LEN -L $MAX_LEN $VRYFY
 
 VRYFY=-v
 MIN_LEN=1
 MAX_EAGERLEN=32768
+#MAX_LEN=1024
 MAX_LEN=134217728
 ITER=1000
 
@@ -41,8 +47,10 @@ echo "LD_LIBRARY_PATH=" $LD_LIBRARY_PATH
 echo "******************************************************"
 export UTF_INFO=0x1
 export UTF_MSGMODE=1
+#export UTF_MSGMODE=0
+export UTF_TRANSMODE=0
+#export UTF_TRANSMODE=1
 #export UTF_DEBUG=0x10
-##mpiexec $MPIOPT -np 2 ./test_p2p pingpong -i 1 -l 16777216 -L 16777216
 
 mpiexec $MPIOPT -np 2 ./test_p2p pingpong -i $ITER -l $MIN_LEN -L $MAX_LEN $VRYFY
 

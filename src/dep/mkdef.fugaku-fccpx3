@@ -1,7 +1,5 @@
+MPICH_HOME ?= $(HOME)/mpich-tofu-fc2
 CC = fccpx
-
-MPICH_HOME=$(HOME)/mpich-tofu-fc3
-
 #CC =	/opt/FJSVxos/devkit/aarch64/bin/aarch64-linux-gnu-gcc
 #LD =	/opt/FJSVxos/devkit/aarch64/bin/aarch64-linux-gnu-ld
 

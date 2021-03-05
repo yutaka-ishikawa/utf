@@ -1,3 +1,5 @@
+MPICH_HOME ?= $(HOME)/mpich-tofu-nv
+
 CC = fcc
 #CC =	/opt/FJSVxos/devkit/aarch64/bin/aarch64-linux-gnu-gcc
 #LD =	/opt/FJSVxos/devkit/aarch64/bin/aarch64-linux-gnu-ld
@@ -7,9 +9,9 @@ INCLUDES =  -I/usr/include/FJSVtcs/ple
 #LDFLAGS = -ltofutop -ltofucom -L/opt/FJSVxos/devkit/aarch64/rfs/usr/lib/FJSVtcs/ple/lib64 -lpmix
 LDFLAGS = -ltofutop -ltofucom -L$(HOME)/riken-mpich -lpmix
 
-MPICC = mpicc
+MPICC = $(MPICH_HOME)/bin/mpicc
 
-FJMPICC = mpifccpx
+FJMPICC = mpifcc
 FJCFLAGS = 
 FJLDFLAGS = -ltofutop -ltofucom -lpmix
 

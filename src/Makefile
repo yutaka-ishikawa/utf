@@ -2,7 +2,7 @@
 #UTF_ARCH=fugaku
 include dep/mkdef.$(UTF_ARCH)
 
-INSTDIR  := $(HOME)/mpich-tofu
+INSTDIR  ?= $(MPICH_HOME)
 INSTALL  := install
 
 # -DDEBUGLOG for VBG
