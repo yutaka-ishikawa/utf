@@ -46,11 +46,13 @@ echo "LD_LIBRARY_PATH=" $LD_LIBRARY_PATH
 
 echo "******************************************************"
 export UTF_INFO=0x1
-export UTF_MSGMODE=1
-#export UTF_MSGMODE=0
-export UTF_TRANSMODE=0
-#export UTF_TRANSMODE=1
 #export UTF_DEBUG=0x10
+
+export UTF_MSGMODE=1	# RENDEZVOUS
+#export UTF_MSGMODE=0	# EAGER
+
+#export UTF_TRANSMODE=0	# CHAINE
+export UTF_TRANSMODE=1	# AGRESSIVE
 
 mpiexec $MPIOPT -np 2 ./test_p2p pingpong -i $ITER -l $MIN_LEN -L $MAX_LEN $VRYFY
 
