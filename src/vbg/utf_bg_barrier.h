@@ -29,6 +29,17 @@ enum utf_datatype_div{
  * save information
  *
  */
+#if defined(UTF_THREAD_MULTIPLE)
+#define UTF_BG_REDUCE_INFO_SET(buf, op, count, datatype, reduce_root)                 \
+{                                                                                     \
+    utf_bg_grp->poll_info.utf_bg_poll_result = (buf);                                 \
+    utf_bg_grp->poll_info.utf_bg_poll_op = (int)(op);                                 \
+    utf_bg_grp->poll_info.utf_bg_poll_count = (count);                                \
+    utf_bg_grp->poll_info.utf_bg_poll_datatype = (datatype);                          \
+    utf_bg_grp->poll_info.utf_bg_poll_root = (reduce_root);                           \
+    utf_bg_grp->poll_info.utf_bg_poll_size= (size_t)((datatype) & UTF_DATATYPE_SIZE); \
+}
+#else /* !(UTF_THREAD_MULTIPLE)*/
 #define UTF_BG_REDUCE_INFO_SET(buf, op, count, datatype, reduce_root)     \
 {                                                                         \
     poll_info.utf_bg_poll_result = (buf);                                 \
@@ -38,6 +49,7 @@ enum utf_datatype_div{
     poll_info.utf_bg_poll_root = (reduce_root);                           \
     poll_info.utf_bg_poll_size= (size_t)((datatype) & UTF_DATATYPE_SIZE); \
 }
+#endif /* UTF_THREAD_MULTIPLE */
 
 /** utf bg macro */
 #define UTF_DATATYPE_SIZE  0x000000FF
@@ -64,6 +76,33 @@ enum utf_datatype_div{
 #define UTF_BG_REDUCE_MASK_NAN_FP32   0x007FFFFF00000000UL
 #define UTF_BG_REDUCE_MASK_NAN_FP64   0x000FFFFFFFFFFFFFUL
 
+#if defined(UTF_THREAD_MULTIPLE)
+
+/** Initialization for sm (Multithreaded version) */
+#define UTF_BG_INIT_SM_COMMON(p)                                          \
+{                                                                         \
+    (p)->poll_info.utf_bg_poll_ids   =                                    \
+        (UTF_BG_INTRA_NODE_MANAGER == (p)->intra_node_info->state ?       \
+         *((p)->vbg_ids) : -1);                                           \
+    (p)->poll_info.sm_numproc        = (p)->intra_node_info->size;        \
+    (p)->poll_info.sm_intra_index    = (p)->intra_node_info->intra_index; \
+    (p)->poll_info.sm_mmap_buf       = (p)->intra_node_info->mmap_buf;    \
+    (p)->poll_info.sm_seq_val        = ++((p)->intra_node_info->curr_seq);\
+    (p)->poll_info.sm_flg_comm_start = false;                             \
+    (p)->poll_info.sm_loop_counter   = 1;                                 \
+    (p)->poll_info.sm_loop_rank      = (p)->intra_node_info->intra_index; \
+}
+
+/** Initialization for sm(reduce) (Multithreaded version) */
+#define UTF_BG_INIT_SM(p, uop, ucnt)                                      \
+{                                                                         \
+    UTF_BG_INIT_SM_COMMON(p);                                             \
+    (p)->poll_info.sm_utofu_op          = (uop);                          \
+    (p)->poll_info.utf_bg_poll_numcount = (ucnt);                         \
+}
+
+#else /* !(UTF_THREAD_MULTIPLE)*/
+
 /** Initialization for sm */
 #define UTF_BG_INIT_SM_COMMON(p)                                          \
 {                                                                         \
@@ -87,9 +126,16 @@ enum utf_datatype_div{
     poll_info.utf_bg_poll_numcount = (ucnt);                              \
 }
 
+#endif /* UTF_THREAD_MULTIPLE */
+
 /** Sequence buffer in shared memory */
+#if defined(UTF_THREAD_MULTIPLE)
+#define UTF_BG_MMAP_SEQ(x)                                                                     \
+    (uint64_t *)((char *)utf_bg_grp->poll_info.sm_mmap_buf + (x) * UTF_BG_CACHE_LINE_SIZE)
+#else /* !(UTF_THREAD_MULTIPLE)*/
 #define UTF_BG_MMAP_SEQ(x)                                                     \
     (uint64_t *)((char *)poll_info.sm_mmap_buf + (x) * UTF_BG_CACHE_LINE_SIZE)
+#endif /* UTF_THREAD_MULTIPLE */
 
 /** Data buffer in shared memory */
 #define UTF_BG_MMAP_BUF(x)                                                     \
@@ -103,6 +149,233 @@ enum utf_datatype_div{
 #define utf_bg_rmb()    __asm__ __volatile__ ("" : : : "memory")
 #define utf_bg_wmb()    __asm__ __volatile__ ("" : : : "memory")
 #endif
+
+#if defined(UTF_THREAD_MULTIPLE)
+
+/** Set the reduction results (Multithreaded version) */
+#define UTF_BG_SET_RESULT_COMMON()                                   \
+{                                                                    \
+    if (data) {                                                      \
+        *data = utf_bg_grp->poll_info.utf_bg_poll_result;            \
+    }                                                                \
+    if (!utf_bg_grp->poll_info.utf_bg_poll_root) {                   \
+        return UTF_SUCCESS;                                          \
+    }                                                                \
+}
+
+/** Set the reduction results(SUM:double) (Multithreaded version) */
+#define UTF_BG_SET_RESULT_DOUBLE()                                                     \
+{                                                                                      \
+    UTF_BG_SET_RESULT_COMMON()                                                         \
+    for (i = 0; i < utf_bg_grp->poll_info.utf_bg_poll_count; i++) {                    \
+        *((double *)utf_bg_grp->poll_info.utf_bg_poll_result + i) =                    \
+                    *((double *)utf_bg_grp->poll_info.utf_bg_poll_odata + i);          \
+    }                                                                                  \
+}
+
+/** Set the reduction results(SUM:float) (Multithreaded version) */
+#define UTF_BG_SET_RESULT_FLOAT()                                                      \
+{                                                                                      \
+    UTF_BG_SET_RESULT_COMMON()                                                         \
+    for (i = 0; i < utf_bg_grp->poll_info.utf_bg_poll_count; i++) {                    \
+        *((float *)utf_bg_grp->poll_info.utf_bg_poll_result + i) =                     \
+                    (float)*((double *)utf_bg_grp->poll_info.utf_bg_poll_odata + i);   \
+    }                                                                                  \
+}
+
+/** Set the reduction results(SUM:_Float16) (Multithreaded version) */
+#define UTF_BG_SET_RESULT_FLOAT16()                                                     \
+{                                                                                       \
+    UTF_BG_SET_RESULT_COMMON()                                                          \
+    for (i = 0; i < utf_bg_grp->poll_info.utf_bg_poll_count; i++) {                     \
+        *((_Float16 *)utf_bg_grp->poll_info.utf_bg_poll_result + i) =                   \
+                    (_Float16)*((double *)utf_bg_grp->poll_info.utf_bg_poll_odata + i); \
+    }                                                                                   \
+}
+
+/** Set the reduction results(SUM:uint64_t) (Multithreaded version) */
+#define UTF_BG_SET_RESULT_UINT64()                                                             \
+{                                                                                              \
+    UTF_BG_SET_RESULT_COMMON()                                                                 \
+    for (i = 0; i < utf_bg_grp->poll_info.utf_bg_poll_count; i++) {                            \
+        memcpy((char *)utf_bg_grp->poll_info.utf_bg_poll_result +                              \
+                               i * utf_bg_grp->poll_info.utf_bg_poll_size,                     \
+               (char *)utf_bg_grp->poll_info.utf_bg_poll_odata + i * sizeof(uint64_t) +        \
+                               sizeof(uint64_t) - utf_bg_grp->poll_info.utf_bg_poll_size,      \
+               utf_bg_grp->poll_info.utf_bg_poll_size);                                        \
+    }                                                                                          \
+}
+
+/** Set the reduction results(MAX/MIN:double) (Multithreaded version) */
+#define UTF_BG_SET_RESULT_DOUBLE_MAX_MIN()                                                                      \
+{                                                                                                               \
+    UTF_BG_SET_RESULT_COMMON()                                                                                  \
+    for (i = 0; i < utf_bg_grp->poll_info.utf_bg_poll_count; i++) {                                             \
+        switch(utf_bg_grp->poll_info.utf_bg_poll_size){                                                         \
+            case sizeof(double):                                                                                \
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata + i) -=                                   \
+                                                            UTF_BG_REDUCE_MASK_NAN_FP64;                        \
+                break;                                                                                          \
+            case sizeof(float):                                                                                 \
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata + i) -=                                   \
+                                                            UTF_BG_REDUCE_MASK_NAN_FP32;                        \
+                break;                                                                                          \
+            case sizeof(_Float16):                                                                              \
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata + i) -=                                   \
+                                                            UTF_BG_REDUCE_MASK_NAN_FP16;                        \
+        }                                                                                                       \
+        if (UTF_REDUCE_OP_MAX == utf_bg_grp->poll_info.utf_bg_poll_op) {                                        \
+            *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata + i) ^=                                       \
+                (*((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata + i) & UTF_BG_REDUCE_MASK_HB ?           \
+                 UTF_BG_REDUCE_MASK_HB : UTF_BG_REDUCE_MASK_MAX);                                               \
+        } else {                                                                                                \
+            if (!(*((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata + i) & UTF_BG_REDUCE_MASK_HB)) {        \
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata + i) ^= UTF_BG_REDUCE_MASK_MIN;           \
+            }                                                                                                   \
+        }                                                                                                       \
+        memcpy((char *)utf_bg_grp->poll_info.utf_bg_poll_result + i * utf_bg_grp->poll_info.utf_bg_poll_size,   \
+               (char *)utf_bg_grp->poll_info.utf_bg_poll_odata + i * sizeof(uint64_t) + sizeof(uint64_t) -      \
+                                                                        utf_bg_grp->poll_info.utf_bg_poll_size, \
+               utf_bg_grp->poll_info.utf_bg_poll_size);                                                         \
+    }                                                                                                           \
+}
+
+/** Set the reduction results(MAX/MIN:uint64_t) (Multithreaded version) */
+#define UTF_BG_SET_RESULT_UINT64_MAX_MIN()                                                                      \
+{                                                                                                               \
+    UTF_BG_SET_RESULT_COMMON()                                                                                  \
+    for (i = 0; i < utf_bg_grp->poll_info.utf_bg_poll_count; i++) {                                             \
+        if (UTF_REDUCE_OP_MIN == utf_bg_grp->poll_info.utf_bg_poll_op) {                                        \
+            *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata + i) =                                        \
+                                            ~(*((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata + i));      \
+        }                                                                                                       \
+        if (utf_bg_grp->poll_info.utf_bg_poll_datatype >> 16) {                                                 \
+            *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata + i) -= UTF_BG_REDUCE_MASK_HB;                \
+        }                                                                                                       \
+        memcpy((char *)utf_bg_grp->poll_info.utf_bg_poll_result + i * utf_bg_grp->poll_info.utf_bg_poll_size,   \
+               (char *)utf_bg_grp->poll_info.utf_bg_poll_odata + i * sizeof(uint64_t) + sizeof(uint64_t) -      \
+                                                                        utf_bg_grp->poll_info.utf_bg_poll_size, \
+               utf_bg_grp->poll_info.utf_bg_poll_size);                                                         \
+    }                                                                                                           \
+}
+
+/** Set the reduction results(LAND/LOR/LXOR) (Multithreaded version) */
+#define UTF_BG_SET_RESULT_LOGICAL()                                                                      \
+{                                                                                                        \
+    UTF_BG_SET_RESULT_COMMON()                                                                           \
+    for (i=0, j=0; i < utf_bg_grp->poll_info.utf_bg_poll_numcount; i++) {                                \
+        if ( UTF_BG_REDUCE_ULMT_ELMS_64 >= utf_bg_grp->poll_info.utf_bg_poll_count ) {                   \
+            bit_count = utf_bg_grp->poll_info.utf_bg_poll_count;                                         \
+        } else {                                                                                         \
+            bit_count = UTF_BG_REDUCE_ULMT_ELMS_64;                                                      \
+        }                                                                                                \
+        utf_bg_grp->poll_info.utf_bg_poll_count -= bit_count;                                            \
+        while (bit_count != 0){                                                                          \
+            if ((*((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata + i)>>(bit_count-1)) &            \
+                                                                        UTF_BG_REDUCE_MASK_LB) {         \
+                switch (utf_bg_grp->poll_info.utf_bg_poll_size) {                                        \
+                    case sizeof(int64_t):                                                                \
+                        *((int64_t *)utf_bg_grp->poll_info.utf_bg_poll_result + j) = 1;                  \
+                        break;                                                                           \
+                    case sizeof(int):                                                                    \
+                        *((int *)utf_bg_grp->poll_info.utf_bg_poll_result + j) = 1;                      \
+                        break;                                                                           \
+                    case sizeof(short):                                                                  \
+                        *((short *)utf_bg_grp->poll_info.utf_bg_poll_result + j) = 1;                    \
+                        break;                                                                           \
+                    case sizeof(char):                                                                   \
+                        *((char *)utf_bg_grp->poll_info.utf_bg_poll_result + j) = 1;                     \
+                }                                                                                        \
+            } else {                                                                                     \
+                switch (utf_bg_grp->poll_info.utf_bg_poll_size) {                                        \
+                    case sizeof(int64_t):                                                                \
+                        *((int64_t *)utf_bg_grp->poll_info.utf_bg_poll_result + j) = 0;                  \
+                        break;                                                                           \
+                    case sizeof(int):                                                                    \
+                        *((int *)utf_bg_grp->poll_info.utf_bg_poll_result + j) = 0;                      \
+                        break;                                                                           \
+                    case sizeof(short):                                                                  \
+                        *((short *)utf_bg_grp->poll_info.utf_bg_poll_result + j) = 0;                    \
+                        break;                                                                           \
+                    case sizeof(char):                                                                   \
+                        *((char *)utf_bg_grp->poll_info.utf_bg_poll_result + j) = 0;                     \
+                }                                                                                        \
+            }                                                                                            \
+            bit_count--;                                                                                 \
+            j++;                                                                                         \
+        }                                                                                                \
+    }                                                                                                    \
+}
+
+/** Set the reduction results(BAND/BOR/BXOR) (Multithreaded version) */
+#define UTF_BG_SET_RESULT_BITWISE()                                                                        \
+{                                                                                                          \
+    UTF_BG_SET_RESULT_COMMON()                                                                             \
+    memcpy(utf_bg_grp->poll_info.utf_bg_poll_result, (uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata,  \
+           utf_bg_grp->poll_info.utf_bg_poll_count * utf_bg_grp->poll_info.utf_bg_poll_size);              \
+}
+
+/** Set the reduction results(MAXLOC/MINLOC) (Multithreaded version) */
+#define UTF_BG_SET_RESULT_MAXMIN_LOC()                                                                           \
+{                                                                                                                \
+    UTF_BG_SET_RESULT_COMMON()                                                                                   \
+    if (UTF_REDUCE_OP_MINLOC == utf_bg_grp->poll_info.utf_bg_poll_op) {                                          \
+        for (i=0; i < utf_bg_grp->poll_info.utf_bg_poll_count*2; i+=2) {                                         \
+            *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata + i) =                                         \
+                                 ~(*((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata + i));                  \
+        }                                                                                                        \
+    }                                                                                                            \
+    for (i=0; i < utf_bg_grp->poll_info.utf_bg_poll_count*2; i++) {                                              \
+        *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata + i) -= UTF_BG_REDUCE_MASK_HB;                     \
+        switch (utf_bg_grp->poll_info.utf_bg_poll_datatype) {                                                    \
+            case UTF_DATATYPE_2INT:                                                                              \
+                  memcpy((char *)utf_bg_grp->poll_info.utf_bg_poll_result +                                      \
+                                             i * utf_bg_grp->poll_info.utf_bg_poll_size/2,                       \
+                         (char *)utf_bg_grp->poll_info.utf_bg_poll_odata +                                       \
+                             i * sizeof(uint64_t) + sizeof(uint64_t) - utf_bg_grp->poll_info.utf_bg_poll_size/2, \
+                         utf_bg_grp->poll_info.utf_bg_poll_size/2);                                              \
+                  break;                                                                                         \
+            case UTF_DATATYPE_LONG_INT:                                                                          \
+                if (i%2 == 0) {                                                                                  \
+                    memcpy((long *)utf_bg_grp->poll_info.utf_bg_poll_result + i,                                 \
+                           (uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata + i,                              \
+                           sizeof(long));                                                                        \
+                } else {                                                                                         \
+                    memcpy((char *)utf_bg_grp->poll_info.utf_bg_poll_result + i * sizeof(long),                  \
+                           (char *)utf_bg_grp->poll_info.utf_bg_poll_odata + i * sizeof(uint64_t)                \
+                                                                       + sizeof(uint64_t) - sizeof(int),         \
+                           sizeof(int));                                                                         \
+                }                                                                                                \
+                break;                                                                                           \
+            case UTF_DATATYPE_SHORT_INT:                                                                         \
+                if (i%2 == 0) {                                                                                  \
+                    memcpy((char *)utf_bg_grp->poll_info.utf_bg_poll_result + i * sizeof(int),                   \
+                           (char *)utf_bg_grp->poll_info.utf_bg_poll_odata + i * sizeof(uint64_t)                \
+                                                                       + sizeof(uint64_t) - sizeof(short),       \
+                           sizeof(short));                                                                       \
+                } else {                                                                                         \
+                    memcpy((char *)utf_bg_grp->poll_info.utf_bg_poll_result + i * sizeof(int),                   \
+                           (char *)utf_bg_grp->poll_info.utf_bg_poll_odata + i * sizeof(uint64_t)                \
+                                                                       + sizeof(uint64_t) - sizeof(int),         \
+                           sizeof(int));                                                                         \
+                }                                                                                                \
+        }                                                                                                        \
+    }                                                                                                            \
+}
+
+/** Copy the message from the buffer of the root(broadcast) (Multithreaded version) */
+#define UTF_BG_SET_RESULT_BCAST()                                                                  \
+{                                                                                                  \
+    if(data){                                                                                      \
+        *data = utf_bg_grp->poll_info.utf_bg_poll_result;                                          \
+    }                                                                                              \
+    if(!utf_bg_grp->poll_info.utf_bg_poll_root){                                                   \
+        memcpy(utf_bg_grp->poll_info.utf_bg_poll_result, utf_bg_grp->poll_info.utf_bg_poll_odata,  \
+               utf_bg_grp->poll_info.utf_bg_poll_size);                                            \
+    }                                                                                              \
+}
+
+#else /* !(UTF_THREAD_MULTIPLE)*/
 
 /** Set the reduction results */
 #define UTF_BG_SET_RESULT_COMMON()                                   \
@@ -316,10 +589,18 @@ enum utf_datatype_div{
     }                                                                                     \
 }
 
+#endif /* UTF_THREAD_MULTIPLE */
+
 
 /**
  * Internal interface declarations
  */
+#if defined(UTF_THREAD_MULTIPLE)
+extern int utf_poll_barrier_sm(utf_coll_group_detail_t *);
+extern int utf_poll_reduce_double_sm(utf_coll_group_detail_t *, void **);
+extern int utf_poll_reduce_uint64_sm(utf_coll_group_detail_t *, void **);
+#else /* !(UTF_THREAD_MULTIPLE) */
 extern int utf_poll_barrier_sm(void);
 extern int utf_poll_reduce_double_sm(void **);
 extern int utf_poll_reduce_uint64_sm(void **);
+#endif /* UTF_THREAD_MULTIPLE */

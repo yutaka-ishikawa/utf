@@ -84,11 +84,13 @@ free_end:
                 utf_bg_mmap_file_info.mmaparea = NULL;
             }
         }
+#if !defined(UTF_THREAD_MULTIPLE)
         /* Freeing the temporary data buffer. */
         if (NULL != poll_info.utf_bg_poll_idata) {
             free(poll_info.utf_bg_poll_idata);
             poll_info.utf_bg_poll_idata = NULL;
         }
+#endif
         if (NULL != utf_bg_alloc_intra_world_indexes) {
             free(utf_bg_alloc_intra_world_indexes);
             utf_bg_alloc_intra_world_indexes=NULL;
@@ -104,6 +106,13 @@ free_end:
         free(detail_p->intra_node_info);
         detail_p->intra_node_info = NULL;
     }
+#if defined(UTF_THREAD_MULTIPLE)
+    /* Freeing the temporary data buffer. (For multi-threaded version) */
+    if (NULL != detail_p->poll_info.utf_bg_poll_idata) {
+        free(detail_p->poll_info.utf_bg_poll_idata);
+        detail_p->poll_info.utf_bg_poll_idata = NULL;
+    }
+#endif
 
     free(detail_p);
 

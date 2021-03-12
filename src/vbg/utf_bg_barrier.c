@@ -9,6 +9,9 @@
 #include "utf_bg_internal.h"
 #include "utf_bg_barrier.h"
 
+#if defined(UTF_THREAD_MULTIPLE)
+_Thread_local uint64_t utf_bg_counter;
+#else /* !(UTF_THREAD_MULTIPLE) */
 #if defined(DEBUGLOG2)
 void          *utf_bg_poll_grp_addr;
 #endif
@@ -18,6 +21,7 @@ uint64_t utf_bg_counter;
 
 int            utf_bg_poll_barrier_func;
 int           (*utf_bg_poll_reduce_func) (void **);
+#endif /* !(UTF_THREAD_MULTIPLE) */
 
 enum utf_bg_poll_barrier_index {
     UTF_POLL_BARRIER,
@@ -27,9 +31,68 @@ enum utf_bg_poll_barrier_index {
 #define UTF_BG_ALGORITHM                                                           \
      (utf_bg_intra_node_barrier_is_tofu || 1 == utf_bg_grp->intra_node_info->size)
 
+
+#if defined(UTF_THREAD_MULTIPLE)
+
 /**
  *
- * utf_barrier
+ * utf_barrier (Multithreaded version)
+ * call utofu_barrier().
+ *
+ * group_struct (IN)  A pointer to the structure that stores the VBG information.
+ */
+int utf_barrier(utf_coll_group_t group_struct)
+{
+    utf_bg_counter++;
+    utf_coll_group_detail_t *utf_bg_grp = (utf_coll_group_detail_t *)group_struct;
+
+#if defined(DEBUGLOG2)
+    /* Check the arguments. */
+    assert(group_struct != NULL);
+#endif
+    /* Check the algorithm. */
+    if (UTF_BG_ALGORITHM) {
+        /* tofu (hard barrier) */
+        utf_bg_grp->poll_info.utf_bg_poll_ids = *(utf_bg_grp->vbg_ids);
+        utf_bg_grp->utf_bg_poll_barrier_func = UTF_POLL_BARRIER;
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s:vbg_ids=%016lx\n",
+                __func__, utf_bg_grp->poll_info.utf_bg_poll_ids);
+#endif
+        return utofu_barrier(utf_bg_grp->poll_info.utf_bg_poll_ids, 0);
+    } else {
+        /* sm (soft barrier) */
+        utf_bg_grp->utf_bg_poll_barrier_func = UTF_POLL_BARRIER_SM;
+        UTF_BG_INIT_SM_COMMON(utf_bg_grp);
+        return UTF_SUCCESS;
+    }
+}
+
+/**
+ *
+ * utf_poll_barrier (Multithreaded version)
+ * Polls for barrier synchronization completion.
+ *
+ * group_struct (IN)  A pointer to the structure that stores the VBG information.
+ */
+int utf_poll_barrier(utf_coll_group_t group_struct)
+{
+    utf_coll_group_detail_t *utf_bg_grp = (utf_coll_group_detail_t *)group_struct;
+
+    if (utf_bg_grp->utf_bg_poll_barrier_func == UTF_POLL_BARRIER) {
+        return utofu_poll_barrier(utf_bg_grp->poll_info.utf_bg_poll_ids, 0);
+    } else if (utf_bg_grp->utf_bg_poll_barrier_func == UTF_POLL_BARRIER_SM) {
+        return utf_poll_barrier_sm(utf_bg_grp);
+    } else {
+        return UTF_ERR_NOT_AVAILABLE;
+    }
+}
+
+#else /* !(UTF_THREAD_MULTIPLE) */
+
+/**
+ *
+ * utf_barrier (Non-multithreaded version)
  * call utofu_barrier().
  *
  * group_struct (IN)  A pointer to the structure that stores the VBG information.
@@ -65,7 +128,7 @@ int utf_barrier(utf_coll_group_t group_struct)
 
 /**
  *
- * utf_poll_barrier
+ * utf_poll_barrier (Non-multithreaded version)
  * Polls for barrier synchronization completion.
  *
  * group_struct (IN)  A pointer to the structure that stores the VBG information.
@@ -90,10 +153,370 @@ int utf_poll_barrier(utf_coll_group_t group_struct)
 #pragma clang optimize on
 #endif
 
+#endif /* UTF_THREAD_MULTIPLE */
+
+
+#if defined(UTF_THREAD_MULTIPLE)
 
 /**
  *
- * utf_poll_reduce_double
+ * utf_poll_reduce_double (Multithreaded version)
+ * Confirm the completion of the reduction operation(SUM:double).
+ *
+ * utf_bg_grp   (IN)   A pointer to the structure that stores the VBG information
+ * data         (OUT)  address of receive buffer
+ */
+static int utf_poll_reduce_double(utf_coll_group_detail_t *utf_bg_grp, void **data)
+{
+    int rc;
+    size_t i;
+
+    if (UTOFU_SUCCESS !=
+        (rc = utofu_poll_reduce_double(utf_bg_grp->poll_info.utf_bg_poll_ids,
+                                       0,
+                                       (double *)utf_bg_grp->poll_info.utf_bg_poll_odata))) {
+        return rc;
+    }
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s:vbg_ids=%016lx count=%zu odata=%lf %lf %lf\n",
+                __func__, utf_bg_grp->poll_info.utf_bg_poll_ids, utf_bg_grp->poll_info.utf_bg_poll_count,
+                *((double *)utf_bg_grp->poll_info.utf_bg_poll_odata),
+                *((double *)utf_bg_grp->poll_info.utf_bg_poll_odata+1),
+                *((double *)utf_bg_grp->poll_info.utf_bg_poll_odata+2));
+#endif
+    /* Set the reduction results(SUM:double) */
+    UTF_BG_SET_RESULT_DOUBLE();
+
+    return UTF_SUCCESS;
+}
+
+/**
+ *
+ * utf_poll_reduce_float (Multithreaded version)
+ * Confirm the completion of the reduction operation(SUM:float).
+ *
+ * utf_bg_grp   (IN)   A pointer to the structure that stores the VBG information
+ * data         (OUT)  address of receive buffer
+ */
+static int utf_poll_reduce_float(utf_coll_group_detail_t *utf_bg_grp, void **data)
+{
+    int rc;
+    size_t i;
+
+    if (UTOFU_SUCCESS !=
+        (rc = utofu_poll_reduce_double(utf_bg_grp->poll_info.utf_bg_poll_ids,
+                                       0,
+                                       (double *)utf_bg_grp->poll_info.utf_bg_poll_odata))) {
+        return rc;
+    }
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s:vbg_ids=%016lx count=%zu odata=%lf %lf %lf\n",
+                __func__, utf_bg_grp->poll_info.utf_bg_poll_ids, utf_bg_grp->poll_info.utf_bg_poll_count,
+                *((double *)utf_bg_grp->poll_info.utf_bg_poll_odata),
+                *((double *)utf_bg_grp->poll_info.utf_bg_poll_odata+1),
+                *((double *)utf_bg_grp->poll_info.utf_bg_poll_odata+2));
+#endif
+    /* Set the reduction results(SUM:float) */
+    UTF_BG_SET_RESULT_FLOAT();
+
+    return UTF_SUCCESS;
+}
+
+/**
+ *
+ * utf_poll_reduce_float16 (Multithreaded version)
+ * Confirm the completion of the reduction operation(SUM:_Float16).
+ *
+ * utf_bg_grp   (IN)   A pointer to the structure that stores the VBG information
+ * data         (OUT)  address of receive buffer
+ */
+static int utf_poll_reduce_float16(utf_coll_group_detail_t *utf_bg_grp, void **data)
+{
+    int rc;
+    size_t i;
+
+    if (UTOFU_SUCCESS !=
+        (rc = utofu_poll_reduce_double(utf_bg_grp->poll_info.utf_bg_poll_ids,
+                                       0,
+                                       (double *)utf_bg_grp->poll_info.utf_bg_poll_odata))) {
+        return rc;
+    }
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s:vbg_ids=%016lx count=%zu odata=%lf %lf %lf\n",
+                __func__, utf_bg_grp->poll_info.utf_bg_poll_ids, utf_bg_grp->poll_info.utf_bg_poll_count,
+                *((double *)utf_bg_grp->poll_info.utf_bg_poll_odata),
+                *((double *)utf_bg_grp->poll_info.utf_bg_poll_odata+1),
+                *((double *)utf_bg_grp->poll_info.utf_bg_poll_odata+2));
+#endif
+    /* Set the reduction results(SUM:_Float16) */
+    UTF_BG_SET_RESULT_FLOAT16();
+
+    return UTF_SUCCESS;
+}
+
+
+/**
+ *
+ * utf_poll_reduce_uint64 (Multithreaded version)
+ * Confirm the completion of the reduction operation(SUM:integer).
+ *
+ * utf_bg_grp   (IN)   A pointer to the structure that stores the VBG information
+ * data         (OUT)  address of receive buffer
+ */
+static int utf_poll_reduce_uint64(utf_coll_group_detail_t *utf_bg_grp, void **data)
+{
+    int rc;
+    size_t i;
+
+    if (UTOFU_SUCCESS !=
+        (rc = utofu_poll_reduce_uint64(utf_bg_grp->poll_info.utf_bg_poll_ids,
+                                       0,
+                                       (uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata))) {
+        return rc;
+    }
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s:vbg_ids=%016lx count=%zu type=0x%08lx odata=%lx %lx %lx %lx %lx %lx\n",
+                __func__, utf_bg_grp->poll_info.utf_bg_poll_ids, utf_bg_grp->poll_info.utf_bg_poll_count,
+                utf_bg_grp->poll_info.utf_bg_poll_datatype,
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+1),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+2),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+3),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+4),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+5));
+#endif
+    /* Set the reduction results(SUM:uint64_t) */
+    UTF_BG_SET_RESULT_UINT64();
+
+    return UTF_SUCCESS;
+}
+
+
+/**
+ *
+ * utf_poll_reduce_double_max_min (Multithreaded version)
+ * Confirm the completion of the reduction operation(MAX/MIN:double).
+ *
+ * utf_bg_grp   (IN)   A pointer to the structure that stores the VBG information
+ * data         (OUT)  address of receive buffer
+ */
+static int utf_poll_reduce_double_max_min(utf_coll_group_detail_t *utf_bg_grp, void **data)
+{
+    int rc;
+    size_t i;
+
+    if (UTOFU_SUCCESS !=
+        (rc = utofu_poll_reduce_uint64(utf_bg_grp->poll_info.utf_bg_poll_ids,
+                                       0,
+                                       (uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata))) {
+        return rc;
+    }
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s:vbg_ids=%016lx op=%d count=%zu type=0x%08lx odata=%lx %lx %lx %lx %lx %lx\n",
+                __func__, utf_bg_grp->poll_info.utf_bg_poll_ids, utf_bg_grp->poll_info.utf_bg_poll_op,
+                utf_bg_grp->poll_info.utf_bg_poll_count, utf_bg_grp->poll_info.utf_bg_poll_datatype,
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+1),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+2),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+3),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+4),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+5));
+#endif
+    /* Set the reduction results(MAX/MIN:double) */
+    UTF_BG_SET_RESULT_DOUBLE_MAX_MIN();
+
+    return UTF_SUCCESS;
+}
+
+
+/**
+ *
+ * utf_poll_reduce_uint64_max_min (Multithreaded version)
+ * Confirm the completion of the reduction operation(MAX/MIN:integer).
+ *
+ * utf_bg_grp   (IN)   A pointer to the structure that stores the VBG information
+ * data         (OUT)  address of receive buffer
+ */
+static int utf_poll_reduce_uint64_max_min(utf_coll_group_detail_t *utf_bg_grp, void **data)
+{
+    int rc;
+    size_t i;
+
+    if (UTOFU_SUCCESS !=
+        (rc = utofu_poll_reduce_uint64(utf_bg_grp->poll_info.utf_bg_poll_ids,
+                                       0,
+                                       (uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata))) {
+        return rc;
+    }
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s:vbg_ids=%016lx op=%d count=%zu type=0x%08lx odata=%lx %lx %lx %lx %lx %lx\n",
+                __func__, utf_bg_grp->poll_info.utf_bg_poll_ids, utf_bg_grp->poll_info.utf_bg_poll_op,
+                utf_bg_grp->poll_info.utf_bg_poll_count, utf_bg_grp->poll_info.utf_bg_poll_datatype,
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+1),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+2),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+3),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+4),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+5));
+#endif
+    /* Set the reduction results(MAX/MIN:uint64_t) */
+    UTF_BG_SET_RESULT_UINT64_MAX_MIN();
+
+    return UTF_SUCCESS;
+}
+
+
+/**
+ *
+ * utf_poll_reduce_logical (Multithreaded version)
+ * Confirm the completion of the reduction operation(LAND/LOR/LXOR).
+ *
+ * utf_bg_grp   (IN)   A pointer to the structure that stores the VBG information
+ * data         (OUT)  address of receive buffer
+ */
+static int utf_poll_reduce_logical(utf_coll_group_detail_t *utf_bg_grp, void **data)
+{
+    int rc, j;
+    int bit_count;
+    size_t i;
+
+    if (UTOFU_SUCCESS !=
+        (rc = utofu_poll_reduce_uint64(utf_bg_grp->poll_info.utf_bg_poll_ids,
+                                       0,
+                                       (uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata))) {
+        return rc;
+    }
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s:vbg_ids=%016lx op=%d count=%zu type=0x%08lx odata=%lx %lx %lx %lx %lx %lx\n",
+                __func__, utf_bg_grp->poll_info.utf_bg_poll_ids, utf_bg_grp->poll_info.utf_bg_poll_op,
+                utf_bg_grp->poll_info.utf_bg_poll_count, utf_bg_grp->poll_info.utf_bg_poll_datatype,
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+1),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+2),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+3),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+4),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+5));
+#endif
+    /* Set the reduction results(LAND/LOR/LXOR) */
+    UTF_BG_SET_RESULT_LOGICAL();
+
+    return UTF_SUCCESS;
+}
+
+
+/**
+ *
+ * utf_poll_reduce_bitwise (Multithreaded version)
+ * Confirm the completion of the reduction operation(BAND/BOR/BXOR).
+ *
+ * utf_bg_grp   (IN)   A pointer to the structure that stores the VBG information
+ * data         (OUT)  address of receive buffer
+ */
+static int utf_poll_reduce_bitwise(utf_coll_group_detail_t *utf_bg_grp, void **data)
+{
+    int rc;
+
+    if (UTOFU_SUCCESS !=
+        (rc = utofu_poll_reduce_uint64(utf_bg_grp->poll_info.utf_bg_poll_ids,
+                                       0,
+                                       (uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata))) {
+        return rc;
+    }
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s:vbg_ids=%016lx op=%d count=%zu type=0x%08lx odata=%lx %lx %lx %lx %lx %lx\n",
+                __func__, utf_bg_grp->poll_info.utf_bg_poll_ids, utf_bg_grp->poll_info.utf_bg_poll_op,
+                utf_bg_grp->poll_info.utf_bg_poll_count, utf_bg_grp->poll_info.utf_bg_poll_datatype,
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+1),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+2),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+3),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+4),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+5));
+#endif
+    /* Set the reduction results(BAND/BOR/BXOR) */
+    UTF_BG_SET_RESULT_BITWISE();
+
+    return UTF_SUCCESS;
+}
+
+
+/**
+ *
+ * utf_poll_reduce_maxmin_loc (Multithreaded version)
+ * Confirm the completion of the reduction operation(MAXLOC/MINLOC).
+ *
+ * utf_bg_grp   (IN)   A pointer to the structure that stores the VBG information
+ * data         (OUT)  address of receive buffer
+ */
+static int utf_poll_reduce_maxmin_loc(utf_coll_group_detail_t *utf_bg_grp, void **data)
+{
+    int rc;
+    size_t i;
+
+    if (UTOFU_SUCCESS !=
+        (rc = utofu_poll_reduce_uint64(utf_bg_grp->poll_info.utf_bg_poll_ids,
+                                       0,
+                                       (uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata))) {
+        return rc;
+    }
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s:vbg_ids=%016lx op=%d count=%zu type=0x%08lx odata=%lx %lx %lx %lx %lx %lx\n",
+                __func__, utf_bg_grp->poll_info.utf_bg_poll_ids, utf_bg_grp->poll_info.utf_bg_poll_op,
+                utf_bg_grp->poll_info.utf_bg_poll_count, utf_bg_grp->poll_info.utf_bg_poll_datatype,
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+1),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+2),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+3),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+4),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+5));
+#endif
+    /* Set the reduction results(MAXLOC/MINLOC) */
+    UTF_BG_SET_RESULT_MAXMIN_LOC();
+
+    return UTF_SUCCESS;
+}
+
+
+/**
+ *
+ * utf_poll_bcast (Multithreaded version)
+ * Confirm the completion of the reduction operation(broadcast).
+ *
+ * utf_bg_grp   (IN)   A pointer to the structure that stores the VBG information
+ * data         (OUT)  address of receive buffer
+ */
+static int utf_poll_bcast(utf_coll_group_detail_t *utf_bg_grp, void **data)
+{
+    int rc;
+
+    if (UTOFU_SUCCESS !=
+        (rc = utofu_poll_reduce_uint64(utf_bg_grp->poll_info.utf_bg_poll_ids,
+                                       0,
+                                       (uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata))) {
+        return rc;
+    }
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s:vbg_ids=%016lx count:%zu type:%lu odata=%lx %lx %lx %lx %lx %lx\n",
+                __func__, utf_bg_grp->poll_info.utf_bg_poll_ids, utf_bg_grp->poll_info.utf_bg_poll_count,
+                utf_bg_grp->poll_info.utf_bg_poll_datatype,
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+1),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+2),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+3),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+4),
+                *((uint64_t *)utf_bg_grp->poll_info.utf_bg_poll_odata+5));
+#endif
+    /* Set the reduction results(broadcast) */
+    UTF_BG_SET_RESULT_BCAST();
+
+    return UTF_SUCCESS;
+}
+
+#else /* !(UTF_THREAD_MULTIPLE) */
+
+/**
+ *
+ * utf_poll_reduce_double (Non-multithreaded version)
  * Confirm the completion of the reduction operation(SUM:double).
  *
  * data         (OUT)  address of receive buffer
@@ -124,7 +547,7 @@ static int utf_poll_reduce_double(void **data)
 
 /**
  *
- * utf_poll_reduce_float
+ * utf_poll_reduce_float (Non-multithreaded version)
  * Confirm the completion of the reduction operation(SUM:float).
  *
  * data         (OUT)  address of receive buffer
@@ -156,7 +579,7 @@ static int utf_poll_reduce_float(void **data)
 
 /**
  *
- * utf_poll_reduce_float16
+ * utf_poll_reduce_float16 (Non-multithreaded version)
  * Confirm the completion of the reduction operation(SUM:_Float16).
  *
  * data         (OUT)  address of receive buffer
@@ -188,7 +611,7 @@ static int utf_poll_reduce_float16(void **data)
 
 /**
  *
- * utf_poll_reduce_uint64
+ * utf_poll_reduce_uint64 (Non-multithreaded version)
  * Confirm the completion of the reduction operation(SUM:integer).
  *
  * data         (OUT)  address of receive buffer
@@ -220,7 +643,7 @@ static int utf_poll_reduce_uint64(void **data)
 
 /**
  *
- * utf_poll_reduce_double_max_min
+ * utf_poll_reduce_double_max_min (Non-multithreaded version)
  * Confirm the completion of the reduction operation(MAX/MIN:double).
  *
  * data         (OUT)  address of receive buffer
@@ -253,7 +676,7 @@ static int utf_poll_reduce_double_max_min(void **data)
 
 /**
  *
- * utf_poll_reduce_uint64_max_min
+ * utf_poll_reduce_uint64_max_min (Non-multithreaded version)
  * Confirm the completion of the reduction operation(MAX/MIN:integer).
  *
  * data         (OUT)  address of receive buffer
@@ -286,7 +709,7 @@ static int utf_poll_reduce_uint64_max_min(void **data)
 
 /**
  *
- * utf_poll_reduce_logical
+ * utf_poll_reduce_logical (Non-multithreaded version)
  * Confirm the completion of the reduction operation(LAND/LOR/LXOR).
  *
  * data         (OUT)  address of receive buffer
@@ -320,7 +743,7 @@ static int utf_poll_reduce_logical(void **data)
 
 /**
  *
- * utf_poll_reduce_bitwise
+ * utf_poll_reduce_bitwise (Non-multithreaded version)
  * Confirm the completion of the reduction operation(BAND/BOR/BXOR).
  *
  * data         (OUT)  address of receive buffer
@@ -352,7 +775,7 @@ static int utf_poll_reduce_bitwise(void **data)
 
 /**
  *
- * utf_poll_reduce_maxmin_loc
+ * utf_poll_reduce_maxmin_loc (Non-multithreaded version)
  * Confirm the completion of the reduction operation(MAXLOC/MINLOC).
  *
  * data         (OUT)  address of receive buffer
@@ -385,7 +808,7 @@ static int utf_poll_reduce_maxmin_loc(void **data)
 
 /**
  *
- * utf_poll_bcast
+ * utf_poll_bcast (Non-multithreaded version)
  * Confirm the completion of the reduction operation(broadcast).
  *
  * data         (OUT)  address of receive buffer
@@ -413,6 +836,8 @@ static int utf_poll_bcast(void **data)
     return UTF_SUCCESS;
 }
 
+#endif /* UTF_THREAD_MULTIPLE */
+
 
 /**
  *
@@ -429,7 +854,11 @@ static inline int utf_bg_reduce_uint64(utf_coll_group_detail_t *utf_bg_grp,
                                        size_t count,
                                        size_t size)
 {
+#if defined(UTF_THREAD_MULTIPLE)
+    uint64_t *idata = utf_bg_grp->poll_info.utf_bg_poll_idata;
+#else /* !(UTF_THREAD_MULTIPLE) */
     uint64_t *idata = poll_info.utf_bg_poll_idata;
+#endif /* UTF_THREAD_MULTIPLE */
     size_t i;
 
     for(i=0;i<count;i++){
@@ -481,6 +910,23 @@ static inline int utf_bg_reduce_uint64(utf_coll_group_detail_t *utf_bg_grp,
     /* Check the algorithm. */
     if(UTF_BG_ALGORITHM){
         /* tofu (hard barrier) */
+#if defined(UTF_THREAD_MULTIPLE)
+
+        /* For multi-threaded version */
+        utf_bg_grp->poll_info.utf_bg_poll_ids = *(utf_bg_grp->vbg_ids);
+        utf_bg_grp->utf_bg_poll_reduce_func = utf_poll_reduce_uint64;
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s:vbg_ids=%016lx count=%zu type=0x%08lx idata=%lx %lx %lx %lx %lx %lx\n",
+                __func__, utf_bg_grp->poll_info.utf_bg_poll_ids, utf_bg_grp->poll_info.utf_bg_poll_count,
+                utf_bg_grp->poll_info.utf_bg_poll_datatype,
+                *((uint64_t *)idata), *((uint64_t *)idata+1), *((uint64_t *)idata+2),
+                *((uint64_t *)idata+3), *((uint64_t *)idata+4), *((uint64_t *)idata+5));
+#endif
+        return utofu_reduce_uint64(utf_bg_grp->poll_info.utf_bg_poll_ids, UTOFU_REDUCE_OP_SUM, idata, count, 0);
+
+#else /* !(UTF_THREAD_MULTIPLE) */
+
+        /* For non-multithreaded version */
         poll_info.utf_bg_poll_ids = *(utf_bg_grp->vbg_ids);
         utf_bg_poll_reduce_func = utf_poll_reduce_uint64;
 #if defined(DEBUGLOG2)
@@ -490,9 +936,15 @@ static inline int utf_bg_reduce_uint64(utf_coll_group_detail_t *utf_bg_grp,
                 *((uint64_t *)idata+3), *((uint64_t *)idata+4), *((uint64_t *)idata+5));
 #endif
         return utofu_reduce_uint64(poll_info.utf_bg_poll_ids, UTOFU_REDUCE_OP_SUM, idata, count, 0);
+#endif /* UTF_THREAD_MULTIPLE */
+
     }else{
         /* sm (soft barrier) */
+#if defined(UTF_THREAD_MULTIPLE)
+        utf_bg_grp->utf_bg_poll_reduce_func = utf_poll_reduce_uint64_sm;
+#else /* !(UTF_THREAD_MULTIPLE) */
         utf_bg_poll_reduce_func = utf_poll_reduce_uint64_sm;
+#endif /* UTF_THREAD_MULTIPLE */
         UTF_BG_INIT_SM(utf_bg_grp, UTF_REDUCE_OP_SUM, count);
         return UTF_SUCCESS;
     }
@@ -514,7 +966,11 @@ static inline int utf_bg_reduce_double(utf_coll_group_detail_t *utf_bg_grp,
                                        size_t count,
                                        size_t size)
 {
+#if defined(UTF_THREAD_MULTIPLE)
+    double *idata = utf_bg_grp->poll_info.utf_bg_poll_idata;
+#else /* !(UTF_THREAD_MULTIPLE) */
     double *idata = poll_info.utf_bg_poll_idata;
+#endif /* UTF_THREAD_MULTIPLE */
     size_t i;
 
     switch((int)size){
@@ -522,36 +978,71 @@ static inline int utf_bg_reduce_double(utf_coll_group_detail_t *utf_bg_grp,
             for(i=0;i<count;i++){
                 *(idata + i) = *((double *)buf + i);
             }
+#if defined(UTF_THREAD_MULTIPLE)
+            utf_bg_grp->utf_bg_poll_reduce_func = utf_poll_reduce_double;
+#else /* !(UTF_THREAD_MULTIPLE) */
             utf_bg_poll_reduce_func = utf_poll_reduce_double;
+#endif /* UTF_THREAD_MULTIPLE */
             break;
         case sizeof(float):
             for(i=0;i<count;i++){
                 *(idata + i) = (double)*((float *)buf + i);
             }
+#if defined(UTF_THREAD_MULTIPLE)
+            utf_bg_grp->utf_bg_poll_reduce_func = utf_poll_reduce_float;
+#else /* !(UTF_THREAD_MULTIPLE) */
             utf_bg_poll_reduce_func = utf_poll_reduce_float;
+#endif /* UTF_THREAD_MULTIPLE */
             break;
         case sizeof(_Float16):
             for(i=0;i<count;i++){
                 *(idata + i) = (double)*((_Float16 *)buf + i);
             }
+#if defined(UTF_THREAD_MULTIPLE)
+            utf_bg_grp->utf_bg_poll_reduce_func = utf_poll_reduce_float16;
+#else /* !(UTF_THREAD_MULTIPLE) */
             utf_bg_poll_reduce_func = utf_poll_reduce_float16;
+#endif /* UTF_THREAD_MULTIPLE */
     }
 
     /* Check the algorithm. */
     if(UTF_BG_ALGORITHM){
         /* tofu (hard barrier) */
+#if defined(UTF_THREAD_MULTIPLE)
+
+        /* For multi-threaded version */
+        utf_bg_grp->poll_info.utf_bg_poll_ids = *(utf_bg_grp->vbg_ids);
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s:vbg_ids=%016lx count=%zu idata=%lf %lf %lf\n",
+                __func__, utf_bg_grp->poll_info.utf_bg_poll_ids, utf_bg_grp->poll_info.utf_bg_poll_count, *idata,
+                *(idata+1), *(idata+2));
+#endif
+        return utofu_reduce_double(utf_bg_grp->poll_info.utf_bg_poll_ids, UTOFU_REDUCE_OP_BFPSUM, idata, count, 0);
+
+#else /* !(UTF_THREAD_MULTIPLE) */
+
+        /* For non-multithreaded version */
         poll_info.utf_bg_poll_ids = *(utf_bg_grp->vbg_ids);
 #if defined(DEBUGLOG2)
         fprintf(stderr, "%s:vbg_ids=%016lx count=%zu idata=%lf %lf %lf\n",
                 __func__, poll_info.utf_bg_poll_ids, poll_info.utf_bg_poll_count, *idata, *(idata+1), *(idata+2));
 #endif
         return utofu_reduce_double(poll_info.utf_bg_poll_ids, UTOFU_REDUCE_OP_BFPSUM, idata, count, 0);
+#endif /* UTF_THREAD_MULTIPLE */
+
     }else{
         /* sm (soft barrier) */
+#if defined(UTF_THREAD_MULTIPLE)
+        utf_bg_grp->utf_bg_poll_reduce_func = utf_poll_reduce_double_sm;
+        UTF_BG_INIT_SM(utf_bg_grp, UTF_REDUCE_OP_BFPSUM, count);
+        /* Resize for complex data type that need to adust size. */
+        utf_bg_grp->poll_info.utf_bg_poll_size = size;
+#else /* !(UTF_THREAD_MULTIPLE) */
         utf_bg_poll_reduce_func = utf_poll_reduce_double_sm;
         UTF_BG_INIT_SM(utf_bg_grp, UTF_REDUCE_OP_BFPSUM, count);
         /* Resize for complex data type that need to adust size. */
         poll_info.utf_bg_poll_size = size;
+#endif /* UTF_THREAD_MULTIPLE */
         return UTF_SUCCESS;
     }
 }
@@ -576,7 +1067,11 @@ static inline int utf_bg_reduce_uint64_max_min(utf_coll_group_detail_t *utf_bg_g
                                                enum utf_reduce_op op,
                                                bool is_signed)
 {
+#if defined(UTF_THREAD_MULTIPLE)
+    uint64_t *idata = utf_bg_grp->poll_info.utf_bg_poll_idata;
+#else /* !(UTF_THREAD_MULTIPLE) */
     uint64_t *idata = poll_info.utf_bg_poll_idata;
+#endif /* UTF_THREAD_MULTIPLE */
     size_t i;
 
     for(i=0;i<count;i++){
@@ -596,6 +1091,23 @@ static inline int utf_bg_reduce_uint64_max_min(utf_coll_group_detail_t *utf_bg_g
     /* Check the algorithm. */
     if(UTF_BG_ALGORITHM){
         /* tofu (hard barrier) */
+#if defined(UTF_THREAD_MULTIPLE)
+
+        /* For multi-threaded version */
+        utf_bg_grp->poll_info.utf_bg_poll_ids = *(utf_bg_grp->vbg_ids);
+        utf_bg_grp->utf_bg_poll_reduce_func = utf_poll_reduce_uint64_max_min;
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s:vbg_ids=%016lx op=%d count=%zu type=0x%08lx idata=%lx %lx %lx %lx %lx %lx\n",
+                __func__, utf_bg_grp->poll_info.utf_bg_poll_ids, utf_bg_grp->poll_info.utf_bg_poll_op,
+                utf_bg_grp->poll_info.utf_bg_poll_count, utf_bg_grp->poll_info.utf_bg_poll_datatype,
+                *((uint64_t *)idata), *((uint64_t *)idata+1), *((uint64_t *)idata+2),
+                *((uint64_t *)idata+3), *((uint64_t *)idata+4), *((uint64_t *)idata+5));
+#endif
+        return utofu_reduce_uint64(utf_bg_grp->poll_info.utf_bg_poll_ids, UTOFU_REDUCE_OP_MAX, idata, count, 0);
+
+#else /* !(UTF_THREAD_MULTIPLE) */
+
+        /* For non-multithreaded version */
         poll_info.utf_bg_poll_ids = *(utf_bg_grp->vbg_ids);
         utf_bg_poll_reduce_func = utf_poll_reduce_uint64_max_min;
 #if defined(DEBUGLOG2)
@@ -606,9 +1118,15 @@ static inline int utf_bg_reduce_uint64_max_min(utf_coll_group_detail_t *utf_bg_g
                 *((uint64_t *)idata+3), *((uint64_t *)idata+4), *((uint64_t *)idata+5));
 #endif
         return utofu_reduce_uint64(poll_info.utf_bg_poll_ids, UTOFU_REDUCE_OP_MAX, idata, count, 0);
+#endif /* UTF_THREAD_MULTIPLE */
+
     }else{
         /* sm (soft barrier) */
+#if defined(UTF_THREAD_MULTIPLE)
+        utf_bg_grp->utf_bg_poll_reduce_func = utf_poll_reduce_uint64_sm;
+#else /* !(UTF_THREAD_MULTIPLE) */
         utf_bg_poll_reduce_func = utf_poll_reduce_uint64_sm;
+#endif /* UTF_THREAD_MULTIPLE */
         UTF_BG_INIT_SM(utf_bg_grp, UTF_REDUCE_OP_MAX, count);
         return UTF_SUCCESS;
     }
@@ -632,7 +1150,11 @@ static inline int utf_bg_reduce_double_max_min(utf_coll_group_detail_t *utf_bg_g
                                                size_t size,
                                                enum utf_reduce_op op)
 {
+#if defined(UTF_THREAD_MULTIPLE)
+    uint64_t *idata = utf_bg_grp->poll_info.utf_bg_poll_idata;
+#else /* !(UTF_THREAD_MULTIPLE) */
     uint64_t *idata = poll_info.utf_bg_poll_idata;
+#endif /* UTF_THREAD_MULTIPLE */
     size_t i;
 
     for(i=0;i<count;i++){
@@ -666,6 +1188,23 @@ static inline int utf_bg_reduce_double_max_min(utf_coll_group_detail_t *utf_bg_g
     /* Check the algorithm. */
     if(UTF_BG_ALGORITHM){
         /* tofu (hard barrier) */
+#if defined(UTF_THREAD_MULTIPLE)
+
+        /* For multi-threaded version */
+        utf_bg_grp->poll_info.utf_bg_poll_ids = *(utf_bg_grp->vbg_ids);
+        utf_bg_grp->utf_bg_poll_reduce_func = utf_poll_reduce_double_max_min;
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s:vbg_ids=%016lx op=%d count=%zu type=0x%08lx idata=%lx %lx %lx %lx %lx %lx\n",
+                __func__, utf_bg_grp->poll_info.utf_bg_poll_ids, utf_bg_grp->poll_info.utf_bg_poll_op,
+                utf_bg_grp->poll_info.utf_bg_poll_count, utf_bg_grp->poll_info.utf_bg_poll_datatype,
+                *((uint64_t *)idata), *((uint64_t *)idata+1), *((uint64_t *)idata+2),
+                *((uint64_t *)idata+3), *((uint64_t *)idata+4), *((uint64_t *)idata+5));
+#endif
+        return utofu_reduce_uint64(utf_bg_grp->poll_info.utf_bg_poll_ids, UTOFU_REDUCE_OP_MAX, idata, count, 0);
+
+#else /* !(UTF_THREAD_MULTIPLE) */
+
+        /* For non-multithreaded version */
         poll_info.utf_bg_poll_ids = *(utf_bg_grp->vbg_ids);
         utf_bg_poll_reduce_func = utf_poll_reduce_double_max_min;
 #if defined(DEBUGLOG2)
@@ -676,9 +1215,15 @@ static inline int utf_bg_reduce_double_max_min(utf_coll_group_detail_t *utf_bg_g
                 *((uint64_t *)idata+3), *((uint64_t *)idata+4), *((uint64_t *)idata+5));
 #endif
         return utofu_reduce_uint64(poll_info.utf_bg_poll_ids, UTOFU_REDUCE_OP_MAX, idata, count, 0);
+#endif /* UTF_THREAD_MULTIPLE */
+
     }else{
         /* sm (soft barrier) */
+#if defined(UTF_THREAD_MULTIPLE)
+        utf_bg_grp->utf_bg_poll_reduce_func = utf_poll_reduce_uint64_sm;
+#else /* !(UTF_THREAD_MULTIPLE) */
         utf_bg_poll_reduce_func = utf_poll_reduce_uint64_sm;
+#endif /* UTF_THREAD_MULTIPLE */
         UTF_BG_INIT_SM(utf_bg_grp, UTF_REDUCE_OP_MAX, count);
         return UTF_SUCCESS;
     }
@@ -702,7 +1247,11 @@ static inline int utf_bg_reduce_logical(utf_coll_group_detail_t *utf_bg_grp,
                                         size_t size,
                                         enum utf_reduce_op op)
 {
+#if defined(UTF_THREAD_MULTIPLE)
+    uint64_t *idata = utf_bg_grp->poll_info.utf_bg_poll_idata;
+#else /* !(UTF_THREAD_MULTIPLE) */
     uint64_t *idata = poll_info.utf_bg_poll_idata;
+#endif /* UTF_THREAD_MULTIPLE */
     int i=0, j=0;
     uint64_t conpare_buff=0;
     /* Used to convert the operation type from logical to bitwise. */
@@ -713,7 +1262,12 @@ static inline int utf_bg_reduce_logical(utf_coll_group_detail_t *utf_bg_grp,
     };
 
     /* Calculates the count when packed in uint64_t idata. */
+#if defined(UTF_THREAD_MULTIPLE)
+    utf_bg_grp->poll_info.utf_bg_poll_numcount =
+                                     (count + (UTF_BG_REDUCE_ULMT_ELMS_64 -1)) / UTF_BG_REDUCE_ULMT_ELMS_64;
+#else /* !(UTF_THREAD_MULTIPLE) */
     poll_info.utf_bg_poll_numcount = (count + (UTF_BG_REDUCE_ULMT_ELMS_64 -1)) / UTF_BG_REDUCE_ULMT_ELMS_64;
+#endif /* UTF_THREAD_MULTIPLE */
 
     /* Check the value of buf, and if it is non-zero, set up a bit.
        It is possible to pack 64 bits in each element of uint64_t type. */
@@ -737,6 +1291,25 @@ static inline int utf_bg_reduce_logical(utf_coll_group_detail_t *utf_bg_grp,
     /* Check the algorithm. */
     if(UTF_BG_ALGORITHM){
         /* tofu (hard barrier) */
+#if defined(UTF_THREAD_MULTIPLE)
+
+        /* For multi-threaded version */
+        utf_bg_grp->poll_info.utf_bg_poll_ids = *(utf_bg_grp->vbg_ids);
+        utf_bg_grp->utf_bg_poll_reduce_func = utf_poll_reduce_logical;
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s:vbg_ids=%016lx op=%d count=%zu type=0x%08lx idata=%lx %lx %lx %lx %lx %lx\n",
+                __func__, utf_bg_grp->poll_info.utf_bg_poll_ids, utf_bg_grp->poll_info.utf_bg_poll_op,
+                utf_bg_grp->poll_info.utf_bg_poll_count, utf_bg_grp->poll_info.utf_bg_poll_datatype,
+                *((uint64_t *)idata), *((uint64_t *)idata+1), *((uint64_t *)idata+2),
+                *((uint64_t *)idata+3), *((uint64_t *)idata+4), *((uint64_t *)idata+5));
+#endif
+        return utofu_reduce_uint64(utf_bg_grp->poll_info.utf_bg_poll_ids,
+                                   (enum utofu_reduce_op)utf_reduce_op_type[op%(UTF_REDUCE_OP_LAND-2)-2],
+                                   idata, utf_bg_grp->poll_info.utf_bg_poll_numcount, 0);
+
+#else /* !(UTF_THREAD_MULTIPLE) */
+
+        /* For non-multithreaded version */
         poll_info.utf_bg_poll_ids = *(utf_bg_grp->vbg_ids);
         utf_bg_poll_reduce_func = utf_poll_reduce_logical;
 #if defined(DEBUGLOG2)
@@ -749,10 +1322,18 @@ static inline int utf_bg_reduce_logical(utf_coll_group_detail_t *utf_bg_grp,
         return utofu_reduce_uint64(poll_info.utf_bg_poll_ids,
                                    (enum utofu_reduce_op)utf_reduce_op_type[op%(UTF_REDUCE_OP_LAND-2)-2],
                                    idata, poll_info.utf_bg_poll_numcount, 0);
+#endif /* UTF_THREAD_MULTIPLE */
+
     }else{
         /* sm (soft barrier) */
+#if defined(UTF_THREAD_MULTIPLE)
+        utf_bg_grp->utf_bg_poll_reduce_func = utf_poll_reduce_uint64_sm;
+        UTF_BG_INIT_SM(utf_bg_grp, utf_reduce_op_type[op%(UTF_REDUCE_OP_LAND-2)-2],
+                       utf_bg_grp->poll_info.utf_bg_poll_numcount);
+#else /* !(UTF_THREAD_MULTIPLE) */
         utf_bg_poll_reduce_func = utf_poll_reduce_uint64_sm;
         UTF_BG_INIT_SM(utf_bg_grp, utf_reduce_op_type[op%(UTF_REDUCE_OP_LAND-2)-2], poll_info.utf_bg_poll_numcount);
+#endif /* UTF_THREAD_MULTIPLE */
         return UTF_SUCCESS;
     }
 }
@@ -775,7 +1356,11 @@ static inline int utf_bg_reduce_bitwise(utf_coll_group_detail_t *utf_bg_grp,
                                         size_t size,
                                         enum utf_reduce_op op)
 {
+#if defined(UTF_THREAD_MULTIPLE)
+    uint64_t *idata = utf_bg_grp->poll_info.utf_bg_poll_idata;
+#else /* !(UTF_THREAD_MULTIPLE) */
     uint64_t *idata = poll_info.utf_bg_poll_idata;
+#endif /* UTF_THREAD_MULTIPLE */
     size_t num_count;
 
     /* Calculates the count when packed in uint64_t idata. */
@@ -786,6 +1371,24 @@ static inline int utf_bg_reduce_bitwise(utf_coll_group_detail_t *utf_bg_grp,
     /* Check the algorithm. */
     if(UTF_BG_ALGORITHM){
         /* tofu (hard barrier) */
+#if defined(UTF_THREAD_MULTIPLE)
+
+        /* For multi-threaded version */
+        utf_bg_grp->poll_info.utf_bg_poll_ids = *(utf_bg_grp->vbg_ids);
+        utf_bg_grp->utf_bg_poll_reduce_func = utf_poll_reduce_bitwise;
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s:vbg_ids=%016lx op=%d count=%zu type=0x%08lx idata=%lx %lx %lx %lx %lx %lx\n",
+                __func__, utf_bg_grp->poll_info.utf_bg_poll_ids, utf_bg_grp->poll_info.utf_bg_poll_op,
+                utf_bg_grp->poll_info.utf_bg_poll_count, utf_bg_grp->poll_info.utf_bg_poll_datatype,
+                *((uint64_t *)idata), *((uint64_t *)idata+1), *((uint64_t *)idata+2),
+                *((uint64_t *)idata+3), *((uint64_t *)idata+4), *((uint64_t *)idata+5));
+#endif
+        return utofu_reduce_uint64(utf_bg_grp->poll_info.utf_bg_poll_ids, (enum utofu_reduce_op)op,
+                                   idata, num_count, 0);
+
+#else /* !(UTF_THREAD_MULTIPLE) */
+
+        /* For non-multithreaded version */
         poll_info.utf_bg_poll_ids = *(utf_bg_grp->vbg_ids);
         utf_bg_poll_reduce_func = utf_poll_reduce_bitwise;
 #if defined(DEBUGLOG2)
@@ -797,9 +1400,15 @@ static inline int utf_bg_reduce_bitwise(utf_coll_group_detail_t *utf_bg_grp,
 #endif
         return utofu_reduce_uint64(poll_info.utf_bg_poll_ids, (enum utofu_reduce_op)op,
                                    idata, num_count, 0);
+#endif /* UTF_THREAD_MULTIPLE */
+
     }else{
         /* sm (soft barrier) */
+#if defined(UTF_THREAD_MULTIPLE)
+        utf_bg_grp->utf_bg_poll_reduce_func = utf_poll_reduce_uint64_sm;
+#else /* !(UTF_THREAD_MULTIPLE) */
         utf_bg_poll_reduce_func = utf_poll_reduce_uint64_sm;
+#endif /* UTF_THREAD_MULTIPLE */
         UTF_BG_INIT_SM(utf_bg_grp, op, num_count);
         return UTF_SUCCESS;
     }
@@ -823,7 +1432,11 @@ static inline int utf_bg_reduce_maxmin_loc(utf_coll_group_detail_t *utf_bg_grp,
                                            size_t size,
                                            enum utf_reduce_op op)
 {
+#if defined(UTF_THREAD_MULTIPLE)
+    uint64_t *idata = utf_bg_grp->poll_info.utf_bg_poll_idata;
+#else /* !(UTF_THREAD_MULTIPLE) */
     uint64_t *idata = poll_info.utf_bg_poll_idata;
+#endif /* UTF_THREAD_MULTIPLE */
     size_t i;
     size_t num_count = count*2;
 
@@ -846,7 +1459,13 @@ static inline int utf_bg_reduce_maxmin_loc(utf_coll_group_detail_t *utf_bg_grp,
      *
      */
     for(i=0;i<num_count;i++){
-        switch(poll_info.utf_bg_poll_datatype){
+        switch (
+#if defined(UTF_THREAD_MULTIPLE)
+                utf_bg_grp->poll_info.utf_bg_poll_datatype
+#else /* !(UTF_THREAD_MULTIPLE) */
+                poll_info.utf_bg_poll_datatype
+#endif /* UTF_THREAD_MULTIPLE */
+                                                          ) {
             case UTF_DATATYPE_2INT:
                 memcpy((char *)idata+i*sizeof(uint64_t)+sizeof(uint64_t)-size/2, (char *)buf+i*size/2, size/2);
                 break;
@@ -881,6 +1500,23 @@ static inline int utf_bg_reduce_maxmin_loc(utf_coll_group_detail_t *utf_bg_grp,
     /* Check the algorithm. */
     if(UTF_BG_ALGORITHM){
         /* tofu (hard barrier) */
+#if defined(UTF_THREAD_MULTIPLE)
+
+        /* For multi-threaded version */
+        utf_bg_grp->poll_info.utf_bg_poll_ids = *(utf_bg_grp->vbg_ids);
+        utf_bg_grp->utf_bg_poll_reduce_func = utf_poll_reduce_maxmin_loc;
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s:vbg_ids=%016lx op=%d count=%zu type=0x%08lx idata=%lx %lx %lx %lx %lx %lx\n",
+                __func__, utf_bg_grp->poll_info.utf_bg_poll_ids, utf_bg_grp->poll_info.utf_bg_poll_op,
+                utf_bg_grp->poll_info.utf_bg_poll_count, utf_bg_grp->poll_info.utf_bg_poll_datatype,
+                *((uint64_t *)idata), *((uint64_t *)idata+1), *((uint64_t *)idata+2),
+                *((uint64_t *)idata+3), *((uint64_t *)idata+4), *((uint64_t *)idata+5));
+#endif
+        return utofu_reduce_uint64(utf_bg_grp->poll_info.utf_bg_poll_ids, UTOFU_REDUCE_OP_MAXLOC, idata, num_count, 0);
+
+#else /* !(UTF_THREAD_MULTIPLE) */
+
+        /* For non-multithreaded version */
         poll_info.utf_bg_poll_ids = *(utf_bg_grp->vbg_ids);
         utf_bg_poll_reduce_func = utf_poll_reduce_maxmin_loc;
 #if defined(DEBUGLOG2)
@@ -891,9 +1527,15 @@ static inline int utf_bg_reduce_maxmin_loc(utf_coll_group_detail_t *utf_bg_grp,
                 *((uint64_t *)idata+3), *((uint64_t *)idata+4), *((uint64_t *)idata+5));
 #endif
         return utofu_reduce_uint64(poll_info.utf_bg_poll_ids, UTOFU_REDUCE_OP_MAXLOC, idata, num_count, 0);
+#endif /* UTF_THREAD_MULTIPLE */
+
     }else{
         /* sm (soft barrier) */
+#if defined(UTF_THREAD_MULTIPLE)
+        utf_bg_grp->utf_bg_poll_reduce_func = utf_poll_reduce_uint64_sm;
+#else /* !(UTF_THREAD_MULTIPLE) */
         utf_bg_poll_reduce_func = utf_poll_reduce_uint64_sm;
+#endif /* UTF_THREAD_MULTIPLE */
         UTF_BG_INIT_SM(utf_bg_grp, UTF_REDUCE_OP_MAXLOC, num_count);
         return UTF_SUCCESS;
     }
@@ -915,10 +1557,14 @@ static inline int utf_bg_reduce_maxmin_loc(utf_coll_group_detail_t *utf_bg_grp,
 int utf_broadcast(utf_coll_group_t group_struct, void *buf, size_t size, void *desc, int root)
 {
     utf_coll_group_detail_t *utf_bg_grp = (utf_coll_group_detail_t *)group_struct;
+#if defined(UTF_THREAD_MULTIPLE)
+    uint64_t *idata = utf_bg_grp->poll_info.utf_bg_poll_idata;
+#else /* !(UTF_THREAD_MULTIPLE) */
     uint64_t *idata = poll_info.utf_bg_poll_idata;
+#endif /* UTF_THREAD_MULTIPLE */
     size_t num_count;
 
-#if defined(DEBUGLOG2)
+#if defined(DEBUGLOG2) && !defined(UTF_THREAD_MULTIPLE)
     /* Check the arguments. */
     assert(group_struct != NULL);
     utf_bg_poll_grp_addr = group_struct;
@@ -947,6 +1593,23 @@ int utf_broadcast(utf_coll_group_t group_struct, void *buf, size_t size, void *d
     /* Check the algorithm. */
     if(UTF_BG_ALGORITHM){
         /* tofu (hard barrier) */
+#if defined(UTF_THREAD_MULTIPLE)
+
+        /* For multi-threaded version */
+        utf_bg_grp->poll_info.utf_bg_poll_ids = *(utf_bg_grp->vbg_ids);
+        utf_bg_grp->utf_bg_poll_reduce_func = utf_poll_bcast;
+#if defined(DEBUGLOG2)
+        fprintf(stderr, "%s:vbg_ids=%016lx count=%zu type=0x%08lx idata=%lx %lx %lx %lx %lx %lx\n",
+                __func__, utf_bg_grp->poll_info.utf_bg_poll_ids, utf_bg_grp->poll_info.utf_bg_poll_count,
+                utf_bg_grp->poll_info.utf_bg_poll_datatype,
+                *((uint64_t *)idata), *((uint64_t *)idata+1), *((uint64_t *)idata+2),
+                *((uint64_t *)idata+3), *((uint64_t *)idata+4), *((uint64_t *)idata+5));
+#endif
+        return utofu_reduce_uint64(utf_bg_grp->poll_info.utf_bg_poll_ids, UTOFU_REDUCE_OP_BOR, idata, num_count, 0);
+
+#else /* !(UTF_THREAD_MULTIPLE) */
+
+        /* For non-multithreaded version */
         poll_info.utf_bg_poll_ids = *(utf_bg_grp->vbg_ids);
         utf_bg_poll_reduce_func = utf_poll_bcast;
 #if defined(DEBUGLOG2)
@@ -956,9 +1619,15 @@ int utf_broadcast(utf_coll_group_t group_struct, void *buf, size_t size, void *d
                 *((uint64_t *)idata+3), *((uint64_t *)idata+4), *((uint64_t *)idata+5));
 #endif
         return utofu_reduce_uint64(poll_info.utf_bg_poll_ids, UTOFU_REDUCE_OP_BOR, idata, num_count, 0);
+#endif /* UTF_THREAD_MULTIPLE */
+
     }else{
         /* sm (soft barrier) */
+#if defined(UTF_THREAD_MULTIPLE)
+        utf_bg_grp->utf_bg_poll_reduce_func = utf_poll_reduce_uint64_sm;
+#else /* !(UTF_THREAD_MULTIPLE) */
         utf_bg_poll_reduce_func = utf_poll_reduce_uint64_sm;
+#endif /* UTF_THREAD_MULTIPLE */
         UTF_BG_INIT_SM(utf_bg_grp, UTF_REDUCE_OP_BOR, num_count);
         return UTF_SUCCESS;
     }
@@ -1010,7 +1679,11 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
                 utf_bg_counter++;
                 /* Saves information for use in the poll function. */
                 UTF_BG_REDUCE_INFO_SET(result, op, count, datatype, reduce_root);
+#if defined(UTF_THREAD_MULTIPLE)
+                return utf_bg_reduce_double(utf_bg_grp, sbuf, count, utf_bg_grp->poll_info.utf_bg_poll_size);
+#else /* !(UTF_THREAD_MULTIPLE) */
                 return utf_bg_reduce_double(utf_bg_grp, sbuf, count, poll_info.utf_bg_poll_size);
+#endif /* UTF_THREAD_MULTIPLE */
             }else if(datatype_div == UTF_DATATYPE_DIV_INT){
                 /* The datatype is an integer datatype. */
 
@@ -1021,7 +1694,11 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
                 utf_bg_counter++;
                 /* Saves information for use in the poll function. */
                 UTF_BG_REDUCE_INFO_SET(result, op, count, datatype, reduce_root);
+#if defined(UTF_THREAD_MULTIPLE)
+                return utf_bg_reduce_uint64(utf_bg_grp, sbuf, count, utf_bg_grp->poll_info.utf_bg_poll_size);
+#else /* !(UTF_THREAD_MULTIPLE) */
                 return utf_bg_reduce_uint64(utf_bg_grp, sbuf, count, poll_info.utf_bg_poll_size);
+#endif /* UTF_THREAD_MULTIPLE */
             }else if(datatype_div == UTF_DATATYPE_DIV_COMP){
                 /* The datatype is a complex datatype. */
 
@@ -1035,7 +1712,11 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
 
                 /* Adjust count and size to process the real part and 
                    the imaginary part separately for each element. */
+#if defined(UTF_THREAD_MULTIPLE)
+                return utf_bg_reduce_double(utf_bg_grp, sbuf, 2, utf_bg_grp->poll_info.utf_bg_poll_size/2);
+#else /* !(UTF_THREAD_MULTIPLE) */
                 return utf_bg_reduce_double(utf_bg_grp, sbuf, 2, poll_info.utf_bg_poll_size/2);
+#endif /* UTF_THREAD_MULTIPLE */
             }
             break;
         case UTF_REDUCE_OP_MAX:
@@ -1052,7 +1733,12 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
                 /* Saves information for use in the poll function. */
                 UTF_BG_REDUCE_INFO_SET(result, op, count, datatype, reduce_root);
 
+#if defined(UTF_THREAD_MULTIPLE)
+                return utf_bg_reduce_double_max_min(utf_bg_grp, sbuf, count,
+                                                    utf_bg_grp->poll_info.utf_bg_poll_size, op);
+#else /* !(UTF_THREAD_MULTIPLE) */
                 return utf_bg_reduce_double_max_min(utf_bg_grp, sbuf, count, poll_info.utf_bg_poll_size, op);
+#endif /* UTF_THREAD_MULTIPLE */
             }else if(datatype_div == UTF_DATATYPE_DIV_INT){
                 utf_bg_counter++;
                 /* The datatype is an integer datatype. */
@@ -1061,8 +1747,13 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
                 UTF_BG_REDUCE_INFO_SET(result, op, count, datatype, reduce_root);
 
                 /* Check if it is a signed minus number.(datatype >> 16) */
+#if defined(UTF_THREAD_MULTIPLE)
+                return utf_bg_reduce_uint64_max_min(utf_bg_grp, sbuf, count,
+                                                    utf_bg_grp->poll_info.utf_bg_poll_size, op, datatype >> 16);
+#else /* !(UTF_THREAD_MULTIPLE) */
                 return utf_bg_reduce_uint64_max_min(utf_bg_grp, sbuf, count,
                                                     poll_info.utf_bg_poll_size, op, datatype >> 16);
+#endif /* UTF_THREAD_MULTIPLE */
             }
             break;
         case UTF_REDUCE_OP_MAXLOC:
@@ -1077,7 +1768,11 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
                 /* Saves information for use in the poll function. */
                 UTF_BG_REDUCE_INFO_SET(result, op, count, datatype, reduce_root);
 
+#if defined(UTF_THREAD_MULTIPLE)
+                return utf_bg_reduce_maxmin_loc(utf_bg_grp, sbuf, count, utf_bg_grp->poll_info.utf_bg_poll_size, op);
+#else /* !(UTF_THREAD_MULTIPLE) */
                 return utf_bg_reduce_maxmin_loc(utf_bg_grp, sbuf, count, poll_info.utf_bg_poll_size, op);
+#endif /* UTF_THREAD_MULTIPLE */
             }
             break;
         case UTF_REDUCE_OP_BAND:
@@ -1093,7 +1788,11 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
                 /* Saves information for use in the poll function. */
                 UTF_BG_REDUCE_INFO_SET(result, op, count, datatype, reduce_root);
 
+#if defined(UTF_THREAD_MULTIPLE)
+                return utf_bg_reduce_bitwise(utf_bg_grp, sbuf, count, utf_bg_grp->poll_info.utf_bg_poll_size, op);
+#else /* !(UTF_THREAD_MULTIPLE) */
                 return utf_bg_reduce_bitwise(utf_bg_grp, sbuf, count, poll_info.utf_bg_poll_size, op);
+#endif /* UTF_THREAD_MULTIPLE */
             }
             break;
         case UTF_REDUCE_OP_LAND:
@@ -1109,7 +1808,11 @@ static inline int utf_bg_reduce_base(utf_coll_group_detail_t *utf_bg_grp,
                 /* Saves information for use in the poll function. */
                 UTF_BG_REDUCE_INFO_SET(result, op, count, datatype, reduce_root);
 
+#if defined(UTF_THREAD_MULTIPLE)
+                return utf_bg_reduce_logical(utf_bg_grp, sbuf, count, utf_bg_grp->poll_info.utf_bg_poll_size, op);
+#else /* !(UTF_THREAD_MULTIPLE) */
                 return utf_bg_reduce_logical(utf_bg_grp, sbuf, count, poll_info.utf_bg_poll_size, op);
+#endif /* UTF_THREAD_MULTIPLE */
             }
             break;
         default:
@@ -1142,7 +1845,7 @@ int utf_allreduce(utf_coll_group_t group_struct,
                   enum utf_datatype datatype,
                   enum utf_reduce_op op)
 {
-#if defined(DEBUGLOG2)
+#if defined(DEBUGLOG2) && !defined(UTF_THREAD_MULTIPLE)
     /* Check the arguments. */
     assert(group_struct != NULL);
     utf_bg_poll_grp_addr = group_struct;
@@ -1178,7 +1881,7 @@ int utf_reduce(utf_coll_group_t group_struct,
                enum utf_reduce_op op,
                int root)
 {
-#if defined(DEBUGLOG2)
+#if defined(DEBUGLOG2) && !defined(UTF_THREAD_MULTIPLE)
     /* Check the arguments. */
     assert(group_struct != NULL);
     utf_bg_poll_grp_addr = group_struct;
@@ -1199,8 +1902,14 @@ int utf_reduce(utf_coll_group_t group_struct,
  */
 int utf_poll_reduce(utf_coll_group_t group_struct, void **data)
 {
-#if defined(DEBUGLOG2)
+#if defined(DEBUGLOG2) && !defined(UTF_THREAD_MULTIPLE)
     assert(group_struct == utf_bg_poll_grp_addr);
 #endif
+#if defined(UTF_THREAD_MULTIPLE)
+    utf_coll_group_detail_t *utf_bg_grp = (utf_coll_group_detail_t *)group_struct;
+
+    return utf_bg_grp->utf_bg_poll_reduce_func(utf_bg_grp, data);
+#else /* !(UTF_THREAD_MULTIPLE) */
     return utf_bg_poll_reduce_func(data);
+#endif /* UTF_THREAD_MULTIPLE */
 }

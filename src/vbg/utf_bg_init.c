@@ -473,6 +473,31 @@ int utf_bg_init(
 #endif /* DEBUGLOG */
     }
 
+#if defined(UTF_THREAD_MULTIPLE)
+    /* Allocate the temporary data buffer for reduction operations. */
+    /* (In the multithreaded version, the buffer is created for each init.)  */
+    /*  need size = data size(8) * max element number(6) * in/out(2) = 96 */
+    /* (Allocate lager than need size.) */
+    if (0 != (wrc = posix_memalign(&(utf_bg_detail_info->poll_info.utf_bg_poll_idata),
+                                   UTF_BG_CACHE_LINE_SIZE, UTF_BG_CACHE_LINE_SIZE*2))) {
+        utf_printf("%s: posix_memalign() FAILED: my_index=%zu wrc=%d\n",
+                   __func__, my_index, wrc);
+        if (utf_bg_mmap_file_info.file_name) {
+            close(utf_bg_mmap_file_info.fd);
+            free(utf_bg_mmap_file_info.file_name);
+            utf_bg_mmap_file_info.file_name = NULL;
+        }
+        return (wrc==ENOMEM ? UTF_ERR_OUT_OF_MEMORY:UTF_ERR_INTERNAL);
+    }
+    utf_bg_detail_info->poll_info.utf_bg_poll_odata =
+        (char *)utf_bg_detail_info->poll_info.utf_bg_poll_idata + UTF_BG_CACHE_LINE_SIZE;
+#if defined(DEBUGLOG)
+    fprintf(stderr, "%s: UTF_THREAD_MULTIPLE: my_index=%zu poll_idata=%p, poll_odata=%p\n",
+            __func__, my_index, utf_bg_detail_info->poll_info.utf_bg_poll_idata,
+            utf_bg_detail_info->poll_info.utf_bg_poll_odata);
+#endif /* DEBUGLOG */
+
+#else /* !(UTF_THREAD_MULTIPLE) */
     if (utf_bg_detail_info_first_alloc == utf_bg_detail_info) {
         /* Allocate the temporary data buffer for reduction operations. */
         /*  need size = data size(8) * max element number(6) * in/out(2) = 96 */
@@ -495,6 +520,7 @@ int utf_bg_init(
                 __func__, my_index, poll_info.utf_bg_poll_idata, poll_info.utf_bg_poll_odata);
 #endif /* DEBUGLOG */
     }
+#endif /* UTF_THREAD_MULTIPLE */
 
     /* Set the group_struct. */
     *group_struct = (utf_coll_group_t)utf_bg_detail_info;
