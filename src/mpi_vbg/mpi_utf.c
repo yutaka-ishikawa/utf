@@ -322,6 +322,7 @@ MPI_Init_thread(int *argc, char ***argv, int required, int *provided)
 	}
 	return 0;
     }
+    cominfo_init(COMINFO_SIZE);
     PMPI_Comm_size(MPI_COMM_WORLD, &nprocs);
     PMPI_Comm_rank(MPI_COMM_WORLD, &myrank);
     MALLOC_CHECK(err0, rankset, malloc(sizeof(uint32_t)*nprocs));
