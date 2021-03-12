@@ -3,7 +3,7 @@
 JOB_SAMPLE="pjsub-sample.sh"
 PJSUB_SCRIPT="run-fugaku-test-job-tmp.sh"
 PJSTAT_MAX_NUM="2"
-CSV_FILE_OUT="OFF"
+CSV_FILE_OUT="ON"
 
 # Read TP.list
 if [ $# = 0 ]; then
