@@ -199,8 +199,33 @@ typedef struct{
     size_t dst_rmt_index;
 } utf_rmt_src_dst_index_t;
 
+/*
+ * Information about the barrier/reduce operations
+ */
+typedef struct {
+    utofu_vbg_id_t utf_bg_poll_ids;
+    void          *utf_bg_poll_odata;
+    void          *utf_bg_poll_idata;
+    void          *utf_bg_poll_result;
+    int            utf_bg_poll_op;
+    size_t         utf_bg_poll_count;
+    uint64_t       utf_bg_poll_datatype;
+    size_t         utf_bg_poll_size;
+    int            utf_bg_poll_numcount;
+    bool           utf_bg_poll_root;
+    // Shared memory communication uses the following variables.
+    bool           sm_flg_comm_start;/* Flag to check the start of barrier communication */
+    int            sm_utofu_op;     /* Operation type(utofu) */
+    int            sm_loop_counter; /* Loop counter */
+    size_t         sm_loop_rank;    /* Loop rank */
+    size_t         sm_numproc;      // == intra_node_info->size
+    size_t         sm_intra_index;  // == intra_node_info->intra_index
+    uint64_t       sm_seq_val;      // == intra_node_info->curr_seq
+    volatile uint64_t *sm_mmap_buf; // == intra_node_info->mmap_buf
+} utf_bg_poll_info_t;
+
 /** Information for one barrier network handing between functions */
-typedef struct{
+typedef struct utf_coll_group_detail_t_ {
     /*
      * The arguments for utf_bg_alloc function
      */
@@ -241,6 +266,14 @@ typedef struct{
      */
     utf_rmt_src_dst_index_t  *rmt_src_dst_seqs;
 
+#if defined(UTF_THREAD_MULTIPLE)
+    /* Information about the barreir/reduce functions */
+    int utf_bg_poll_barrier_func;
+    int (*utf_bg_poll_reduce_func) (struct utf_coll_group_detail_t_ *, void **);
+
+    /* Information about the barrier/reduce operations */
+    utf_bg_poll_info_t poll_info;
+#endif
 } utf_coll_group_detail_t;
 
 /*
@@ -266,29 +299,9 @@ extern utofu_tni_id_t utf_bg_next_tni_id;
 extern uint64_t utf_bg_alloc_count;
 /* Vpid list in my node */
 extern size_t *utf_bg_alloc_intra_world_indexes;
-
-typedef struct {
-    utofu_vbg_id_t utf_bg_poll_ids;
-    void          *utf_bg_poll_odata;
-    void          *utf_bg_poll_idata;
-    void          *utf_bg_poll_result;
-    int            utf_bg_poll_op;
-    size_t         utf_bg_poll_count;
-    uint64_t       utf_bg_poll_datatype;
-    size_t         utf_bg_poll_size;
-    int            utf_bg_poll_numcount;
-    bool           utf_bg_poll_root;
-    // Shared memory communication uses the following variables.
-    bool           sm_flg_comm_start;/* Flag to check the start of barrier communication */
-    int            sm_utofu_op;     /* Operation type(utofu) */
-    int            sm_loop_counter; /* Loop counter */
-    size_t         sm_loop_rank;    /* Loop rank */
-    size_t         sm_numproc;      // == intra_node_info->size
-    size_t         sm_intra_index;  // == intra_node_info->intra_index
-    uint64_t       sm_seq_val;      // == intra_node_info->curr_seq
-    volatile uint64_t *sm_mmap_buf; // == intra_node_info->mmap_buf
-} utf_bg_poll_info_t;
+#if !defined(UTF_THREAD_MULTIPLE)
 extern utf_bg_poll_info_t poll_info;
+#endif
 
 #if defined(UTF_BG_UNIT_TEST)
 /*

@@ -45,7 +45,11 @@ static int ppn_job;
 
 utf_bg_mmap_file_info_t utf_bg_mmap_file_info; /* Information about a mmap file */
 
+#if defined(UTF_THREAD_MULTIPLE)
+static unsigned long int utf_bg_alloc_flags = UTOFU_VBG_FLAG_THREAD_SAFE;
+#else
 static unsigned long int utf_bg_alloc_flags = 0UL;
+#endif
 static int max_intra_node_procs_for_hb = UTF_BG_ALLOC_MAX_PROC_IN_NODE_FOR_HB;
 utofu_tni_id_t utf_bg_next_tni_id;
 uint64_t utf_bg_alloc_count;
@@ -825,7 +829,7 @@ int make_axes_and_intra_node_infos(
             utf_bg_alloc_axis_node_info_t *temp;
             for (s=0UL,temp=(axisptr + i)->nodeinfo;
                  s<(axisptr + i)->size;s++,temp++) {
-                fprintf(stderr,"DEBUGLOG %s:%s:my_index=%zu:AXISINFO %zu nodeinfo=%zu/%zu index=%zu log3daddr=%u-%u-%u phy6daddr=%02u-%02u-%02u-%1u-%1u-%1u \n"
+                fprintf(stderr,"DEBUGLOG %s:%s:my_index=%zu:AXISINFO %zu nodeinfo=%zu/%zu index=%zu log3daddr=%u-%u-%u phy6daddr=%03u-%03u-%03u-%03u-%03u-%03u \n"
                     ,my_hostname,__func__,my_index
                     ,i,s,(axisptr + i)->size,temp->index
                     ,temp->log_3d_addr.s.x
@@ -905,14 +909,14 @@ static void print_sequence(utf_bf_alloc_butterfly_sequence_info_t *seqptr,
 {
     size_t i;
     utf_bf_alloc_butterfly_sequence_info_t *temp = seqptr;
-    char recvaddr[14];
-    char sendaddr[14];
+    char recvaddr[32];
+    char sendaddr[32];
 
     fprintf(stderr,"***************************************** \n");
     for (i=0;i<number_gates_max;i++,seqptr++) {
 
         if (seqptr->recvinfo.phy_6d_addr) {
-            sprintf(recvaddr,"%02u-%02u-%02u-%1u-%1u-%1u"
+            sprintf(recvaddr,"%03u-%03u-%03u-%03u-%03u-%03u"
                 ,seqptr->recvinfo.phy_6d_addr->s.x
                 ,seqptr->recvinfo.phy_6d_addr->s.y
                 ,seqptr->recvinfo.phy_6d_addr->s.z
@@ -924,7 +928,7 @@ static void print_sequence(utf_bf_alloc_butterfly_sequence_info_t *seqptr,
         else { strcpy(&recvaddr[0],"NULL"); }
 
         if (seqptr->sendinfo.phy_6d_addr) {
-            sprintf(sendaddr,"%02u-%02u-%02u-%1u-%1u-%1u"
+            sprintf(sendaddr,"%03u-%03u-%03u-%03u-%03u-%03u"
                 ,seqptr->sendinfo.phy_6d_addr->s.x
                 ,seqptr->sendinfo.phy_6d_addr->s.y
                 ,seqptr->sendinfo.phy_6d_addr->s.z
@@ -960,7 +964,7 @@ static void print_sequence(utf_bf_alloc_butterfly_sequence_info_t *seqptr,
     while (seqptr) {
 
         if (seqptr->recvinfo.phy_6d_addr) {
-            sprintf(recvaddr,"%02u-%02u-%02u-%1u-%1u-%1u"
+            sprintf(recvaddr,"%03u-%03u-%03u-%03u-%03u-%03u"
                 ,seqptr->recvinfo.phy_6d_addr->s.x
                 ,seqptr->recvinfo.phy_6d_addr->s.y
                 ,seqptr->recvinfo.phy_6d_addr->s.z
@@ -972,7 +976,7 @@ static void print_sequence(utf_bf_alloc_butterfly_sequence_info_t *seqptr,
         else { strcpy(&recvaddr[0],"NULL"); }
 
         if (seqptr->sendinfo.phy_6d_addr) {
-            sprintf(sendaddr,"%02u-%02u-%02u-%1u-%1u-%1u"
+            sprintf(sendaddr,"%03u-%03u-%03u-%03u-%03u-%03u"
                 ,seqptr->sendinfo.phy_6d_addr->s.x
                 ,seqptr->sendinfo.phy_6d_addr->s.y
                 ,seqptr->sendinfo.phy_6d_addr->s.z
@@ -2482,7 +2486,7 @@ int make_bginfo(utofu_tni_id_t my_tni,
                     dst_id);
 
 #if defined(DEBUGLOG)
-           fprintf(stderr,"DEBUGLOG %s:%s:my_rankset_index=%zu: sendseq=%p vbg=%016lx :recvseq=%p vbg=%016lx : bginfo index=%zu bginfo=%016lx [src=%x dst=%x 6daddr=%02u-%02u-%02u-%1u-%1u-%1u tni=%d] \n"
+           fprintf(stderr,"DEBUGLOG %s:%s:my_rankset_index=%zu: sendseq=%p vbg=%016lx :recvseq=%p vbg=%016lx : bginfo index=%zu bginfo=%016lx [src=%x dst=%x 6daddr=%03u-%03u-%03u-%03u-%03u-%03u tni=%d] \n"
                ,my_hostname,__func__,my_rankset_index
                ,sendseq,sendseq->vbg_id,recvseq,recvseq->vbg_id
                ,sendseq->sendinfo.index,bginfo[sendseq->sendinfo.index]
@@ -2685,8 +2689,16 @@ int utf_bg_alloc(uint32_t rankset[],
             }
 #endif
         }
-        if (NULL != (tempval=getenv("UTF_BG_ENABLE_THREAD_SAFE"))) {
-            utf_bg_alloc_flags = UTOFU_VBG_FLAG_THREAD_SAFE;
+        if (NULL != (tempval=getenv("UTF_BG_THREAD_SAFE"))) {
+            utf_bg_alloc_flags = (unsigned long int)(atol(tempval));
+            if ( (0UL != utf_bg_alloc_flags) &&
+                 (UTOFU_VBG_FLAG_THREAD_SAFE != utf_bg_alloc_flags) ) {
+#if defined(UTF_THREAD_MULTIPLE)
+                utf_bg_alloc_flags = UTOFU_VBG_FLAG_THREAD_SAFE;
+#else
+                utf_bg_alloc_flags = 0UL;
+#endif
+            }
         }
         if (NULL != (tempval=getenv("UTF_BG_MAX_INTRA_NODE_PROCS_FOR_HB"))) {
             max_intra_node_procs_for_hb = atoi(tempval);
@@ -2746,13 +2758,14 @@ int utf_bg_alloc(uint32_t rankset[],
         ,mypid,utf_dflag
     );
 #endif
-    fprintf(stderr,"DEBUGLOG %s:%s:my_index=%zu: len=%zu my_jobid=%d utf_bg_first_call=%d utf_bg_alloc_count=%lu utf_bg_intra_node_barrier_is_tofu=%d : utf_bg_alloc_flags=%lu max_intra_node_procs_for_hb=%d xonlyflag=%d disable_utf_shm=%d \n"
+    fprintf(stderr,"DEBUGLOG %s:%s:my_index=%zu: len=%zu my_jobid=%d utf_bg_first_call=%d utf_bg_alloc_count=%lu utf_bg_intra_node_barrier_is_tofu=%d : utf_bg_alloc_flags=%lu max_intra_node_procs_for_hb=%d xonlyflag=%d disable_utf_shm=%d utf_bg_detail_info=%p \n"
         ,my_hostname,__func__,my_index
         ,len,my_jobid
         ,utf_bg_first_call,utf_bg_alloc_count
         ,utf_bg_intra_node_barrier_is_tofu
         ,utf_bg_alloc_flags,max_intra_node_procs_for_hb,xonlyflag
         ,utf_bg_mmap_file_info.disable_utf_shm
+        ,utf_bg_detail_info
     );
     fprintf(stderr,"DEBUGLOG %s:%s:my_index=%zu: max_ppn=%d comm_type=%d \n"
         ,my_hostname,__func__,my_index
