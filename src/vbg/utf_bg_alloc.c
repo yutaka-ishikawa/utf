@@ -1911,7 +1911,7 @@ static int allocate_vbg_core(utofu_tni_id_t start_tni,
 
     do {
         rc = alloc_vbg(*my_tni,num_vbg,vbg_ids);
-        UTOFU_ERRCHECK_EXIT_IF(0,rc)
+        // UTOFU_ERRCHECK_EXIT_IF(0,rc)
         if (UTOFU_ERR_FULL != rc) {
             /* UTOFU_SUCCESS or a fatal error */
             break;
