@@ -15,6 +15,8 @@
 extern int utf_progress();
 extern int utf_MPI_hook(MPI_Comm, uint32_t *addr_tab, uint32_t *count);
 
+#define UTF_BG_DEFAULT_REDUCE_MAXLEN	128
+#define UTF_BG_DEFAULT_BCAST_MAXLEN	128
 #define UTF_BG_MIN_BARRIER_SIZE	4
 static int	mpi_bg_enabled = 0;
 static int	mpi_bg_disable = 0;
@@ -23,6 +25,9 @@ static int	mpi_bg_barrier = 0;
 static useconds_t	mpi_bg_iniwait = 0;
 static int	mpi_bg_confirm = 0;
 static int	mpi_bg_warning = 0;
+static int	mpi_bg_reduce_maxlen = UTF_BG_DEFAULT_REDUCE_MAXLEN;
+static int	mpi_bg_bcast_maxlen = UTF_BG_DEFAULT_BCAST_MAXLEN;
+static int	mpi_bg_show_maxlen = 0;
 static utf_coll_group_t mpi_world_grp;
 static utf_bg_info_t	*mpi_bg_bginfo;
 static int	mpi_bg_nprocs, mpi_bg_myrank;
@@ -143,11 +148,34 @@ option_get()
     }
     cp = getenv("UTF_BG_CONFIRM");
     if (cp && atoi(cp) != 0) {
-	mpi_bg_confirm = 1;
+	mpi_bg_confirm = atoi(cp);
     }
     cp = getenv("UTF_BG_WARNING");
     if (cp && atoi(cp) != 0) {
 	mpi_bg_warning = 1;
+    }
+    if ((cp = getenv("UTF_BG_REDUCE_MAXLEN")) != NULL) {
+	mpi_bg_reduce_maxlen = atoi(cp);
+    } else {
+	mpi_bg_reduce_maxlen = UTF_BG_DEFAULT_REDUCE_MAXLEN;
+    }
+    if ((cp = getenv("UTF_BG_BCAST_MAXLEN")) != NULL) {
+	mpi_bg_bcast_maxlen = atoi(cp);
+    } else {
+	mpi_bg_bcast_maxlen = UTF_BG_DEFAULT_BCAST_MAXLEN;
+    }
+    cp = getenv("UTF_BG_SHOW_MAXLEN");
+    if (cp && atoi(cp) != 0) {
+	mpi_bg_show_maxlen = 1;
+    }
+}
+
+static void
+show_maxlen()
+{
+    if (mpi_bg_show_maxlen && mpi_bg_myrank == 0) {
+	utf_printf("UTF_BG_REDUCE_MAXLEN = %d\n", mpi_bg_reduce_maxlen);
+	utf_printf("UTF_BG_BCAST_MAXLEN = %d\n", mpi_bg_bcast_maxlen);
     }
 }
 
@@ -264,7 +292,7 @@ MPI_Init(int *argc, char ***argv)
     option_get();
     MPICALL_CHECK(err0, rc, PMPI_Init(argc, argv));
     if (mpi_bg_disable == 1) {
-	if (mpi_bg_confirm) {
+	if (mpi_bg_confirm & 0x2) {
 	    myprintf(0, "[%d] *** UTF VBG is disabled **\n", mpi_bg_myrank);
 	}
 	return 0;
@@ -280,20 +308,21 @@ MPI_Init(int *argc, char ***argv)
     MPICALL_CHECK(err1, rc, mpi_bg_init(MPI_COMM_WORLD, nprocs, myrank, rankset));
     if (mpi_bg_iniwait > 0) {
 	usleep(mpi_bg_iniwait);
-	if (mpi_bg_confirm) {
+	if (mpi_bg_confirm & 0x2) {
 	    myprintf(0, "[%d] *** UTF VBG (%d usec waited)**\n", mpi_bg_myrank, mpi_bg_iniwait);
 	}
     }
     MPICALL_CHECK(err1, rc, PMPI_Barrier(MPI_COMM_WORLD));
     if (mpi_bg_barrier) {
-	if (mpi_bg_confirm) {
+	if (mpi_bg_confirm & 0x2) {
 	    myprintf(0, "[%d] PASS\n", mpi_bg_myrank);
 	}
 	MPICALL_CHECK(err1, rc, PMPI_Barrier(MPI_COMM_WORLD));
     }
-    if (mpi_bg_confirm) {
+    if (mpi_bg_confirm & 0x2) {
 	myprintf(0, "[%d] *** UTF VBG is enabled **\n", mpi_bg_myrank);
     }
+    show_maxlen();
     return rc;
 err0:
     return -1;
@@ -317,7 +346,7 @@ MPI_Init_thread(int *argc, char ***argv, int required, int *provided)
     option_get();
     MPICALL_CHECK(err0, rc, PMPI_Init_thread(argc, argv, required, provided));
     if (mpi_bg_disable == 1) {
-	if (mpi_bg_confirm) {
+	if (mpi_bg_confirm & 0x2) {
 	    myprintf(0, "[%d] *** UTF VBG is disabled **\n", mpi_bg_myrank);
 	}
 	return 0;
@@ -333,20 +362,21 @@ MPI_Init_thread(int *argc, char ***argv, int required, int *provided)
     MPICALL_CHECK(err1, rc, mpi_bg_init(MPI_COMM_WORLD, nprocs, myrank, rankset));
     if (mpi_bg_iniwait > 0) {
 	usleep(mpi_bg_iniwait);
-	if (mpi_bg_confirm) {
+	if (mpi_bg_confirm & 0x2) {
 	    myprintf(0, "[%d] *** UTF VBG (%d usec waited)**\n", mpi_bg_myrank, mpi_bg_iniwait);
 	}
     }
     MPICALL_CHECK(err1, rc, PMPI_Barrier(MPI_COMM_WORLD));
     if (mpi_bg_barrier) {
-	if (mpi_bg_confirm) {
+	if (mpi_bg_confirm & 0x2) {
 	    myprintf(0, "[%d] PASS\n", mpi_bg_myrank);
 	}
 	MPICALL_CHECK(err1, rc, PMPI_Barrier(MPI_COMM_WORLD));
     }
-    if (mpi_bg_confirm) {
+    if (mpi_bg_confirm & 0x2) {
 	myprintf(0, "[%d] *** UTF VBG is enabled **\n", mpi_bg_myrank);
     }
+    show_maxlen();
 err0:
     return rc;
 err1:
@@ -558,12 +588,13 @@ MPI_Bcast(void *buf, int count, MPI_Datatype datatype, int root, MPI_Comm comm)
     IF_BG_DISABLE(PMPI_Bcast(buf, count, datatype, root, comm));
     COMINFO_GET_CHECK_DO(cont, ent, comm);
     /* VBG resource has not been allocated */
-pmi_call:
+pmpi_call:
     rc = PMPI_Bcast(buf, count, datatype, root, comm);
     goto ext;
 cont:
     rc = MPI_Type_size(datatype, &siz);
     len = siz * count; /* byte */
+    if (len > mpi_bg_bcast_maxlen) { goto pmpi_call; }
     maxcnt = UTF_BG_REDUCE_ULMT_ELMS_48; /* UTF_BG_REDUCE_ULMT_ELMS_48 48 */
     rest = len;
     while (rest > 0) {
@@ -573,7 +604,7 @@ cont:
 	rc = utf_broadcast(ent->bgrp, snd_buf, pktlen, NULL, root);
 	if (rc != UTF_SUCCESS) {
 	    myprintf(0, "[%d] %s: rc = %d using P%s\n", mpi_bg_myrank, __func__, rc, __func__);
-	    goto pmi_call;
+	    goto pmpi_call;
 	}
 	/* progress */
 	mpi_bg_poll_reduce(ent->bgrp, (void**)&data);
@@ -591,7 +622,7 @@ MPI_Reduce(const void *sbuf, void *rbuf, int count, MPI_Datatype datatype,
     struct cominfo_ent *ent;
     enum utf_datatype  utf_type;
     enum utf_reduce_op utf_op;
-    int	maxcnt, functype;
+    int	len, maxcnt, functype;
 
     // myprintf(root, "[%d] %s: datatype=%x op=%x\n", mpi_bg_myrank, __func__, datatype, op);
     IF_BG_DISABLE(PMPI_Reduce(sbuf, rbuf, count, datatype, op, root, comm));
@@ -601,10 +632,11 @@ MPI_Reduce(const void *sbuf, void *rbuf, int count, MPI_Datatype datatype,
     goto ext;
 cont:
     utf_type = mpitype_to_utf(datatype);
+    len = utf_type & 0xff;	/* length in byte is encoded in utf_datatype */
+    if (len*count > mpi_bg_reduce_maxlen) { goto pmpi_call; }
     utf_op = mpiop_to_utf(op, utf_type, &maxcnt, &functype);
     if (utf_type != 0 && utf_op != 0 && functype != BREDUCE_NONE) {
 	double	data;
-	int	len = utf_type & 0xff;	/* length in byte is encoded in utf_datatype */
 	u_char	*snd_buf = (u_char*) sbuf;
 	u_char	*rcv_buf = (u_char*) rbuf;
 	size_t	scount;
@@ -637,7 +669,7 @@ MPI_Allreduce(const void *sbuf, void *rbuf, int count, MPI_Datatype datatype,
     struct cominfo_ent *ent;
     enum utf_datatype  utf_type;
     enum utf_reduce_op utf_op;
-    int	maxcnt, functype;
+    int	len, maxcnt, functype;
 
     //myprintf(mpi_bg_myrank, "[%d] %s: datatype=%x op=%x\n", mpi_bg_myrank, __func__, datatype, op);
     IF_BG_DISABLE(PMPI_Allreduce(sbuf, rbuf, count, datatype, op, comm));
@@ -646,10 +678,13 @@ MPI_Allreduce(const void *sbuf, void *rbuf, int count, MPI_Datatype datatype,
     goto ext;
 cont:
     utf_type = mpitype_to_utf(datatype);
+    len = utf_type & 0xff;	/* length in byte is encoded in utf_datatype */
+    if (len*count > mpi_bg_reduce_maxlen) {
+	goto pmpi_call;
+    }
     utf_op = mpiop_to_utf(op, utf_type, &maxcnt, &functype);
     if (utf_type != 0 && utf_op != 0 && functype != BREDUCE_NONE) {
 	double	data;
-	int	len = utf_type & 0xff;	/* length in byte is encoded in utf_datatype */
 	u_char	*snd_buf = (u_char*) sbuf;
 	u_char	*rcv_buf = (u_char*) rbuf;
 	size_t	scount;
@@ -712,6 +747,8 @@ mpi_comm_bg_init(MPI_Comm comm)
 	/* Cannot allocate VBG resources */
 	free(rankset);
     }
+    if (mpi_bg_confirm & 0x1
+	&& mpi_bg_myrank == 0) utf_printf("%s: count(%d) rc(%d)\n", __func__, count, rc);
     /* Goging to barrier synchronization in any return cases */
     MPICALL_CHECK(ext, rc, PMPI_Barrier(comm));
 ext:
@@ -781,8 +818,9 @@ MPI_Comm_free(MPI_Comm *comm)
 
     MPICALL_CHECK_RETURN(rc, PMPI_Comm_free(comm));
     grp = (utf_coll_group_t) cominfo_unreg(svd_comm);
+    if (mpi_bg_myrank == 0) utf_printf("%s: com(0x%lx)\n", __func__, svd_comm);
     if (grp != NULL) {
-	if (mpi_bg_confirm) {
+	if (mpi_bg_confirm & 0x1) {
 	    utf_printf("%s: FREE grp(%p)\n", __func__, grp);
 	}
 	utf_bg_free(grp);
@@ -1186,7 +1224,7 @@ MPI_Comm_free(MPI_Comm *comm)
     MPICALL_CHECK_RETURN(rc, PMPI_Comm_free(comm));
     grp = (utf_coll_group_t) cominfo_unreg(svd_comm);
     if (grp != NULL) {
-	if (mpi_bg_confirm) {
+	if (mpi_bg_confirm & 0x1) {
 	    utf_printf("%s: FREE grp(%p)\n", __func__, grp);
 	}
 	utf_bg_free(grp);
