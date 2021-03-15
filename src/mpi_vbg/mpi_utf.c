@@ -10,6 +10,21 @@
 #include <utf_bg.h>
 #include "../vbg/utf_bg_barrier.h"
 
+#include <pthread.h>
+static pthread_mutex_t	mpi_bg_mtx;
+static int	mpi_bg_thmul;
+#define UTF_MPI_THREAD_LOCK(mtx) do {		\
+	if (mpi_bg_thmul) {			\
+	    pthread_mutex_lock(&mtx);		\
+	}					\
+} while (0);
+
+#define UTF_MPI_THREAD_UNLOCK(mtx) do {		\
+	if (mpi_bg_thmul) {			\
+	    pthread_mutex_unlock(&mtx);		\
+	}					\
+} while (0);
+
 #define COMM_MPICHLEVEL_HANDLE
 
 extern int utf_progress();
@@ -297,6 +312,7 @@ MPI_Init(int *argc, char ***argv)
 	}
 	return 0;
     }
+    mpi_bg_thmul = 0;
     cominfo_init(COMINFO_SIZE);
     PMPI_Comm_size(MPI_COMM_WORLD, &nprocs);
     PMPI_Comm_rank(MPI_COMM_WORLD, &myrank);
@@ -351,6 +367,8 @@ MPI_Init_thread(int *argc, char ***argv, int required, int *provided)
 	}
 	return 0;
     }
+    pthread_mutex_init(&mpi_bg_mtx, NULL);
+    mpi_bg_thmul = 1;
     cominfo_init(COMINFO_SIZE);
     PMPI_Comm_size(MPI_COMM_WORLD, &nprocs);
     PMPI_Comm_rank(MPI_COMM_WORLD, &myrank);
@@ -417,7 +435,8 @@ cont:
     if (ent->nprocs < UTF_BG_MIN_BARRIER_SIZE) {
 	MPICALL_CHECK_RETURN(rc, PMPI_Barrier(comm));
     } else {
-	UTFCALL_CHECK(ext, rc,  utf_barrier(ent->bgrp));
+	UTF_MPI_THREAD_LOCK(mpi_bg_mtx);
+	UTFCALL_CHECK(ext2, rc,  utf_barrier(ent->bgrp));
 	mpi_bg_poll_barrier(ent->bgrp);
     }
 #else
@@ -425,10 +444,13 @@ cont:
     if (ent->grp->size < UTF_BG_MIN_BARRIER_SIZE) {
 	MPICALL_CHECK_RETURN(rc, PMPI_Barrier(comm));
     } else {
-	UTFCALL_CHECK(ext, rc,  utf_barrier(ent->bgrp));
+	UTF_MPI_THREAD_LOCK(mpi_bg_mtx);
+	UTFCALL_CHECK(ext2, rc,  utf_barrier(ent->bgrp));
 	mpi_bg_poll_barrier(ent->bgrp);
     }
 #endif
+ext2:
+    UTF_MPI_THREAD_UNLOCK(mpi_bg_mtx);
 ext:
     return rc;
 }
@@ -641,17 +663,20 @@ cont:
 	u_char	*rcv_buf = (u_char*) rbuf;
 	size_t	scount;
 	int	rest = count;
+	UTF_MPI_THREAD_LOCK(mpi_bg_mtx);
 	while (rest > 0) {
 	    scount = rest > maxcnt ? maxcnt : rest;
 	    rc = utf_reduce(ent->bgrp, snd_buf, scount, NULL, rcv_buf, NULL, utf_type, utf_op, root);
 	    if (rc != UTF_SUCCESS) {
 		myprintf(0, "[%d] %s: rc = %d using P%s\n", mpi_bg_myrank, __func__, rc, __func__);
+		UTF_MPI_THREAD_UNLOCK(mpi_bg_mtx);
 		goto pmpi_call;
 	    }
 	    /* progress */
 	    mpi_bg_poll_reduce(ent->bgrp, (void**)&data);
 	    rest -= scount; snd_buf += len*scount; rcv_buf += len*scount;
 	}
+	UTF_MPI_THREAD_UNLOCK(mpi_bg_mtx);
     } else {
     pmpi_call:
 	//myprintf(0, "[%d] %s: calling PMPI_Reduce\n", mpi_bg_myrank, __func__);
@@ -689,17 +714,20 @@ cont:
 	u_char	*rcv_buf = (u_char*) rbuf;
 	size_t	scount;
 	int	rest = count;
+	UTF_MPI_THREAD_LOCK(mpi_bg_mtx);
 	while (rest > 0) {
 	    scount = rest > maxcnt ? maxcnt : rest;
 	    rc = utf_allreduce(ent->bgrp, snd_buf, scount, NULL, rcv_buf, NULL, utf_type, utf_op);
 	    if (rc != UTF_SUCCESS) {
 		myprintf(0, "[%d] %s: rc = %d using P%s\n", mpi_bg_myrank, __func__, rc, __func__);
+		UTF_MPI_THREAD_UNLOCK(mpi_bg_mtx);
 		goto pmpi_call;
 	    }
 	    /* progress */
 	    mpi_bg_poll_reduce(ent->bgrp, (void**)&data);
 	    rest -= scount; snd_buf += len*scount; rcv_buf += len*scount;
 	}
+	UTF_MPI_THREAD_UNLOCK(mpi_bg_mtx);
     } else {
     pmpi_call:
 	//myprintf(0, "[%d] %s: calling PMPI_Allreduce\n", mpi_bg_myrank, __func__);
@@ -762,7 +790,9 @@ MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
 {
     int rc;
     MPICALL_CHECK_RETURN(rc, PMPI_Comm_create(comm, group, newcomm));
+    UTF_MPI_THREAD_LOCK(mpi_bg_mtx);
     rc = mpi_comm_bg_init(*newcomm);
+    UTF_MPI_THREAD_UNLOCK(mpi_bg_mtx);
     return rc;
 }
 
@@ -776,11 +806,13 @@ MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
     /* Cannot find the original communicator */
     goto ext;
 cont:
+    UTF_MPI_THREAD_LOCK(mpi_bg_mtx);
     /* find the root of parent */
     while (parent->parent) {
 	parent = parent->parent;
     }
     cominfo_reg(*newcomm, parent->bgrp, parent->rankset, parent);
+    UTF_MPI_THREAD_UNLOCK(mpi_bg_mtx);
 ext:
     return rc;
 }
@@ -795,7 +827,9 @@ MPI_Comm_dup_with_info(MPI_Comm comm, MPI_Info info, MPI_Comm *newcomm)
     /* Cannot find the original communicator */
     goto ext;
 cont:
+    UTF_MPI_THREAD_LOCK(mpi_bg_mtx);
     cominfo_reg(*newcomm, parent->bgrp, parent->rankset, parent);
+    UTF_MPI_THREAD_UNLOCK(mpi_bg_mtx);
 ext:
     return rc;
 }
@@ -805,7 +839,9 @@ MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
 {
     int rc;
     MPICALL_CHECK_RETURN(rc, PMPI_Comm_split(comm, color, key, newcomm));
+    UTF_MPI_THREAD_LOCK(mpi_bg_mtx);
     rc = mpi_comm_bg_init(*newcomm);
+    UTF_MPI_THREAD_UNLOCK(mpi_bg_mtx);
     return rc;
 }
 
@@ -817,6 +853,7 @@ MPI_Comm_free(MPI_Comm *comm)
     MPI_Comm	svd_comm = *comm;
 
     MPICALL_CHECK_RETURN(rc, PMPI_Comm_free(comm));
+    UTF_MPI_THREAD_LOCK(mpi_bg_mtx);
     grp = (utf_coll_group_t) cominfo_unreg(svd_comm);
     if (mpi_bg_myrank == 0) utf_printf("%s: com(0x%lx)\n", __func__, svd_comm);
     if (grp != NULL) {
@@ -825,6 +862,7 @@ MPI_Comm_free(MPI_Comm *comm)
 	}
 	utf_bg_free(grp);
     }
+    UTF_MPI_THREAD_UNLOCK(mpi_bg_mtx);
     return rc;
 }
 
@@ -834,7 +872,9 @@ MPI_Cart_create(MPI_Comm comm_old, int ndims, const int dims[], const int period
 {
     int rc;
     MPICALL_CHECK_RETURN(rc, PMPI_Cart_create(comm_old, ndims, dims, periods, reorder, comm_cart));
+    UTF_MPI_THREAD_LOCK(mpi_bg_mtx);
     rc = mpi_comm_bg_init(*comm_cart);
+    UTF_MPI_THREAD_UNLOCK(mpi_bg_mtx);
     return rc;
 }
 
@@ -844,7 +884,9 @@ MPI_Graph_create(MPI_Comm comm_old, int nnodes, const int indx[], const int edge
 {
     int rc;
     MPICALL_CHECK_RETURN(rc, PMPI_Graph_create(comm_old, nnodes, indx, edges, reorder, comm_graph));
+    UTF_MPI_THREAD_LOCK(mpi_bg_mtx);
     rc = mpi_comm_bg_init(*comm_graph);
+    UTF_MPI_THREAD_UNLOCK(mpi_bg_mtx);
     return rc;
 }
 
@@ -853,7 +895,9 @@ MPI_Cart_sub(MPI_Comm comm, const int remain_dims[], MPI_Comm *newcomm)
 {
     int rc;
     MPICALL_CHECK_RETURN(rc, PMPI_Cart_sub(comm, remain_dims, newcomm));
+    UTF_MPI_THREAD_LOCK(mpi_bg_mtx);
     rc = mpi_comm_bg_init(*newcomm);
+    UTF_MPI_THREAD_UNLOCK(mpi_bg_mtx);
     return rc;
 }
 
@@ -867,7 +911,9 @@ MPI_Dist_graph_create_adjacent(MPI_Comm comm_old, int indegree, const int source
     MPICALL_CHECK_RETURN(rc, PMPI_Dist_graph_create_adjacent(comm_old, indegree, sources,
 			sourceweights, outdegree, destinations, destweights,
 			info, reorder, comm_dist_graph));
+    UTF_MPI_THREAD_LOCK(mpi_bg_mtx);
     rc = mpi_comm_bg_init(*comm_dist_graph);
+    UTF_MPI_THREAD_UNLOCK(mpi_bg_mtx);
     return rc;
 }
 
@@ -880,7 +926,9 @@ MPI_Dist_graph_create(MPI_Comm comm_old, int n, const int sources[], const int d
     MPICALL_CHECK_RETURN(rc, PMPI_Dist_graph_create(comm_old, n, sources, degrees,
 			       destinations, weights, info,
 					     reorder, comm_dist_graph));
+    UTF_MPI_THREAD_LOCK(mpi_bg_mtx);
     rc = mpi_comm_bg_init(*comm_dist_graph);
+    UTF_MPI_THREAD_UNLOCK(mpi_bg_mtx);
     return rc;
 }
 
