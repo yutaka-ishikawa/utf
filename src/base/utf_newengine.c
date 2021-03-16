@@ -508,7 +508,10 @@ sendcontig(struct utf_send_cntr *usp, int ridx, struct utf_packet *pkt,
 	    plsize = (off_rest >= pyldsz) ? pyldsz : off_rest;
 	    /* payload copy */
 	    if (fi) {
-		pkt[off_pkt].pyld.fi_msg.data = pkt[0].pyld.fi_msg.data; /* fi data */	
+		pkt[off_pkt].pyld.fi_msg.data = pkt[0].pyld.fi_msg.data; /* fi data */
+#ifdef UTF_MARKER_TAIL
+		pkt[off_pkt].pyld.fi_msg.mrk_tail = 0;
+#endif
 		memcpy(&PKT_FI_MSGDATA(pkt + off_pkt), minfo->usrbuf + off_mem, plsize);
 	    } else {
 		memcpy(&PKT_DATA(pkt + off_pkt), minfo->usrbuf + off_mem, plsize);

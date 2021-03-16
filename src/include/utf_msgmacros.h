@@ -424,9 +424,15 @@ eager_copy_and_check(struct utf_recv_cntr *urp,
 
     cpysz = PKT_PYLDSZ(pkt);
     DEBUG(DLEVEL_PROTOCOL) {
+#ifdef UTF_MARKER_TAIL
+	utf_printf("%s: req->rcvexpsz(%ld) req->rsize(%ld) req->hdr.size(%ld) cpysz(%ld) fi_data(%ld) buf(%p) "
+		   "EMSG_SIZE(msgp)=%ld mrk_tail(%d)\n",
+		   __func__, req->rcvexpsz, req->rsize, req->hdr.size, cpysz, req->fi_data, req->buf, PKT_PYLDSZ(pkt), pkt->pyld.fi_msg.mrk_tail);
+#else
 	utf_printf("%s: req->rcvexpsz(%ld) req->rsize(%ld) req->hdr.size(%ld) cpysz(%ld) fi_data(%ld) buf(%p) "
 		   "EMSG_SIZE(msgp)=%ld\n",
 		   __func__, req->rcvexpsz, req->rsize, req->hdr.size, cpysz, req->fi_data, req->buf, PKT_PYLDSZ(pkt));
+#endif
     }
     if (pkt->hdr.flgs == 0) { /* utf message */
 	memcpy(&req->buf[req->rsize], PKT_DATA(pkt), cpysz);

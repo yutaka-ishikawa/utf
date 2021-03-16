@@ -432,11 +432,17 @@ utf_infoshow(int lvl)
     utf_printf("UTF_DEBUG: 0x%x\n", utf_dflag);
     utf_printf("MSG MODE: %d (0:eager 1:rendezvous)\n", utf_mode_msg);
     utf_printf("TRANS MODE: %d (0:chain 1:aggressive)\n", utf_mode_trans);
+#ifdef UTF_MARKER_TAIL
+    utf_printf("MSG_MARKER_TAIL: ENABLE (PACKET_SIZE(%d))\n", sizeof(struct utf_packet));
+#else
+    utf_printf("MSG_MARKER_TAIL: DISABLE (PACKET_SIZE(%d))\n", sizeof(struct utf_packet));
+#endif
     utf_printf("MSG_PKTSZ: %d\n", MSG_PKTSZ);
     utf_printf("MSG_EAGER_PIGBACK_SZ: %ld\n", MSG_EAGER_PIGBACK_SZ);
     utf_printf("MSG_EAGER_SIZE: %ld\n", MSG_EAGER_SIZE);
     utf_printf("MSG_EGRCNTG_SZ: %ld\n", MSG_EGRCNTG_SZ);
 
+    utf_printf("MSG_FI_PYLDSZ: %ld\n", MSG_FI_PYLDSZ);
     utf_printf("MSG_FI_EAGER_PIGBACK_SZ: %ld\n", MSG_FI_EAGER_PIGBACK_SZ);
     utf_printf("MSG_FI_EAGER_SIZE: %ld\n", MSG_FI_EAGER_SIZE);
     utf_printf("MSG_FI_EAGER_INPLACE_SZ: %ld\n", MSG_FI_EAGER_INPLACE_SZ);

@@ -50,7 +50,14 @@ utf_progress()
 	int	sidx;
     try_again:
 	pktp = msgbase + urp->recvidx;
+#ifdef UTF_MARKER_TAIL
+	if ((pktp->hdr.marker == MSG_MARKER && pktp->hdr.flgs == 0)
+	    || (pktp->hdr.marker == MSG_MARKER
+		&& ((pktp->hdr.flgs & MSGHDR_FLGS_FI)
+		    && (pktp->pyld.fi_msg.mrk_tail == MSG_MARKER)))) {
+#else
 	if (pktp->hdr.marker == MSG_MARKER) {
+#endif /* UTF_MARKER_TAIL */
 	    /* message arrives */
 	    sidx = pktp->hdr.sidx;
 	    if ((sidx & 0xff) == 0xff) {
@@ -72,6 +79,9 @@ utf_progress()
 		utf_printf("%s: TOFU NOTICE prev-src(%d)data(%ld) now-src(%d)data(%ld)\n", __func__, _utf_fi_src, _utf_fi_data, PKT_MSGSRC(pktp), PKT_FI_DATA(pktp));
 	    }
 	    pktp->hdr.hall = -1UL;
+#ifdef UTF_MARKER_TAIL
+	    pktp->pyld.fi_msg.mrk_tail = -1;
+#endif /* UTF_MARKER_TAIL */
 	    urp->recvidx++;
 	    if (IS_COMRBUF_FULL(urp)) {
 		utofu_stadd_t	stadd = SCNTR_ADDR_CNTR_FIELD(sidx);

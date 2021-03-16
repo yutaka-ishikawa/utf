@@ -65,11 +65,20 @@ struct utf_vcqid_stadd {		/* 80B (8+8*3+8*3+8*3) */
     uint64_t	stadd[MSG_NTNI];	/* utofu_stadd_t */
 };
 
+#define UTF_MARKER_TAIL
+#ifdef UTF_MARKER_TAIL
+/* 256 - (20 + 8 + 1) */
+#define MSG_FI_PYLDSZ	(MSG_PKTSZ - sizeof(struct utf_msghdr) - sizeof(uint64_t) - sizeof(uint8_t))
+#else
 /* 256 - (20 + 8) */
 #define MSG_FI_PYLDSZ	(MSG_PKTSZ - sizeof(struct utf_msghdr) - sizeof(uint64_t))
+#endif /* UTF_MARKER_TAIL */
 #pragma pack(1)
 struct fi_1stpacket {
     uint64_t	data;
+#ifdef UTF_MARKER_TAIL
+    uint8_t	mrk_tail;
+#endif /* UTF_MARKER_TAIL */
     union {
 	uint8_t	msgdata[MSG_FI_PYLDSZ];		/* 228B */
 	struct utf_vcqid_stadd	rndzdata;	/*  80B */
@@ -105,7 +114,11 @@ struct utf_packet {
 #define PKT_FI_DATA(pkt) ((pkt)->pyld.fi_msg.data)
 #define PKT_FI_MSGDATA(pkt) ((pkt)->pyld.fi_msg.msgdata)
 #define PKT_FI_RADDR(pkt)  ((pkt)->pyld.fi_msg.rndzdata)
+#ifdef UTF_MARKER_TAIL
+#define PKT_FI_SENDSZ(pkt) ((pkt)->hdr.pyldsz + sizeof(struct utf_msghdr) + sizeof(uint64_t) + sizeof(uint8_t))
+#else
 #define PKT_FI_SENDSZ(pkt) ((pkt)->hdr.pyldsz + sizeof(struct utf_msghdr) + sizeof(uint64_t))
+#endif /* UTF_MARKER_TAIL */
 
 struct utf_egr_sbuf {
     union {

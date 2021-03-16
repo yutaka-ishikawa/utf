@@ -103,18 +103,23 @@
 //#define MSG_MARKER	0x9 	/* 4 bit */
 //#define MSG_MARKER	(0x4B414E00L)	/* 4B */
 #define MSG_RCNTRSZ	sizeof(struct utf_vcqid_stadd)
-#define MSG_EAGER_SIZE	MSG_PYLDSZ	/* 236 B (256 - 20) */
+#define MSG_EAGER_SIZE	MSG_PYLDSZ	/* 236 B (256 - 20) or 224 B (256 - 22) */
 #define MSG_EGRCNTG_SZ	(MSG_PYLDSZ*COM_EGR_PKTSZ)	/* may send contiguous packets */
 #define UTOFU_PIGBACKSZ	32 /* See below */
 #define MSG_EAGER_PIGBACK_SZ	(UTOFU_PIGBACKSZ - sizeof(struct utf_msghdr))	/* 12 B */
 #define MSG_EGR		0
 #define MSG_RENDEZOUS	1
 
-//#define MSG_FI_PYLDSZ		(MSG_PYLDSZ - sizeof(uint64_t))	/* 228 B */ defined in utf_queue.h
+#define UTF_MARKER_TAIL
+#ifdef UTF_MARKER_TAIL
+#define MSG_FI_EAGER_PIGBACK_SZ	(MSG_EAGER_PIGBACK_SZ - sizeof(uint64_t) - sizeof(uint8_t)) /* 3 B */
+#define MSG_FI_EAGER_SIZE	(MSG_EAGER_SIZE - sizeof(uint64_t) - sizeof(uint8_t))	/* 227 B */
+#define MSG_FI_EAGER_INPLACE_SZ	(MSG_EGRCNTG_SZ - sizeof(uint64_t) - sizeof(uint8_t))	/* 30207 B */
+#else
 #define MSG_FI_EAGER_PIGBACK_SZ	(MSG_EAGER_PIGBACK_SZ - sizeof(uint64_t))	/* 4 B */
-#define MSG_FI_EAGER_SIZE	(MSG_EAGER_SIZE - sizeof(uint64_t))		/* 228 B */
-//#define MSG_FI_EAGER_INPLACE_SZ (1024 - sizeof(uint64_t))
+#define MSG_FI_EAGER_SIZE	(MSG_EAGER_SIZE - sizeof(uint64_t))		/* 228 B or 226 B */
 #define MSG_FI_EAGER_INPLACE_SZ	(MSG_EGRCNTG_SZ - sizeof(uint64_t))	/* 30208 B 2020/12/20 */
+#endif /* UTF_MARKER_TAIL */
 
 /* stadd */
 #define STAG_EGRMGT	10	/* utf_egrmgt */
