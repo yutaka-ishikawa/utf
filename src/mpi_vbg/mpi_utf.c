@@ -474,14 +474,16 @@ mpitype_to_utf(MPI_Datatype datatype)
     case MPI_INT: case MPI_INTEGER4: case MPI_INT32_T:
 	return UTF_DATATYPE_INT32_T;
     case MPI_LONG: case MPI_LONG_LONG: /* MPI_LONG_LONG_INT is MPI_LONG_LONG in mpich */
-    case MPI_INTEGER16: case MPI_INT64_T:
+    case MPI_INTEGER8: case MPI_INT64_T:
 	return UTF_DATATYPE_INT64_T;
     case MPI_FLOAT: case MPI_REAL4:
 	return UTF_DATATYPE_FLOAT;
     case MPI_DOUBLE: case MPI_REAL8:
 	return UTF_DATATYPE_DOUBLE;
+#if MPI_C_FLOAT16 != MPI_DATATYPE_NULL
     case MPIX_C_FLOAT16:
 	return UTF_DATATYPE_FLOAT16;
+#endif /* MPI_C_FLOAT16 != MPI_DATATYPE_NULL */
     case MPI_C_FLOAT_COMPLEX: /* MPI_C_COMPLEX (The same value in mpich) */
 	return UTF_DATATYPE_FLOAT_COMPLEX;
     case MPI_C_DOUBLE_COMPLEX:
