@@ -458,6 +458,19 @@ ext:
 static enum utf_datatype
 mpitype_to_utf(MPI_Datatype datatype)
 {
+    /*
+     * cannot handle the following #if statement,
+     *  #if MPI_C_FLOAT16 != MPI_DATATYPE_NULL
+     *    case MPIX_C_FLOAT16:
+     *    return UTF_DATATYPE_FLOAT16;
+     *  #endif
+     * thus the following if else if statements are added for Fugaku
+     */
+    if (datatype == MPI_DATATYPE_NULL) {
+	return 0;
+    } else if (datatype == MPI_C_FLOAT16) {
+	return UTF_DATATYPE_FLOAT16;
+    }
     switch(datatype) {
     case MPI_UNSIGNED_CHAR: case MPI_BYTE: case MPI_UINT8_T:
 	return UTF_DATATYPE_UINT8_T;
@@ -480,10 +493,6 @@ mpitype_to_utf(MPI_Datatype datatype)
 	return UTF_DATATYPE_FLOAT;
     case MPI_DOUBLE: case MPI_REAL8:
 	return UTF_DATATYPE_DOUBLE;
-#if MPI_C_FLOAT16 != MPI_DATATYPE_NULL
-    case MPIX_C_FLOAT16:
-	return UTF_DATATYPE_FLOAT16;
-#endif /* MPI_C_FLOAT16 != MPI_DATATYPE_NULL */
     case MPI_C_FLOAT_COMPLEX: /* MPI_C_COMPLEX (The same value in mpich) */
 	return UTF_DATATYPE_FLOAT_COMPLEX;
     case MPI_C_DOUBLE_COMPLEX:
