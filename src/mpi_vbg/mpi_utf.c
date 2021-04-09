@@ -468,7 +468,7 @@ mpitype_to_utf(MPI_Datatype datatype)
      */
     if (datatype == MPI_DATATYPE_NULL) {
 	return 0;
-    } else if (datatype == MPI_C_FLOAT16) {
+    } else if (datatype == MPIX_C_FLOAT16) {
 	return UTF_DATATYPE_FLOAT16;
     }
     switch(datatype) {
