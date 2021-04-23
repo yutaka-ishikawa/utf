@@ -16,6 +16,26 @@ int	*recvbuf;
 #define MYPRINT	if (myrank == 0)
 
 int
+verify_gather(int *sendbuf, int *recvbuf, int length)
+{
+    int errs = 0;
+    int	val;
+    int	i, j, k;
+    k = 0;
+    for (i = 0; i < nprocs; i++) {
+      val = i + 1;
+      for (j = 0; j < length; j++) {
+	if (recvbuf[k] != val) {
+	  printf("recvbuf[%d] = %d, expect = %d\n", k, recvbuf[k], val);
+	  errs++;
+	}
+	k++; val++;
+      }
+    }
+    return errs;
+}
+
+int
 verify_reduce(int *sendbuf, int *recvbuf, int length)
 {
     int errs = 0;
@@ -84,7 +104,7 @@ main(int argc, char** argv)
 		errs += verify_reduce(sendbuf, recvbuf, length);
 	    }
 	    /* reset value */
-	    for (j = 0; j < length*nprocs; i++) {
+	    for (j = 0; j < length*nprocs; j++) {
 		sendbuf[j] = myrank + j + 1;
 		recvbuf[j] = -1;
 	    }
@@ -96,6 +116,7 @@ main(int argc, char** argv)
 	}
     }
     if (sflag & 0x4) {
+	errs = 0;
 	for (i = 0; i < iteration; i++) {
 	    int	j;
 	    MYPRINT { VERBOSE("Start MPI_Allreduce %ldth\n", i); }
@@ -116,10 +137,24 @@ main(int argc, char** argv)
 	}
     }
     if (sflag & 0x8) {
+	int j;
+      	errs = 0;
 	for (i = 0; i < iteration; i++) {
 	    MYPRINT { VERBOSE("Start MPI_Gather %ldth\n", i); }
 	    MPI_Gather(sendbuf, length, MPI_INT, recvbuf, length, MPI_INT, 0, MPI_COMM_WORLD);
 	    MYPRINT { VERBOSE("End of MPI_Gather %ldth\n", i); }
+	    if (myrank == 0) {
+		errs += verify_gather(sendbuf, recvbuf, length);
+		/* reset value */
+		for (j = 0; j < length*nprocs; j++) {
+		    recvbuf[j] = -1;
+		}
+	    }
+	}
+	if (errs) {
+	    printf("[%d] MPI_Gather: Errors = %d\n", myrank, errs);
+	} else {
+	    MYPRINT { printf("MPI_Gather: No errors\n"); }
 	}
     }
     if (sflag & 0x10) {
