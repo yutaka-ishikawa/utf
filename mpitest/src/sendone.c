@@ -38,7 +38,7 @@ dry_run(int sender, int receiver)
 int
 main(int argc, char **argv)
 {
-    int	i, j, rc, errs;
+    int	i, j, rc, errs = 0;
 
     length = DEFAULT_LEN;
     iteration = DEFAULT_ITER;
