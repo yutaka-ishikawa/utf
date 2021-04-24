@@ -7,11 +7,12 @@
 
 extern int	myprintf(const char *fmt, ...);
 
-#define BUF_LEN		(1024*1024)
 #define DEFAULT_LEN	1
+#define DEFAULT_ITER	1
 
-int	sendbuf[BUF_LEN], recvbuf[BUF_LEN];
-int	buf[BUF_LEN];
+#define BUF_LEN		(1024*1024)
+int	st_sendbuf[BUF_LEN], st_recvbuf[BUF_LEN];
+int	*sendbuf, *recvbuf;
 
 void
 dry_run(int sender, int receiver)
@@ -37,41 +38,58 @@ dry_run(int sender, int receiver)
 int
 main(int argc, char **argv)
 {
-    int	i, rc, errs;
+    int	i, j, rc, errs;
 
     length = DEFAULT_LEN;
+    iteration = DEFAULT_ITER;
     test_init(argc, argv);
 
     if (length > BUF_LEN) {
 	if (myrank == 0) myprintf("%s: length must be smaller than %d, but %d\n", BUF_LEN, length);
 	goto ext;
     }
+    if (sflag) {
+	sendbuf = st_sendbuf;
+	recvbuf = st_recvbuf;
+    } else {
+	sendbuf = malloc(length*sizeof(int));
+	recvbuf = malloc(length*sizeof(int));
+    }
+    if (sendbuf == NULL || recvbuf == NULL) {
+	myprintf("Cannot allocate buffers: sz=%ldMiB * 2\n", (uint64_t)(((double)length*sizeof(int))/(1024.0*1024.0)));
+	goto ext;
+    }
     // dry_run(0, 1);
     if (myrank == 0) {
-	myprintf("MPICH SENDONE test length(%d)\n", length);
+	myprintf("MPICH SENDONE test length(%d) iteration(%d) %s sendbuf(%p) recvbuf(%p)\n", length, iteration, sflag ? "STATIC" : "DYNAMIC", sendbuf, recvbuf);
 	for (i = 0; i < length; i++) {
-	    buf[i] = i;
+	    sendbuf[i] = i;
 	}
-	rc = MPI_Send(buf, length, MPI_INT, 1, 1000, MPI_COMM_WORLD);
-	if (rc != MPI_SUCCESS) {
-	    myprintf("Send rc = %d\n", rc);
+	for (j = 0; j < iteration; j++) {
+	    rc = MPI_Send(sendbuf, length, MPI_INT, 1, 1000, MPI_COMM_WORLD);
+	    if (rc != MPI_SUCCESS) {
+		myprintf("Send rc = %d\n", rc);
+	    }
 	}
     } else {
 	MPI_Status	stat;
-	for (i = 0; i < length; i++) {
-	    buf[i] = -1;
-	}
-	rc = MPI_Recv(buf, length, MPI_INT, 0, 1000, MPI_COMM_WORLD, &stat);
-	if (rc != MPI_SUCCESS) {
-	    myprintf("Recv rc = %d MPI_SOURCE(%d) MPI_TAG(%d) MPI_ERROR(%d)\n",
-		     rc, stat.MPI_SOURCE, stat.MPI_TAG, stat.MPI_ERROR); fflush(stdout);
-	}
-	/* verify */
-	errs = 0;
-	for (i = 0; i < length; i++) {
-	    if (buf[i] != i) {
-		printf("buf[%d] must be %d, but %d\n", i, i, buf[i]);
-		errs++;
+
+	for (j = 0; j < iteration; j++) {
+	    for (i = 0; i < length; i++) {
+		recvbuf[i] = -1;
+	    }
+	    rc = MPI_Recv(recvbuf, length, MPI_INT, 0, 1000, MPI_COMM_WORLD, &stat);
+	    if (rc != MPI_SUCCESS) {
+		myprintf("Recv rc = %d MPI_SOURCE(%d) MPI_TAG(%d) MPI_ERROR(%d)\n",
+			 rc, stat.MPI_SOURCE, stat.MPI_TAG, stat.MPI_ERROR); fflush(stdout);
+	    }
+	    /* verify */
+	    errs = 0;
+	    for (i = 0; i < length; i++) {
+		if (recvbuf[i] != i) {
+		    printf("recvbuf[%d] must be %d, but %d\n", i, i, recvbuf[i]);
+		    errs++;
+		}
 	    }
 	}
 	if (errs) {
