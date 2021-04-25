@@ -4,6 +4,13 @@
 #include <string.h>
 #include <unistd.h>
 #include "testlib.h"
+#include <utofu.h>
+#include <utf_conf.h>
+#include <utf_tofu.h>
+
+extern struct utf_info utf_info;
+extern utofu_stadd_t utf_mem_reg(utofu_vcq_hdl_t vcqh, void *buf, size_t size);
+extern void	utf_mem_dereg(utofu_vcq_id_t vcqh, utofu_stadd_t stadd);
 
 extern int	myprintf(const char *fmt, ...);
 
@@ -11,8 +18,12 @@ extern int	myprintf(const char *fmt, ...);
 #define DEFAULT_ITER	1
 
 #define BUF_LEN		(1024*1024)
+int	testbuf[1024];
 int	st_sendbuf[BUF_LEN], st_recvbuf[BUF_LEN];
 int	*sendbuf, *recvbuf;
+
+char	*vaddr[1024];
+utofu_stadd_t	staddr[1024];
 
 void
 dry_run(int sender, int receiver)
@@ -44,6 +55,24 @@ main(int argc, char **argv)
     iteration = DEFAULT_ITER;
     test_init(argc, argv);
 
+    if (pflag) {
+	myprintf("MEMORY ALLOCATION TEST length(%ld) iteration(%d)", length, iteration);
+	for (i = 0; i < iteration; i++) {
+	    size_t	sz = length*sizeof(int)*(i+1);
+	    vaddr[i] = malloc(sz);
+	    if (vaddr[i] == 0) {
+		myprintf("Cannot allocate buffer: sz = %d B\n", sz);
+		goto ext;
+	    }
+	    staddr[i] = utf_mem_reg(utf_info.vcqh, vaddr[i], sz);
+	    myprintf("malloc %d KiB virt = %p staddr = 0x%lx\n", sz/1024, vaddr[i], staddr[i]);
+	}
+	for (i = 0; i < iteration; i++) {
+	    utf_mem_dereg(utf_info.vcqh, staddr[i]);
+	    free(vaddr[i]);
+	}
+	goto ext;
+    }
     if (length > BUF_LEN) {
 	if (myrank == 0) myprintf("%s: length must be smaller than %d, but %d\n", BUF_LEN, length);
 	goto ext;
@@ -61,7 +90,7 @@ main(int argc, char **argv)
     }
     // dry_run(0, 1);
     if (myrank == 0) {
-	myprintf("MPICH SENDONE test length(%d) iteration(%d) %s sendbuf(%p) recvbuf(%p)\n", length, iteration, sflag ? "STATIC" : "DYNAMIC", sendbuf, recvbuf);
+	myprintf("MPICH SENDONE test length(%d) iteration(%d) %s sendbuf(%p) recvbuf(%p) testbuf(%p)\n", length, iteration, sflag ? "STATIC" : "DYNAMIC", sendbuf, recvbuf, testbuf);
 	for (i = 0; i < length; i++) {
 	    sendbuf[i] = i;
 	}

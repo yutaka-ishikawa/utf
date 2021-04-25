@@ -2,6 +2,7 @@
 #UTF_ARCH=fugaku
 include mkdef.$(UTF_ARCH)
 
+CFLAGS += -I../../src/include
 INSTDIR = ../bin
 MPIPROGS = hello coll colld sendrecv shmem test_vbg test_collective_vbg pingpong test_mpi_utf sendone myscatter mygather test_hook myscatter_gather
 FJMPIPROGS =  colld-f pingpong-f
