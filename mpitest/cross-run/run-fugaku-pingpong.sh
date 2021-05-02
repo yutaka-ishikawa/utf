@@ -20,13 +20,14 @@ export MPICH_HOME=~/mpich-tofu-cross/
 which mpich_exec
 
 MPIOPT="-of results/%n.%j.out -oferr results/%n.%j.err"
-MAX_LEN=1048576	# 1 MB
-#MAX_LEN=134217728	# 128 MB
-#ITER=1000
+#MAX_LEN=1048576	# 1 MB
+MAX_LEN=134217728	# 128 MB
+ITER=1000
 ITER=2
 VRYFY="-V 1"
 MIN_LEN=1
 
+export MPIR_CVAR_CH4_OFI_ENABLE_TAGGED=1
 export MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG=1
 export MPICH_TOFU_SHOW_PARAMS=1
 export UTF_INFO=0x1

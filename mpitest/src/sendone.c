@@ -7,6 +7,7 @@
 #include <utofu.h>
 #include <utf_conf.h>
 #include <utf_tofu.h>
+#include "makekey.h"
 
 extern struct utf_info utf_info;
 extern utofu_stadd_t utf_mem_reg(utofu_vcq_hdl_t vcqh, void *buf, size_t size);
@@ -24,6 +25,20 @@ int	*sendbuf, *recvbuf;
 
 char	*vaddr[1024];
 utofu_stadd_t	staddr[1024];
+
+
+void
+test_key(utofu_stadd_t stadd, char *vaddr)
+{
+    uint64_t	key, calc;
+    key = make_key(stadd, vaddr);
+    calc = calc_stadd(key, vaddr);
+    if (stadd == calc) {
+	myprintf("SUCESS: stadd(%lld) key(%lld) calc(%lld)\n", stadd, key, calc);
+    } else {
+	myprintf("FAIL: stadd(%lld) key(%lld) calc(%lld)\n", stadd, key, calc);
+    }
+}
 
 void
 dry_run(int sender, int receiver)
@@ -66,6 +81,7 @@ main(int argc, char **argv)
 	    }
 	    staddr[i] = utf_mem_reg(utf_info.vcqh, vaddr[i], sz);
 	    myprintf("malloc %d KiB virt = %p staddr = 0x%lx\n", sz/1024, vaddr[i], staddr[i]);
+	    test_key(staddr[i], vaddr[i]);
 	}
 	for (i = 0; i < iteration; i++) {
 	    utf_mem_dereg(utf_info.vcqh, staddr[i]);
