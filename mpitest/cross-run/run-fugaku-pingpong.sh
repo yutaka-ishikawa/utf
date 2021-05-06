@@ -15,15 +15,15 @@
 #------- Program execution -------#
 SAVED_LD_LIBRARY_PATH=$LD_LIBRARY_PATH
 
-export PATH=~/mpich-tofu-cross/bin:$PATH
-export MPICH_HOME=~/mpich-tofu-cross/
+export PATH=~/mpich-tofu-nv/bin:$PATH
+export MPICH_HOME=~/mpich-tofu-nv/
 which mpich_exec
 
 MPIOPT="-of results/%n.%j.out -oferr results/%n.%j.err"
 #MAX_LEN=1048576	# 1 MB
 MAX_LEN=134217728	# 128 MB
 ITER=1000
-ITER=2
+#ITER=2
 VRYFY="-V 1"
 MIN_LEN=1
 

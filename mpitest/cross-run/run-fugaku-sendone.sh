@@ -15,8 +15,8 @@
 SAVED_LD_LIBRARY_PATH=$LD_LIBRARY_PATH
 
 ##MPIOPT="-of results/%n.%j.out -oferr results/%n.%j.err"
-export PATH=~/mpich-tofu-cross/bin:$PATH
-export MPICH_HOME=~/mpich-tofu-cross/
+export PATH=~/mpich-tofu-nv/bin:$PATH
+export MPICH_HOME=~/mpich-tofu-nv/
 which mpich_exec
 export MPIR_CVAR_CH4_OFI_CAPABILITY_SETS_DEBUG=1
 export MPICH_TOFU_SHOW_PARAMS=1
