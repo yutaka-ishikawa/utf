@@ -1,8 +1,9 @@
 MPICC = mpicc
 INSTALL=install
 CFLAGS = -O3 -g -I../../src/include/
+FJCFLAGS = -
 #LDFLAGS = -lutf
 
 FJMPICC = mpifccpx
-FJCFLAGS = 
+FJCFLAGS = -Nclang
 FJLDFLAGS = -ltofutop -ltofucom -lpmix

@@ -19,7 +19,9 @@ colld-f: colld.c
 pingpong-f: pingpong.c
 	$(FJMPICC) -o $@ pingpong.c testlib.c -DFJMPI -I../../src/include
 .c.o:
-	$(MPICC) -c -g  -Wall $(CFLAGS) $<
+	$(MPICC) -c -g  $(CFLAGS) $<
+shmem.o: shmem.c
+	$(MPICC) -c -g $(FJCFLAGS) $(CFLAGS) $<
 sendone.o: makekey.h
 test_makekey: test_makekey.c makekey.h
 	gcc -o test_makekey test_makekey.c
