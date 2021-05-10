@@ -151,6 +151,9 @@ main(int argc, char** argv)
 	MPI_Reduce(&tm, &tm_max[tment], 1, MPI_LONG_LONG, MPI_MAX, 0, MPI_COMM_WORLD);
 	if (myrank == 0 && Vflag) {
 	    errcnt[tment] = verify(len, len);
+	    for (i = 0; i < len; i++) {
+	    	recvbuf[i] = (char) -1;
+	    }
 	}
     }
     if (myrank == 0) {

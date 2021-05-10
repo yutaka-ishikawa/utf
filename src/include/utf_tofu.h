@@ -264,6 +264,7 @@ bad:
     return buf;
 }
 
+#if 0
 #define MAKE_KEY(stadd, virt)	\
     (((stadd) & 0xfffffff000000000LL) | ((uint64_t)(virt)&0x0000000fffffffffLL))
 #define CALC_STADD(key, virt)	\
@@ -271,3 +272,5 @@ bad:
      | (((((uint64_t)(virt)&0x0000000fffffffffLL)) \
 	 -  ((key)&0x0000000fffffffffLL)) + ((key)&0xffffLL)))
 #define EXTRCT_STADD(key) ((uint64_t)(key)&0xfffffff00000ffffLL)
+#endif
+

@@ -15,16 +15,15 @@
 #------- Program execution -------#
 SAVED_LD_LIBRARY_PATH=$LD_LIBRARY_PATH
 
-export PATH=~/mpich-tofu-cross/bin:$PATH
-export MPICH_HOME=~/mpich-tofu-cross/
+export PATH=~/mpich-tofu/bin:$PATH
+export MPICH_HOME=~/mpich-tofu/
 which mpich_exec
 
 MPIOPT="-of results/%n.%j.out -oferr results/%n.%j.err"
 MAX_LEN=1048576	# 1 MB
 #MAX_LEN=134217728	# 128 MB
 #ITER=1000
-#ITER=10
-ITER=1
+ITER=10
 VRYFY="-V 1"
 MIN_LEN=1
 
@@ -41,7 +40,6 @@ echo "checking pingpong"
 mpich_exec -n 2 $MPIOPT ../bin/pingpong -L $MAX_LEN -l $MIN_LEN -i $ITER $VRYFY
 
 exit
-
 
 export LD_LIBRARY_PATH=$SAVED_LD_LIBRARY_PATH
 echo; echo

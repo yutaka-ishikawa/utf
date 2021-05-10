@@ -4,11 +4,41 @@
 #include <string.h>
 #include <unistd.h>
 #include "testlib.h"
+#include <utofu.h>
+#include <utf_conf.h>
+#include <utf_tofu.h>
+#include "makekey.h"
+
+extern struct utf_info utf_info;
+extern utofu_stadd_t utf_mem_reg(utofu_vcq_hdl_t vcqh, void *buf, size_t size);
+extern void	utf_mem_dereg(utofu_vcq_id_t vcqh, utofu_stadd_t stadd);
 
 extern int	myprintf(const char *fmt, ...);
 
-int	sendbuf[128], recvbuf[128];
-int	buf[128];
+#define DEFAULT_LEN	1
+#define DEFAULT_ITER	1
+
+#define BUF_LEN		(1024*1024)
+int	testbuf[1024];
+int	st_sendbuf[BUF_LEN], st_recvbuf[BUF_LEN];
+int	*sendbuf, *recvbuf;
+
+char	*vaddr[1024];
+utofu_stadd_t	staddr[1024];
+
+
+void
+test_key(utofu_stadd_t stadd, char *vaddr)
+{
+    uint64_t	key, calc;
+    key = make_key(stadd, vaddr);
+    calc = calc_stadd(key, vaddr);
+    if (stadd == calc) {
+	myprintf("SUCESS: stadd(%lld) key(%lld) calc(%lld)\n", stadd, key, calc);
+    } else {
+	myprintf("FAIL: stadd(%lld) key(%lld) calc(%lld)\n", stadd, key, calc);
+    }
+}
 
 void
 dry_run(int sender, int receiver)
@@ -34,20 +64,86 @@ dry_run(int sender, int receiver)
 int
 main(int argc, char **argv)
 {
-    int	rc;
+    int	i, j, rc, errs = 0;
+
+    length = DEFAULT_LEN;
+    iteration = DEFAULT_ITER;
     test_init(argc, argv);
 
+    if (pflag) {
+	myprintf("MEMORY ALLOCATION TEST length(%ld) iteration(%d)", length, iteration);
+	for (i = 0; i < iteration; i++) {
+	    size_t	sz = length*sizeof(int)*(i+1);
+	    vaddr[i] = malloc(sz);
+	    if (vaddr[i] == 0) {
+		myprintf("Cannot allocate buffer: sz = %d B\n", sz);
+		goto ext;
+	    }
+	    staddr[i] = utf_mem_reg(utf_info.vcqh, vaddr[i], sz);
+	    myprintf("malloc %d KiB virt = %p staddr = 0x%lx\n", sz/1024, vaddr[i], staddr[i]);
+	    test_key(staddr[i], vaddr[i]);
+	}
+	for (i = 0; i < iteration; i++) {
+	    utf_mem_dereg(utf_info.vcqh, staddr[i]);
+	    free(vaddr[i]);
+	}
+	goto ext;
+    }
+    if (length > BUF_LEN) {
+	if (myrank == 0) myprintf("%s: length must be smaller than %d, but %d\n", BUF_LEN, length);
+	goto ext;
+    }
+    if (sflag) {
+	sendbuf = st_sendbuf;
+	recvbuf = st_recvbuf;
+    } else {
+	sendbuf = malloc(length*sizeof(int));
+	recvbuf = malloc(length*sizeof(int));
+    }
+    if (sendbuf == NULL || recvbuf == NULL) {
+	myprintf("Cannot allocate buffers: sz=%ldMiB * 2\n", (uint64_t)(((double)length*sizeof(int))/(1024.0*1024.0)));
+	goto ext;
+    }
     // dry_run(0, 1);
-    myprintf("MPICH SENDONE test\n");
     if (myrank == 0) {
-	rc = MPI_Send(buf, 1, MPI_INT, 1, 1000, MPI_COMM_WORLD);
-	printf("[%d] Send rc = %d\n", myrank, rc); fflush(stdout);
+	myprintf("MPICH SENDONE test length(%d) iteration(%d) %s sendbuf(%p) recvbuf(%p) testbuf(%p)\n", length, iteration, sflag ? "STATIC" : "DYNAMIC", sendbuf, recvbuf, testbuf);
+	for (i = 0; i < length; i++) {
+	    sendbuf[i] = i;
+	}
+	for (j = 0; j < iteration; j++) {
+	    rc = MPI_Send(sendbuf, length, MPI_INT, 1, 1000, MPI_COMM_WORLD);
+	    if (rc != MPI_SUCCESS) {
+		myprintf("Send rc = %d\n", rc);
+	    }
+	}
     } else {
 	MPI_Status	stat;
-	rc = MPI_Recv(buf, 1, MPI_INT, 0, 1000, MPI_COMM_WORLD, &stat);
-	printf("[%d] Recv rc = %d MPI_SOURCE(%d) MPI_TAG(%d) MPI_ERROR(%d)\n",
-	       myrank, rc, stat.MPI_SOURCE, stat.MPI_TAG, stat.MPI_ERROR); fflush(stdout);
+
+	for (j = 0; j < iteration; j++) {
+	    for (i = 0; i < length; i++) {
+		recvbuf[i] = -1;
+	    }
+	    rc = MPI_Recv(recvbuf, length, MPI_INT, 0, 1000, MPI_COMM_WORLD, &stat);
+	    if (rc != MPI_SUCCESS) {
+		myprintf("Recv rc = %d MPI_SOURCE(%d) MPI_TAG(%d) MPI_ERROR(%d)\n",
+			 rc, stat.MPI_SOURCE, stat.MPI_TAG, stat.MPI_ERROR); fflush(stdout);
+	    }
+	    /* verify */
+	    errs = 0;
+	    for (i = 0; i < length; i++) {
+		if (recvbuf[i] != i) {
+		    printf("recvbuf[%d] must be %d, but %d\n", i, i, recvbuf[i]);
+		    errs++;
+		}
+	    }
+	}
+	if (errs) {
+	    printf("ERRORS %d\n", errs);
+	} else {
+	    printf("SUCCESS\n");
+	}
     }
+ext:
     MPI_Finalize();
     return 0;
 }
