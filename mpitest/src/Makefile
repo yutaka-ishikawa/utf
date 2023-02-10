@@ -4,9 +4,12 @@ include mkdef.$(UTF_ARCH)
 
 CFLAGS += -I../../src/include
 INSTDIR = ../bin
-MPIPROGS = hello coll colld sendrecv shmem test_vbg test_collective_vbg pingpong test_mpi_utf sendone myscatter mygather test_hook myscatter_gather
-FJMPIPROGS =  colld-f pingpong-f
-MPISRCS = hello.c coll.c colld.c sendrecv.c shmem.c test_vbg.c test_collective_vbg.c pingpong.c test_mpi_utf.c sendone.c myscatter.c mygather.c test_hook.c myscatter_gather.c
+DST_HOMEDIR=/data/01/pz0485/z30485
+ORG-INSTDIR = $(DST_HOMEDIR)/work/bin-org
+
+MPIPROGS = hello coll colld sendrecv shmem test_vbg test_collective_vbg pingpong test_mpi_utf sendone myscatter mygather test_hook myscatter_gather bcast
+FJMPIPROGS =  colld-f pingpong-f bcast-f
+MPISRCS = hello.c coll.c colld.c sendrecv.c shmem.c test_vbg.c test_collective_vbg.c pingpong.c test_mpi_utf.c sendone.c myscatter.c mygather.c test_hook.c myscatter_gather.c bcast.c
 MPIOBJS = $(MPISRCS:.c=.o)
 SRCS = testlib.c
 OBJS = $(SRCS:.c=.o)
@@ -18,6 +21,8 @@ colld-f: colld.c
 	$(FJMPICC) -o $@ colld.c testlib.c -DFJMPI -I../../src/include
 pingpong-f: pingpong.c
 	$(FJMPICC) -o $@ pingpong.c testlib.c -DFJMPI -I../../src/include
+bcast-f: bcast.c
+	$(FJMPICC) -o $@ bcast.c testlib.c -DFJMPI -I../../src/include
 .c.o:
 	$(MPICC) -c -g  $(CFLAGS) $<
 shmem.o: shmem.c
@@ -28,6 +33,9 @@ test_makekey: test_makekey.c makekey.h
 install:
 	[ -d $(INSTDIR) ] || mkdir $(INSTDIR)
 	$(INSTALL) $(MPIPROGS) $(FJMPIPROGS) $(INSTDIR)/
+org-install:
+	[ -d $(INSTDIR) ] || mkdir $(INSTDIR)
+	$(INSTALL) $(MPIPROGS) $(FJMPIPROGS) $(ORG-INSTDIR)/
 clean:
 	rm -f $(MPIPROGS) *.o *~
 depend:
