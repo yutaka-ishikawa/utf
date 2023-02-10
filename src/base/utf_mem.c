@@ -444,3 +444,10 @@ utf_stat_show()
 	fflush(fp);
     }
 }
+
+
+int
+utf_dummy(struct utf_packet *pktp)
+{
+    return pktp->hdr.src;
+}

@@ -96,12 +96,17 @@ minfo_setup(struct utf_send_msginfo *minfo, int rank, uint64_t tag, uint64_t siz
     sbufp->pkt[0].hdr.hall = 0;	/* marker field is now 0 */
     sbufp->pkt[0].hdr.size = size;
     req->allflgs = 0;
+#define CHG_20230207 1
+#if CHG_20230207
+#else
     if (size <= MSG_EAGER_PIGBACK_SZ) {
 	minfo->cntrtype = SNDCNTR_BUFFERED_EAGER_PIGBACK;
 	memcpy(sbufp->pkt[0].pyld.msgdata, usrbuf, size);
 	sbufp->pkt[0].hdr.pyldsz = size;
 	req->type = REQ_SND_BUFFERED_EAGER;
-    } else if (size <= MSG_EAGER_SIZE) {
+    } else
+#endif
+	if (size <= MSG_EAGER_SIZE) {
 	minfo->cntrtype = SNDCNTR_BUFFERED_EAGER;
 	memcpy(sbufp->pkt[0].pyld.msgdata, usrbuf, size);
 	sbufp->pkt[0].hdr.pyldsz = size;
@@ -261,10 +266,14 @@ utf_recv(void *buf, size_t size, int src, int tag,  UTF_reqid *ridx)
 	    req->state = REQ_DONE;
 	    ridx->id = 0;
 	    rc = UTF_MSG_AVL;
-	} else {
-	    /* request type is changed and waiting for request done */
-	    utf_printf("%s: Does this case work ? req->state(%d)\n", __func__, req->state);
+	} else if (req->state == REQ_NONE) {
+	    /* The message has been in unexpected queue because
+	     * still receiving messages in the EAGER MODE.
+	     * request type is changed and waiting for request done.
+	     * state is keeping REQ_NONE */
 	    req->type = REQ_RECV_EXPECTED;
+	} else {
+	    utf_printf("%s: Something wrong req(%p)->state(%d)\n", __func__, req, req->state);
 	}
 	ridx->reqid1 = utf_msgreq2idx(req);
     } else {
@@ -325,6 +334,9 @@ utf_wait(UTF_reqid reqid)
     if (reqid.reqid1 < 0) return -1;
 
     req = utf_idx2msgreq(reqid.reqid1);
+    DEBUG(DLEVEL_PROTOCOL) {
+	utf_printf("%s: req=%p req->type=%d req->state=%d\n", __func__, req, req->type, req->state);
+    }
     if (req->type == REQ_SND_BUFFERED_EAGER) {
 	if (req->state != REQ_DONE) {
 	    /* still in-progress */
@@ -429,6 +441,7 @@ void
 utf_infoshow(int lvl)
 {
     if(utf_info.myrank != 0) return;
+    utf_printf("UTF_VERSION: %s\n", UTF_VERSION);
     utf_printf("UTF_DEBUG: 0x%x\n", utf_dflag);
     utf_printf("MSG MODE: %d (0:eager 1:rendezvous)\n", utf_mode_msg);
     utf_printf("TRANS MODE: %d (0:chain 1:aggressive)\n", utf_mode_trans);

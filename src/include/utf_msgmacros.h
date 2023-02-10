@@ -266,6 +266,9 @@ remote_piggysend(utofu_vcq_hdl_t vcqh,
 	 | UTOFU_ONESIDED_FLAG_CACHE_INJECTION
 	 | UTOFU_ONESIDED_FLAG_PADDING
 	 | UTOFU_ONESIDED_FLAG_STRONG_ORDER;
+    DEBUG(DLEVEL_UTOFU) {
+	utf_printf("%s: data=%p size(%ld)\n", __func__, data, len);
+    }
     UTOFU_MSGCALL(1, usp, vcqh, utofu_put_piggyback,
 		  vcqh, rvcqid, data, rstadd, len, edata, flgs, cbdata);
     utf_tcq_count++;
@@ -280,6 +283,9 @@ remote_piggysend2(utofu_vcq_hdl_t vcqh,
     struct utf_send_cntr *usp = 0;
     flgs |= UTOFU_ONESIDED_FLAG_STRONG_ORDER
 	 | UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE;
+    DEBUG(DLEVEL_UTOFU) {
+	utf_printf("%s: data=%p size(%ld)\n", __func__, data, len);
+    }
     UTOFU_MSGCALL(1, usp, vcqh, utofu_put_piggyback,
 		  vcqh, rvcqid, data, rstadd, len, edata, flgs, NULL);
     return usp;
@@ -301,6 +307,9 @@ remote_put(utofu_vcq_hdl_t vcqh,
 /*	 | UTOFU_ONESIDED_FLAG_REMOTE_MRQ_NOTICE*/
 	 | UTOFU_ONESIDED_FLAG_STRONG_ORDER
 	 | UTOFU_ONESIDED_FLAG_CACHE_INJECTION;
+    DEBUG(DLEVEL_UTOFU) {
+	utf_printf("%s: lstad=0x%lx size(%ld)\n", __func__, lstadd, len);
+    }
     UTOFU_MSGCALL(1, usp, vcqh, utofu_put,
 		  vcqh, rvcqid,  lstadd, rstadd, len, edata, flgs, NULL);
     return usp;

@@ -19,6 +19,47 @@ int utf_progcount;
 
 /* Checking memory */
 uint64_t	_utf_fi_src, _utf_fi_data;
+struct utf_packet	_pkt_;
+
+int
+_compare_(unsigned char *org, unsigned char *new, unsigned char *val)
+{
+    int		max = sizeof(struct utf_packet);
+    int		i;
+    for (i = 0; i < max; i++) {
+	if (*org++ != *new++) {
+	    *val = *(org - 1);
+	    return i + 1;
+	}
+    }
+    return 0;
+}
+
+void
+pkt_dump(struct utf_packet *pktp, int pos)
+{
+    int	i;
+    char	buf[MSG_FI_PYLDSZ*6];
+    char	*cp = buf;
+    unsigned char	*pp = (unsigned char*) pktp;
+    snprintf(buf, MSG_FI_PYLDSZ,
+	     "\tsrc(%d) tag(%d) size(%d) pyldsz(%d) rndz(%d) flgs(%d) marker(%x) sidx(%d)"
+	     "hall(0x%lx) fi_msg.data(%d)\n",
+	     pktp->hdr.src, pktp->hdr.tag, pktp->hdr.size, pktp->hdr.pyldsz,
+	     pktp->hdr.rndz, pktp->hdr.flgs, pktp->hdr.marker, pktp->hdr.sidx,
+	     pktp->hdr.hall,
+	     pktp->pyld.fi_msg.data);
+    cp += strlen(buf);
+    for (i = 0; i < MSG_FI_PYLDSZ; i++) {
+	if (i == pos) *cp++ = '*';
+	snprintf(cp, 4, "%02x:", pp[i]);
+	cp += 3;
+	if (((i+1) % 16) == 0) {
+	    *cp++ = '\n';
+	}
+    }
+    utf_printf("%s\n", buf);
+}
 
 int
 utf_progress()
@@ -60,16 +101,45 @@ utf_progress()
 		utf_printf("%s: sidx(%d)\n", __func__, pktp->hdr.sidx);
 	    }
 	    urp->src = pktp->hdr.src;
+	    /**/
 	    _utf_fi_src = PKT_MSGSRC(pktp);
 	    _utf_fi_data = PKT_FI_DATA(pktp);
+	    {
+		extern int utf_dummy(struct utf_packet *);
+		unsigned char *val;
+		int	bad = 1;
+		do {
+		    _pkt_ = *pktp;
+		    utf_dummy(&_pkt_);
+		    if (_compare_((unsigned char*) pktp, (unsigned char*) &_pkt_, &val)) {
+			/* different */
+			continue;
+		    } else {
+			/* _utf_fi_src and _utf_fi_daa are not updated for testing */
+			bad = 0;
+		    }
+		} while (bad);
+	    }
+	    /**/
 	    if (utf_recvengine(urp, (struct utf_packet*) pktp, sidx) < 0) {
 		utf_printf("%s: j(%d) protocol error urp(%p)->state(%d:%s) sidx(%d) pkt(%p) MSG(%s)\n",
 			   __func__, j, urp, urp->state, rstate_symbol[urp->state],
 			   sidx, pktp, pkt2string((struct utf_packet*) pktp, NULL, 0));
 		abort();
 	    }
-	    if (_utf_fi_data != PKT_FI_DATA(pktp)) {
-		utf_printf("%s: TOFU NOTICE prev-src(%d)data(%ld) now-src(%d)data(%ld)\n", __func__, _utf_fi_src, _utf_fi_data, PKT_MSGSRC(pktp), PKT_FI_DATA(pktp));
+	    if (_utf_fi_data != PKT_FI_DATA(pktp)
+		|| _utf_fi_src != PKT_MSGSRC(pktp)) {
+		utf_printf("%s: TOFU NOTICE prev-src(%d)data(%ld) now-src(%d)data(%ld) pktp(%p) recvidx(%d)\n", __func__, _utf_fi_src, _utf_fi_data, PKT_MSGSRC(pktp), PKT_FI_DATA(pktp), pktp, urp->recvidx);
+		pkt_dump(pktp, -1);
+		pkt_dump(&_pkt_, -1);
+	    } else {
+		int	rc;
+		unsigned char	val;
+		if ((rc = _compare_((unsigned char*) pktp, (unsigned char*) &_pkt_, &val))) {
+		    utf_printf("%s: TOFU NOTICE !!! pos(%d) val(%02x)\n", __func__, rc - 1, val);
+		    pkt_dump(pktp, rc - 1);
+		    pkt_dump(&_pkt_, rc - 1);
+		}
 	    }
 	    pktp->hdr.hall = -1UL;
 	    urp->recvidx++;

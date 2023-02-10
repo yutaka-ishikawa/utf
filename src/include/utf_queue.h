@@ -80,14 +80,15 @@ struct fi_1stpacket {
 #define MSG_PYLDSZ	(MSG_PKTSZ - sizeof(struct utf_msghdr))
 #pragma pack(1)
 struct utf_packet {
-    struct utf_msghdr	hdr;
+//    struct utf_msghdr	hdr;
     union {
 	union {
-	    uint8_t		msgdata[MSG_PYLDSZ];
-	    struct utf_vcqid_stadd	rndzdata;
+	    volatile uint8_t		msgdata[MSG_PYLDSZ];
+	    volatile struct utf_vcqid_stadd	rndzdata;
 	};
-	struct fi_1stpacket	fi_msg;
+	volatile struct fi_1stpacket	fi_msg;
     } pyld;
+    volatile struct utf_msghdr	hdr;
 };
 #pragma pack()
 
@@ -99,13 +100,23 @@ struct utf_packet {
 #define PKT_DATA(pkt) ((pkt)->pyld.msgdata)
 #define PKT_PYLDSZ(pkt) ((pkt)->hdr.pyldsz)
 #define PKT_RADDR(pkt)  ((pkt)->pyld.rndzdata)
-#define PKT_SENDSZ(pkt) ((pkt)->hdr.pyldsz + sizeof(struct utf_msghdr))
 
+#define CHG_20230207 1
+#ifdef CHG_20230207
+#define PKT_SENDSZ(pkt) MSG_PKTSZ /* 256 B */
+#else
+#define PKT_SENDSZ(pkt) ((pkt)->hdr.pyldsz + sizeof(struct utf_msghdr))
+#endif
 
 #define PKT_FI_DATA(pkt) ((pkt)->pyld.fi_msg.data)
 #define PKT_FI_MSGDATA(pkt) ((pkt)->pyld.fi_msg.msgdata)
 #define PKT_FI_RADDR(pkt)  ((pkt)->pyld.fi_msg.rndzdata)
+
+#ifdef CHG_20230207
+#define PKT_FI_SENDSZ(pkt) MSG_PKTSZ	/* 256 B */
+#else
 #define PKT_FI_SENDSZ(pkt) ((pkt)->hdr.pyldsz + sizeof(struct utf_msghdr) + sizeof(uint64_t))
+#endif
 
 struct utf_egr_sbuf {
     union {
