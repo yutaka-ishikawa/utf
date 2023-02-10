@@ -145,9 +145,14 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
 	optind = 0; /* reset */
     }
     /* debug flag */
-    utf_dflag = utf_getenvint("UTF_DEBUG");
+    utf_dflag = utf_getenvint("UTF_DEBUG", 0);
     /* info show flag */
-    utf_iflag = utf_getenvint("UTF_INFO");
+    utf_iflag = utf_getenvint("UTF_INFO", 0);
+    /* Tofu Comm. buffer check flag */
+    utf_tflag = utf_getenvint("UTF_TOFU_COMM_CHECK", 1);
+    /* reload show flag */
+    utf_sflag = utf_getenvint("UTF_TOFU_SHOW_RCOUNT", 0);
+    utf_reload = 0;
 #if 0
     if (utf_dflag > 0) {
 	utf_printf("%s: utf_dflag=%d (0x%x)\n", __func__, utf_dflag, utf_dflag);
@@ -171,20 +176,20 @@ utf_init(int argc, char **argv, int *rank, int *nprocs, int *ppn)
 	if (utf_info.myrank == 0) { utf_printf("%s: S-2\n", __func__); }
     }
     utf_mem_init(utf_info.nprocs);
-    i = utf_getenvint("UTF_MSGMODE");
+    i = utf_getenvint("UTF_MSGMODE", 0);
     utf_setmsgmode(i);
-    i = utf_getenvint("UTF_TRANSMODE");
+    i = utf_getenvint("UTF_TRANSMODE", 0);
     utf_settransmode(i);
-    i = utf_getenvint("UTF_INJECT_COUNT");
+    i = utf_getenvint("UTF_INJECT_COUNT", 0);
     utf_setinjcnt(i);
-    i = utf_getenvint("UTF_RECV_COUNT");
+    i = utf_getenvint("UTF_RECV_COUNT", 0);
     utf_setrcvcnt(i);
-    i = utf_getenvint("UTF_ASEND_COUNT");
+    i = utf_getenvint("UTF_ASEND_COUNT", 0);
     utf_setasendcnt(i);
-    i = utf_getenvint("UTF_ARMA_COUNT");
+    i = utf_getenvint("UTF_ARMA_COUNT", 0);
     utf_setarmacnt(i);
 
-    i = utf_getenvint("UTF_NOKEEP");
+    i = utf_getenvint("UTF_NOKEEP", 0);
     utf_nokeep = i;
 
     INFO(ILEVEL_MSG) {
@@ -240,12 +245,15 @@ utf_finalize(int wipe)
     } else {
 	utf_fence();
     }
+    if (utf_sflag) {
+	utf_printf("Reload Count: %d\n", utf_reload);
+    }
     DEBUG(DLEVEL_INIFIN) {
 	utf_egrbuf_show(stderr);
     } else if (utf_dflag & DLEVEL_STATISTICS) {
 	utf_dbg_stat(stderr);
     }
-    if (utf_getenvint("UTF_COMDEBUG")) {
+    if (utf_getenvint("UTF_COMDEBUG", 0)) {
 	extern void utf_recvcntr_show(FILE*);
 	extern void utf_sendctr_show();
 	utf_sendctr_show();

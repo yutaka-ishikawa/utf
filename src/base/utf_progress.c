@@ -43,9 +43,9 @@ pkt_dump(struct utf_packet *pktp, int pos)
     char	*cp = buf;
     unsigned char	*pp = (unsigned char*) pktp;
     snprintf(buf, MSG_FI_PYLDSZ,
-	     "\tsrc(%d) tag(%d) size(%d) pyldsz(%d) rndz(%d) flgs(%d) marker(%x) sidx(%d)"
-	     "hall(0x%lx) fi_msg.data(%d)\n",
-	     pktp->hdr.src, pktp->hdr.tag, pktp->hdr.size, pktp->hdr.pyldsz,
+	     "\tsrc(%d) tag(%ld) size(%ld) pyldsz(%d) rndz(%d) flgs(%d) marker(%x) sidx(%d)"
+	     "hall(0x%lx) fi_msg.data(%ld)\n",
+	     pktp->hdr.src, pktp->hdr.tag, (int64_t) pktp->hdr.size, pktp->hdr.pyldsz,
 	     pktp->hdr.rndz, pktp->hdr.flgs, pktp->hdr.marker, pktp->hdr.sidx,
 	     pktp->hdr.hall,
 	     pktp->pyld.fi_msg.data);
@@ -102,17 +102,18 @@ utf_progress()
 	    }
 	    urp->src = pktp->hdr.src;
 	    /**/
-	    _utf_fi_src = PKT_MSGSRC(pktp);
-	    _utf_fi_data = PKT_FI_DATA(pktp);
+	    //_utf_fi_src = PKT_MSGSRC(pktp);
+	    //_utf_fi_data = PKT_FI_DATA(pktp);
 	    {
 		extern int utf_dummy(struct utf_packet *);
-		unsigned char *val;
+		unsigned char val;
 		int	bad = 1;
 		do {
 		    _pkt_ = *pktp;
 		    utf_dummy(&_pkt_);
 		    if (_compare_((unsigned char*) pktp, (unsigned char*) &_pkt_, &val)) {
 			/* different */
+			utf_reload++;
 			continue;
 		    } else {
 			/* _utf_fi_src and _utf_fi_daa are not updated for testing */
@@ -127,17 +128,20 @@ utf_progress()
 			   sidx, pktp, pkt2string((struct utf_packet*) pktp, NULL, 0));
 		abort();
 	    }
+#if 0
 	    if (_utf_fi_data != PKT_FI_DATA(pktp)
 		|| _utf_fi_src != PKT_MSGSRC(pktp)) {
 		utf_printf("%s: TOFU NOTICE prev-src(%d)data(%ld) now-src(%d)data(%ld) pktp(%p) recvidx(%d)\n", __func__, _utf_fi_src, _utf_fi_data, PKT_MSGSRC(pktp), PKT_FI_DATA(pktp), pktp, urp->recvidx);
-		pkt_dump(pktp, -1);
+		pkt_dump((struct utf_packet*) pktp, -1);
 		pkt_dump(&_pkt_, -1);
-	    } else {
+	    } else
+#endif /* 0 */
+	    {
 		int	rc;
 		unsigned char	val;
 		if ((rc = _compare_((unsigned char*) pktp, (unsigned char*) &_pkt_, &val))) {
 		    utf_printf("%s: TOFU NOTICE !!! pos(%d) val(%02x)\n", __func__, rc - 1, val);
-		    pkt_dump(pktp, rc - 1);
+		    pkt_dump((struct utf_packet*) pktp, rc - 1);
 		    pkt_dump(&_pkt_, rc - 1);
 		}
 	    }

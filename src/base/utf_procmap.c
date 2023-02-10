@@ -711,7 +711,7 @@ PMIx_Resolve_nodes(const char *nspace, char **nodelist)
     char	*lst, *ptr;
 
     /* When this function is called, libfabric has not been initialized */
-    utf_dflag = utf_getenvint("UTF_DEBUG");
+    utf_dflag = utf_getenvint("UTF_DEBUG", 0);
     DEBUG(DLEVEL_INIFIN) { utf_printf("%s: called\n", __func__); }
     utf_get_peers(NULL, &np, &tppn, &rnk);
     DEBUG(DLEVEL_INIFIN) { utf_printf("%s: jid=%d nprocs=%d\n", __func__, atoi(nspace), np); }

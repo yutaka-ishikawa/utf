@@ -79,9 +79,9 @@ myprintf(const char *fmt, ...)
 }
 
 int
-utf_getenvint(char *envp)
+utf_getenvint(char *envp, int defval)
 {
-    int	val = 0;
+    int	val = defval;
     char	*cp = getenv(envp);
     if (cp) {
 	if (!strncmp(cp, "0x", 2)) {

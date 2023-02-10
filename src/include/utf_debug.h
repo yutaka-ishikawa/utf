@@ -2,7 +2,7 @@
 extern int	utf_printf(const char *fmt, ...);
 extern int	utf_fprintf(FILE*, const char *fmt, ...);
 extern int	myprintf(const char *fmt, ...);
-extern int	utf_getenvint(char *envp);
+extern int	utf_getenvint(char *envp, int defval);
 extern void	utf_mem_show(FILE*);
 extern void	utf_vname_show(FILE*);
 extern void	utf_cqtab_show(FILE*);
@@ -20,5 +20,6 @@ extern void	utf_dbg_init();
 
 extern void	utf_nullfunc();
 
-extern int	utf_dflag, utf_rflag, utf_iflag;
+extern int	utf_dflag, utf_rflag, utf_iflag, utf_tflag, utf_sflag;
+extern int	utf_reload;
 extern int	utf_nokeep;

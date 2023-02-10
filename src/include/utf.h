@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <utofu.h>
 
-#define UTF_VERSION	"UTF Version 1.17 2023/02/09"
+#define UTF_VERSION	"UTF Version 1.19 2023/02/10"
 
 //#define UTF_SUCCESS		0
 #define UTF_MSG_AVL		1

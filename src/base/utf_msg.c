@@ -443,6 +443,8 @@ utf_infoshow(int lvl)
     if(utf_info.myrank != 0) return;
     utf_printf("UTF_VERSION: %s\n", UTF_VERSION);
     utf_printf("UTF_DEBUG: 0x%x\n", utf_dflag);
+    utf_printf("UTF_TOFU_COMM_CHECK: %d\n", utf_tflag);
+    utf_printf("UTF_TOFU_SHOW_RCOUNT: %d\n", utf_tflag);
     utf_printf("MSG MODE: %d (0:eager 1:rendezvous)\n", utf_mode_msg);
     utf_printf("TRANS MODE: %d (0:chain 1:aggressive)\n", utf_mode_trans);
     utf_printf("MSG_PKTSZ: %d\n", MSG_PKTSZ);
@@ -461,6 +463,7 @@ utf_infoshow(int lvl)
     utf_printf("UTF_ARMA_COUNT_MAX: %d\n", utf_rma_max_inflight);
     utf_printf("UTF_SEND_REQ_COUNT: %d\n", MSGREQ_SEND_SZ);
     utf_printf("UTF_RECV_REQ_COUNT: %d\n", MSGREQ_RECV_SZ);
+
     utf_printf("sizeof(utf_egr_rbuf): %8.3f MiB\n", (float) sizeof(struct utf_egr_rbuf) /(float)(1024*1024));
     utf_printf("sizeof(utf_packet): %ld B\n", sizeof(struct utf_packet));
 }

@@ -19,6 +19,9 @@ int utf_rma_max_inflight;
 int utf_dflag; /* debug */
 int utf_rflag; /* redirect */
 int utf_iflag; /* info */
+int utf_tflag; /* checking integrity of Tofu comm. buffer */
+int utf_sflag; /* Show reload count */
+int utf_reload; /* reload count of Tofu comm. buffer */
 int utf_initialized = 0;
 int utf_mode_msg;
 int utf_mode_trans;
@@ -429,11 +432,11 @@ utf_stat_show()
     int	i;
     FILE	*fp = stdout;
 
-    i = utf_getenvint("UTF_STATFD");
+    i = utf_getenvint("UTF_STATFD", 0);
     if (i == 2) {
 	fp = stderr;
     }
-    i = utf_getenvint("UTF_STATRANK");
+    i = utf_getenvint("UTF_STATRANK", 0);
     if (i == -1 || utf_info.myrank == i) {
 	fprintf(fp, "***** UTF STATISTICS *****\n");
 	fprintf(fp, "\tRECV MAX = %d\n", utf_rcv_max);

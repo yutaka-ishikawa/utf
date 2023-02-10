@@ -83,12 +83,12 @@ struct utf_packet {
 //    struct utf_msghdr	hdr;
     union {
 	union {
-	    volatile uint8_t		msgdata[MSG_PYLDSZ];
-	    volatile struct utf_vcqid_stadd	rndzdata;
+	    uint8_t		msgdata[MSG_PYLDSZ];
+	    struct utf_vcqid_stadd	rndzdata;
 	};
-	volatile struct fi_1stpacket	fi_msg;
+	struct fi_1stpacket	fi_msg;
     } pyld;
-    volatile struct utf_msghdr	hdr;
+    struct utf_msghdr	hdr;
 };
 #pragma pack()
 
