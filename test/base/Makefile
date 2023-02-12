@@ -14,10 +14,10 @@ DST_RUNDIR=$(DST_HOMEDIR)/work/mpich-org
 
 .PHONY: all clean
 
-PROGS := test_p2p test_memreg test_mapping test_func
+PROGS := test_p2p test_memreg test_mapping test_func test_hdr
 MPI_PROGS := test_vbg
 ##LIBS  := ../build/utf.so
-SRCS  := test_p2p.c testlib.c test_memreg.c test_mapping.c test_func.c
+SRCS  := test_p2p.c testlib.c test_memreg.c test_mapping.c test_func.c test_hdr.c
 OBJS  := $(SRCS:.c=.o)
 DEPS  := $(SRCS:.c=.d)
 #OBJS  := $(SRCS:.c=.o) ../build/base/*.o
@@ -29,6 +29,9 @@ $(PROGS): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $@.o testlib.o $(LDFLAGS)
 $(MPI_PROGS): $(OBJS)
 	$(MPICC)  -o $@ $@.o testlib.o
+test_hdr: test_hdr.c
+	$(CC) $(CFLAGS) -o $@ test_hdr.c
+	$(CC) $(CFLAGS) -S test_hdr.c
 clean:
 	rm -f *.o
 run-clean:

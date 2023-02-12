@@ -19,8 +19,8 @@ struct utf_msghdr { /* 20 Byte (4 + 8 + 8) */
 		pyldsz:13, /* size of payload: up to 8KiB */
 		rndz: 1,
 		flgs: 3,   /* utf(0) or libfabric(1) TAGGED(2) or MSG(0) */
-		marker: 4,
-		sidx: 8;
+		sidx: 8,
+		marker: 4;
 	};
 	uint64_t hall;
     };
