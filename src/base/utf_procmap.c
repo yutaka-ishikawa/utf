@@ -184,6 +184,13 @@ utf_peers_init()
     DEBUG(DLEVEL_INIFIN) {
 	utf_printf("%s: ppn(%d) nprocs(%d), jobid(%x)\n", __func__, ppn, utf_info.nprocs, utf_info.jobid);
     }
+    /*
+     * maximum nprocs and nodes are checked. 2023/11/04
+     */
+    if (utf_info.nprocs > PROC_MAX || utf_info.nprocs/ppn > NODE_MAX) {
+	utf_printf("Maximum processes or nodes exceeds. Must be smaller than %d procs and %d nodes\n", PROC_MAX, NODE_MAX);
+	abort();
+    }
     /* node info */
     sz = sizeof(struct tofu_vname)*utf_info.nprocs;
     vnmp = utf_info.vname = utf_malloc(sz);
@@ -267,6 +274,13 @@ utf_peers_init()
     utf_info.nnodes = nnodes;
     DEBUG(DLEVEL_INIFIN) {
 	utf_printf("NNODE = %d\n", utf_info.nnodes);
+    }
+    /*
+     * # of nodes is checked. 2023/11/04
+     */
+    if (nnodes > NODE_MAX) {
+	utf_printf("Maximum nodes exceeds. Must be smaller than %d nodes\n", NODE_MAX);
+	abort();
     }
 #if 0
     DEBUG(DLEVEL_INI) {
