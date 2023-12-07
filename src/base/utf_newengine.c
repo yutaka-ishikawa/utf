@@ -513,6 +513,11 @@ sendcontig(struct utf_send_cntr *usp, int ridx, struct utf_packet *pkt,
 	    } else {
 		memcpy(&PKT_DATA(pkt + off_pkt), minfo->usrbuf + off_mem, plsize);
 	    }
+#if 0   /* 2023/12/04 */
+	    if (off_mem == 0) {
+		utf_printf("%s: 2023/12/04 SDATA=%s\n", __func__, my_data_dump(minfo->usrbuf, plsize));
+	    }
+#endif
 	    PKT_PYLDSZ(pkt + off_pkt) = plsize;
 	    ssize += plsize;
 	    //utf_printf("%s: off_rest(%d) payload=%d usize(%d)\n", __func__, off_rest, PKT_PYLDSZ(pkt+off_pkt), usp->usize);
@@ -1101,7 +1106,7 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 		req->alloc = 1;
 		req->rcvexpsz = PKT_MSGSZ(pkt); /* need to receive all message */
 		DEBUG(DLEVEL_PROTOCOL) {
-		    utf_printf("%s: EAGER BUF src(%d)alloc(%p) size(%ld)\n", __func__, req->hdr.src, req->buf, req->rcvexpsz);
+		    utf_printf("%s: EAGER BUF req(%p) src(%d)alloc(%p) size(%ld)\n", __func__, req, req->hdr.src, req->buf, req->rcvexpsz);
 		}
 		/* we have to receive all messages from sender at this time */
 		req->state = REQ_NONE;
@@ -1121,8 +1126,8 @@ utf_recvengine(struct utf_recv_cntr *urp, struct utf_packet *pkt, int sidx)
 	//utf_printf("%s: SRC(%d) expsize(%d) rsize(%ld)\n", __func__, req->hdr.src, req->expsize, req->rsize);
 	if (eager_copy_and_check(urp, req, pkt) == R_DONE) goto done;
 	if (req->overrun) {
-	    utf_printf("%s: OVERRUN SRC(%d) rcvexpsize(%d) rsize(%d) recvidx(%d) MSG(%s)\n", __func__,
-		       req->hdr.src,  req->rcvexpsz, req->rsize, urp->recvidx, pkt2string(pkt, NULL, 0));
+	    utf_printf("%s: OVERRUN req(%p) SRC(%d) rcvexpsize(%d) rsize(%d) recvidx(%d) MSG(%s)\n", __func__,
+		       req, req->hdr.src,  req->rcvexpsz, req->rsize, urp->recvidx, pkt2string(pkt, NULL, 0));
 	}
 	/* otherwise, continue to receive message */
 	break;

@@ -33,7 +33,8 @@
 #define DLEVEL_STAG		0x040000
 #define DLEVEL_LOG		0x080000
 #define DLEVEL_LOG2		0x100000
-#define DLEVEL_ALL		0x1fffff
+#define DLEVEL_CQHANDLE		0x200000
+#define DLEVEL_ALL		0x2fffff
 #define ILEVEL_MSG		0x001
 #define ILEVEL_STAG		0x002
 #define ILEVEL_STAT		0x100

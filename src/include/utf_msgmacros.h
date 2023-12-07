@@ -119,6 +119,7 @@ utf_sendreq_free(struct utf_msgreq *req)
 static inline void
 utf_recvreq_free(struct utf_msgreq *req)
 {
+    //utf_printf("%s: 2023/11/19 req(%p)\n", __func__, req);
     req->state = REQ_NONE;
     req->ustatus = REQ_NONE;
     req->notify = NULL;
@@ -425,6 +426,28 @@ utf_copy_to_iov(const struct iovec *iov, size_t iov_count, uint64_t iov_offset,
     }
 }
 
+#if 0 /* 2023/12/04 */
+#define MY_B_SIZE	1024
+static char *
+my_data_dump(void *data, int len)
+{
+    static char	buf[MY_B_SIZE];
+    char *cp = data;
+    int	i, j, k;
+    j = 0;
+    if (data == NULL) {
+	strcpy(buf, "<NULL>");
+	return buf;
+    }
+    k = len > 80 ? 80 : len;
+    for (i = 0; i < k; i++) {
+	snprintf(&buf[j], MY_B_SIZE, "%02x:", *cp);
+	j += 3; cp++;
+    }
+    return buf;
+}
+#endif
+
 static inline int
 eager_copy_and_check(struct utf_recv_cntr *urp,
 		     struct utf_msgreq *req, struct utf_packet *pkt)
@@ -435,7 +458,7 @@ eager_copy_and_check(struct utf_recv_cntr *urp,
     DEBUG(DLEVEL_PROTOCOL) {
 	utf_printf("%s: req->rcvexpsz(%ld) req->rsize(%ld) req->hdr.size(%ld) cpysz(%ld) fi_data(%ld) buf(%p) "
 		   "EMSG_SIZE(msgp)=%ld\n",
-		   __func__, req->rcvexpsz, req->rsize, req->hdr.size, cpysz, req->fi_data, req->buf, PKT_PYLDSZ(pkt));
+		   __func__, req->rcvexpsz, req->rsize, req->hdr.size, cpysz, req->fi_data, req->buf, (size_t) PKT_PYLDSZ(pkt));
     }
     if (pkt->hdr.flgs == 0) { /* utf message */
 	memcpy(&req->buf[req->rsize], PKT_DATA(pkt), cpysz);
@@ -459,6 +482,11 @@ eager_copy_and_check(struct utf_recv_cntr *urp,
 	    } else {
 		utf_copy_to_iov(req->fi_msg, req->fi_iov_count, req->rsize,
 				PKT_FI_MSGDATA(pkt), cpysz);
+#if 0	/* 2023/12/04 */
+		if (req->rsize == 0) {
+		    utf_printf("%s: addr=%p size(%d) DATA=%s\n", __func__, req->fi_msg[0].iov_base, req->fi_iov_count, my_data_dump(req->fi_msg[0].iov_base, cpysz));
+		}
+#endif
 	    }
 	}
     }
